@@ -14,7 +14,7 @@ loop(Socket, Transport, Parse) ->
     case Transport:recv(Socket, 0, 5000) of
         {ok, Data} ->
             Parsed = Parse(Data),
-            oscilloscope_cache:process(Parsed),
+            [oscilloscope_cache:process(P) || P <- Parsed],
             loop(Socket, Transport, Parse);
         _ ->
             ok = Transport:close(Socket)
