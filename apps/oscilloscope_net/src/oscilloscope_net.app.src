@@ -7,7 +7,9 @@
     {registered, []},
     {applications, [
         kernel,
-        stdlib
+        stdlib,
+        ranch,
+        oscilloscope_cache
   ]},
   {mod, {oscilloscope_net_app, []}},
   {env, []}
