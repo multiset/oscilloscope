@@ -1,0 +1,14 @@
+%% -*- mode: erlang -*-
+%% -*- tab-width: 4;erlang-indent-level: 4;indent-tabs-mode: nil -*-
+
+{application, oscilloscope_cache, [
+    {description, "Caches for Oscilloscope"},
+    {vsn, git},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib
+  ]},
+  {mod, {oscilloscope_cache_app, []}},
+  {env, []}
+]}.
