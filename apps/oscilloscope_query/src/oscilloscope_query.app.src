@@ -1,0 +1,19 @@
+%% -*- mode: erlang -*-
+%% -*- tab-width: 4;erlang-indent-level: 4;indent-tabs-mode: nil -*-
+
+{application, oscilloscope_query, [
+    {description, "Query interface for Oscilloscope"},
+    {vsn, git},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib,
+        inets,
+        crypto,
+        mochiweb,
+        webmachine,
+        oscilloscope_cache
+  ]},
+  {mod, {oscilloscope_query_app, []}},
+  {env, []}
+]}.
