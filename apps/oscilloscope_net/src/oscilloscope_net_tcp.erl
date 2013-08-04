@@ -13,8 +13,12 @@ init(Ref, Socket, Transport, Opts) ->
 loop(Socket, Transport, Parse) ->
     case Transport:recv(Socket, 0, 5000) of
         {ok, Data} ->
-            Parsed = Parse(Data),
-            [oscilloscope_cache:process(P) || P <- Parsed],
+            lists:foreach(
+                fun({Metric, Timestamp, Value}) ->
+                    oscilloscope_cache:process(Metric, Timestamp, Value)
+                end,
+                Parse(Data)
+            ),
             loop(Socket, Transport, Parse);
         _ ->
             ok = Transport:close(Socket)
