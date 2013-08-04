@@ -39,9 +39,9 @@ process(Metric, Timestamp, Value) ->
     %% TODO: multiple retentions
     gen_server:cast(maybe_spawn_cache(Metric), {process, Timestamp, Value}).
 
-read(Metric, Start, End) ->
+read(Metric, From, Until) ->
     %% TODO: multiple retentions
-    gen_server:call(maybe_spawn_cache(Metric), {read, Start, End}).
+    gen_server:call(maybe_spawn_cache(Metric), {read, From, Until}).
 
 start_link(Metric) ->
     gen_server:start_link(?MODULE, Metric, []).
@@ -65,12 +65,12 @@ init(Metric) ->
         last_persist = LastPersist
     }}.
 
-handle_call({read, Start, End}, _From, State) ->
+handle_call({read, From, Until}, _From, State) ->
     #st{metric=M, aggregation_fun=AF} = State,
     Points = read(M),
     InRange = lists:foldl(
         fun({T, Vs}, Acc) ->
-            case T >= Start andalso T =< End of
+            case T >= From andalso T =< Until of
                 true -> [{T, AF(Vs)}|Acc];
                 false -> Acc
             end
