@@ -65,8 +65,8 @@ init({Metric, Resolution}) ->
     AggregationFun = fun oscilloscope_cache_aggregations:avg/1,
     BytesPerPoint = 1,
     LastPersist = 0,
-    case read(Metric) of
-        not_found -> write(Metric, gb_trees:empty());
+    case read({Metric, Resolution}) of
+        not_found -> write({Metric, Resolution}, gb_trees:empty());
         _ -> ok
     end,
     {ok, #st{
@@ -80,8 +80,8 @@ init({Metric, Resolution}) ->
 handle_call(get_resolution, _From, #st{resolution=R}=State) ->
     {reply, {ok, R}, State};
 handle_call({read, From, Until}, _From, State) ->
-    #st{metric=M, aggregation_fun=AF} = State,
-    Points = read(M),
+    #st{metric=M, aggregation_fun=AF, resolution=R} = State,
+    Points = read({M, R}),
     InRange = lists:foldl(
         fun({T, Vs}, Acc) ->
             case T >= From andalso T =< Until of
@@ -95,20 +95,23 @@ handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
 
 handle_cast({process, Timestamp, Value}, State) ->
-    #st{metric=M, resolution={I, C}, last_persist=LP} = State,
+    #st{metric=M, resolution={I, C}=R, last_persist=LP} = State,
     Timestamp1 = Timestamp - (Timestamp rem I),
     %% We claim a ?MIN_PERSIST_AGE maximum age
     %% but that's enforced by not persisting newer points.
     %% In practice we'll accept anything that's newer than the last persist.
-    if Timestamp1 > LP ->
-        OldPoints = read(M),
-        NewPoints = case gb_trees:lookup(Timestamp1, OldPoints) of
-            none ->
-                gb_trees:enter(Timestamp1, [Value], OldPoints);
-            {value, Vs} ->
-                gb_trees:enter(Timestamp1, [Value|Vs], OldPoints)
-        end,
-        write(M, NewPoints)
+    if
+        Timestamp1 > LP ->
+            OldPoints = read({M, R}),
+            NewPoints = case gb_trees:lookup(Timestamp1, OldPoints) of
+                none ->
+                    gb_trees:enter(Timestamp1, [Value], OldPoints);
+                {value, Vs} ->
+                    gb_trees:enter(Timestamp1, [Value|Vs], OldPoints)
+            end,
+            write({M, R}, NewPoints);
+        true ->
+            ok
     end,
     {noreply, State, 0};
 handle_cast(Msg, State) ->
@@ -146,12 +149,12 @@ get_pids(Metric) ->
             P
     end.
 
-read(Metric) ->
-    case erp:q(["GET", Metric]) of
+read(Key) ->
+    case erp:q(["GET", term_to_binary(Key)]) of
         {ok, undefined} -> not_found;
         {ok, Value} -> binary_to_term(Value)
     end.
 
-write(Metric, Value) ->
-    {ok, <<"OK">>} = erp:q(["SET", Metric, term_to_binary(Value)]),
+write(Key, Value) ->
+    {ok, <<"OK">>} = erp:q(["SET", term_to_binary(Key), term_to_binary(Value)]),
     ok.
