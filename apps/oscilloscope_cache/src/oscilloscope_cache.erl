@@ -8,7 +8,7 @@
 ]).
 
 -export([
-    start_link/1,
+    start_link/2,
     init/1,
     handle_call/3,
     handle_cast/2,
@@ -19,7 +19,7 @@
 
 -record(st, {
     metric,
-    interval,
+    resolution,
     aggregation_fun,
     bytes_per_point,
     last_persist
@@ -29,27 +29,39 @@
 -define(MIN_PERSIST_AGE, 300).
 
 start() ->
-    application:start(gproc),
     application:start(oscilloscope_cache).
 
 stop() ->
     ok.
 
 process(Metric, Timestamp, Value) ->
-    %% TODO: multiple retentions
-    gen_server:cast(maybe_spawn_cache(Metric), {process, Timestamp, Value}).
+    multicast(Metric, {process, Timestamp, Value}).
 
 read(Metric, From, Until) ->
-    %% TODO: multiple retentions
-    gen_server:call(maybe_spawn_cache(Metric), {read, From, Until}).
+    {Megaseconds, Seconds, _} = erlang:now(),
+    QueryTime = Megaseconds * 1000000 + Seconds,
+    Resolutions = multicall(Metric, get_resolution),
+    Resolutions1 = lists:sort(
+        fun({_, {ok, {IntervalA, _}}}, {_, {ok, {IntervalB, _}}}) ->
+            IntervalA >= IntervalB
+        end,
+        Resolutions
+    ),
+    {Pid, _Resolution} = lists:foldl(
+        fun({_, {ok, {Interval, Count}}}=R, Result) ->
+            case QueryTime - Interval * Count < From of
+                true -> R;
+                false -> Result
+            end
+        end, hd(Resolutions1), Resolutions1),
+    gen_server:call(Pid, {read, From, Until}).
 
-start_link(Metric) ->
-    gen_server:start_link(?MODULE, Metric, []).
+start_link(Metric, Resolution) ->
+    gen_server:start_link(?MODULE, {Metric, Resolution}, []).
 
-init(Metric) ->
-    gproc:reg({n, l, Metric}, ignored),
+init({Metric, Resolution}) ->
+    ok = pg2:join(Metric, self()),
     %% TODO: get these from persistent store
-    Interval = 10,
     AggregationFun = fun oscilloscope_cache_aggregations:avg/1,
     BytesPerPoint = 1,
     LastPersist = 0,
@@ -59,12 +71,14 @@ init(Metric) ->
     end,
     {ok, #st{
         metric = Metric,
-        interval = Interval,
+        resolution = Resolution,
         aggregation_fun = AggregationFun,
         bytes_per_point = BytesPerPoint,
         last_persist = LastPersist
     }}.
 
+handle_call(get_resolution, _From, #st{resolution=R}=State) ->
+    {reply, {ok, R}, State};
 handle_call({read, From, Until}, _From, State) ->
     #st{metric=M, aggregation_fun=AF} = State,
     Points = read(M),
@@ -81,7 +95,7 @@ handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
 
 handle_cast({process, Timestamp, Value}, State) ->
-    #st{metric=M, interval=I, last_persist=LP} = State,
+    #st{metric=M, resolution={I, C}, last_persist=LP} = State,
     Timestamp1 = Timestamp - (Timestamp rem I),
     %% We claim a ?MIN_PERSIST_AGE maximum age
     %% but that's enforced by not persisting newer points.
@@ -115,12 +129,21 @@ maybe_persist_points(State) ->
     % TODO
     State.
 
-maybe_spawn_cache(Metric) ->
-    case gproc:where({n, l, Metric}) of
-        undefined ->
-            {ok, Pid} = oscilloscope_cache_sup:spawn_cache(Metric),
-            Pid;
-        Pid -> Pid
+multicast(Metric, Msg) ->
+    Pids = get_pids(Metric),
+    lists:map(fun(P) -> gen_server:cast(P, Msg) end, Pids).
+
+multicall(Metric, Msg) ->
+    Pids = get_pids(Metric),
+    lists:map(fun(P) -> {P, gen_server:call(P, Msg)} end, Pids).
+
+get_pids(Metric) ->
+    case pg2:get_members(Metric) of
+        {error, {no_such_group, Metric}} ->
+            {ok, _Pid} = oscilloscope_cache_sup:spawn_cache(Metric),
+            pg2:get_members(Metric);
+        P ->
+            P
     end.
 
 read(Metric) ->

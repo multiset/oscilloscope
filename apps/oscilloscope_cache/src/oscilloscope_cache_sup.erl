@@ -13,8 +13,8 @@ start_link() ->
 
 init(Args) ->
     CacheSpec = {
-        oscilloscope_cache,
-        {oscilloscope_cache, start_link, Args},
-        temporary, 5000, worker, [oscilloscope_cache]
+        oscilloscope_cache_group_sup,
+        {oscilloscope_cache_group_sup, start_link, Args},
+        temporary, 5000, supervisor, [oscilloscope_cache_group_sup]
     },
     {ok, {{simple_one_for_one, 10, 10}, [CacheSpec]}}.
