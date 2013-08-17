@@ -66,8 +66,10 @@ init({Metric, Resolution}) ->
     BytesPerPoint = 1,
     LastPersist = 0,
     case read({Metric, Resolution}) of
-        not_found -> write({Metric, Resolution}, gb_trees:empty());
-        _ -> ok
+        not_found ->
+            write({Metric, Resolution}, {undefined, array:new({default, null})});
+        _ ->
+            ok
     end,
     {ok, #st{
         metric = Metric,
@@ -80,36 +82,56 @@ init({Metric, Resolution}) ->
 handle_call(get_resolution, _From, #st{resolution=R}=State) ->
     {reply, {ok, R}, State};
 handle_call({read, From, Until}, _From, State) ->
-    #st{metric=M, aggregation_fun=AF, resolution=R} = State,
-    Points = read({M, R}),
-    InRange = lists:foldl(
-        fun({T, Vs}, Acc) ->
-            case T >= From andalso T =< Until of
-                true -> [{T, AF(Vs)}|Acc];
+    #st{metric=M, aggregation_fun=AF, resolution={I, _C}=R} = State,
+    {T0, Points} = read({M, R}),
+    StartIndex = (From - T0) div I,
+    EndIndex = (Until - T0) div I,
+    Acc0 = case StartIndex < 0 of
+        true -> lists:duplicate(abs(StartIndex), null);
+        false -> []
+    end,
+    InRange = array:foldl(
+        fun(Index, Vs, Acc) ->
+            case Index >= StartIndex andalso Index =< EndIndex of
+                true -> [AF(Vs)|Acc];
                 false -> Acc
             end
-        end, [], gb_trees:to_list(Points)
+        end, Acc0, Points
     ),
-    {reply, {ok, lists:reverse(InRange)}, State};
+    MissingTail = (EndIndex - StartIndex) - (length(InRange) - 1),
+    Full = case MissingTail > 0 of
+        true ->
+            lists:duplicate(MissingTail, null) ++ InRange;
+        false ->
+            InRange
+    end,
+    %% TODO: return actual start/end/interval
+    {reply, {ok, lists:reverse(Full)}, State};
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
 
 handle_cast({process, Timestamp, Value}, State) ->
-    #st{metric=M, resolution={I, C}=R, last_persist=LP} = State,
+    #st{metric=M, resolution={I, _C}=R, last_persist=LP} = State,
     Timestamp1 = Timestamp - (Timestamp rem I),
     %% We claim a ?MIN_PERSIST_AGE maximum age
     %% but that's enforced by not persisting newer points.
     %% In practice we'll accept anything that's newer than the last persist.
     if
         Timestamp1 > LP ->
-            OldPoints = read({M, R}),
-            NewPoints = case gb_trees:lookup(Timestamp1, OldPoints) of
-                none ->
-                    gb_trees:enter(Timestamp1, [Value], OldPoints);
-                {value, Vs} ->
-                    gb_trees:enter(Timestamp1, [Value|Vs], OldPoints)
+            {T0, OldPoints} = read({M, R}),
+            {T1, Index} = case T0 of
+                undefined ->
+                    {Timestamp1, 0};
+                _ ->
+                    {T0, (Timestamp1 - T0) div I}
             end,
-            write({M, R}, NewPoints);
+            NewPoints = case array:get(Index, OldPoints) of
+                null ->
+                    array:set(Index, [Value], OldPoints);
+                Vs ->
+                    array:set(Index, [Value|Vs], OldPoints)
+            end,
+            write({M, R}, {T1, NewPoints});
         true ->
             ok
     end,
