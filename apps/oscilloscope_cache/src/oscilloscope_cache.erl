@@ -84,6 +84,8 @@ handle_call(get_resolution, _From, #st{resolution=R}=State) ->
 handle_call({read, From, Until}, _From, State) ->
     #st{metric=M, aggregation_fun=AF, resolution={I, _C}=R} = State,
     {T0, Points} = read({M, R}),
+    %% FIXME: this method leads us to read one index too far back
+    %% unless `From rem I == 0`.
     StartIndex = (From - T0) div I,
     EndIndex = (Until - T0) div I,
     Acc0 = case StartIndex < 0 of
@@ -105,8 +107,15 @@ handle_call({read, From, Until}, _From, State) ->
         false ->
             InRange
     end,
-    %% TODO: return actual start/end/interval
-    {reply, {ok, lists:reverse(Full)}, State};
+    RealFrom = T0 + StartIndex * I,
+    RealUntil = T0 + EndIndex * I,
+    Reply = [
+        {from, RealFrom},
+        {until, RealUntil},
+        {interval, I},
+        {datapoints, lists:reverse(Full)}
+    ],
+    {reply, {ok, Reply}, State};
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
 

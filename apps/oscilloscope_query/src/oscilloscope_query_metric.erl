@@ -29,8 +29,4 @@ to_json(Req, State) ->
     From = list_to_integer(wrq:get_qs_value("from", Req)),
     Until = list_to_integer(wrq:get_qs_value("until", Req)),
     {ok, Values} = oscilloscope_cache:read(Metric, From, Until),
-    Values1 = lists:map(
-        fun({K, V}) -> {list_to_binary(integer_to_list(K)), V} end,
-        Values
-    ),
-    {jiffy:encode({[{ok, {Values1}}]}), Req, State}.
+    {jiffy:encode({Values}), Req, State}.
