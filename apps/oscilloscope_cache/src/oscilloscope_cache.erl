@@ -122,6 +122,7 @@ handle_cast({process, Timestamp, Value}, State) ->
     %% We claim a ?MIN_PERSIST_AGE maximum age
     %% but that's enforced by not persisting newer points.
     %% In practice we'll accept anything that's newer than the last persist.
+    %% ^^ I have no idea what this comment means, but I suspect it's sensible
     if
         Timestamp1 > LP ->
             {T0, OldPoints} = read({M, R}),
