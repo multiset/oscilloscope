@@ -21,7 +21,6 @@
     metric,
     resolution,
     aggregation_fun,
-    bytes_per_point,
     last_persist
 }).
 
@@ -63,7 +62,6 @@ init({Metric, Resolution}) ->
     ok = pg2:join(Metric, self()),
     %% TODO: get these from persistent store
     AggregationFun = fun oscilloscope_cache_aggregations:avg/1,
-    BytesPerPoint = 1,
     LastPersist = 0,
     case read({Metric, Resolution}) of
         not_found ->
@@ -75,7 +73,6 @@ init({Metric, Resolution}) ->
         metric = Metric,
         resolution = Resolution,
         aggregation_fun = AggregationFun,
-        bytes_per_point = BytesPerPoint,
         last_persist = LastPersist
     }}.
 
