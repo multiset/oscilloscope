@@ -27,6 +27,14 @@
 %% Minimim amount of seconds to wait before persisting to disk
 -define(MIN_PERSIST_AGE, 300).
 
+%% TODO: compress
+-define(VALENCODE(V), term_to_binary(V)).
+-define(VALDECODE(V), binary_to_term(V)).
+
+%% Number of bytes to store in each value
+-define(MIN_CHUNK_SIZE, 1000).
+-define(MAX_CHUNK_SIZE, 1024).
+
 start() ->
     application:start(oscilloscope_cache).
 
@@ -157,9 +165,61 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-maybe_persist_points(State) ->
-    % TODO
-    State.
+%% TODO: this is a disaster
+maybe_persist_points(#st{}=State) ->
+    #st{metric=M, resolution={I, _C}=R, aggregation_fun=AF} = State,
+    {T0, Points} = read({M, R}),
+    {Megaseconds, Seconds, _} = erlang:now(),
+    Now = Megaseconds * 1000000 + Seconds,
+    %% We only persist up to the epoch now - ?MIN_PERSIST_AGE
+    LatestPersistTime = Now - ?MIN_PERSIST_AGE,
+    PersistIndex = (LatestPersistTime - (LatestPersistTime rem I) - T0) / I,
+    %% Split the array - points old enough to persist on the left, etc
+    {ToPersist, ToMem} = array:foldr(
+        fun(Idx, Value, {Persist, Mem}) ->
+            case Idx =< PersistIndex of
+                true -> {[Value|Persist], Mem};
+                false -> {Persist, [Value|Mem]}
+            end
+        end,
+        [],
+        Points
+    ),
+    %% Split the points old enough to persist in to chunks of 1k
+    {Remainder, PersistChunks} = chunkify(ToPersist, AF),
+    %% Persist the relevant 1k chunks, crash if there's a failure
+    %% http://cl.ly/image/1h1y1U0L2L1G <- :rageface:
+    OKs = lists:duplicate(length(ToPersist), ok),
+    OKs = lists:map(
+       fun(Index, Value) -> T = T0 + (Index * I), persist(T, Value) end,
+       PersistChunks
+    ),
+    %% TODO: Persist what timestamps we persisted
+    %% Merge extras back with the points to remain in memory
+    ToMem1 = Remainder ++ ToMem,
+    T1 = LatestPersistTime - (I * length(Remainder)),
+    write({M, R}, {T1, array:from_list(ToMem1)}),
+    State#st{last_persist=Now}.
+
+persist(_Timestamp, _Value) ->
+    %% TODO
+    ok.
+
+-spec chunkify([number()], fun()) -> {[number()], [{integer(), binary()}]}.
+chunkify(ToChunk, Aggregator) ->
+    chunkify(ToChunk, 0, [], [], Aggregator).
+
+chunkify([], _Index, ThisChunk, Chunked, _Aggregator) ->
+    {ThisChunk, Chunked};
+chunkify([V|Vs], Index, ThisChunk, Chunked, Aggregator) ->
+    Encoded = ?VALENCODE(lists:reverse(ThisChunk)),
+    {ThisChunk1, Chunked1} = case byte_size(Encoded) of
+        Size when Size >= ?MIN_CHUNK_SIZE andalso Size =< ?MAX_CHUNK_SIZE ->
+            {[Aggregator(V)], [{Index, Encoded}|Chunked]};
+        Size when Size < ?MIN_CHUNK_SIZE ->
+            {[Aggregator(V)|ThisChunk], Chunked}
+    end,
+    chunkify(Vs, Index + 1, ThisChunk1, Chunked1, Aggregator).
 
 multicast(Metric, Msg) ->
     Pids = get_pids(Metric),
@@ -181,9 +241,9 @@ get_pids(Metric) ->
 read(Key) ->
     case erp:q(["GET", term_to_binary(Key)]) of
         {ok, undefined} -> not_found;
-        {ok, Value} -> binary_to_term(Value)
+        {ok, Value} -> ?VALDECODE(Value)
     end.
 
 write(Key, Value) ->
-    {ok, <<"OK">>} = erp:q(["SET", term_to_binary(Key), term_to_binary(Value)]),
+    {ok, <<"OK">>} = erp:q(["SET", term_to_binary(Key), ?VALENCODE(Value)]),
     ok.
