@@ -3,12 +3,12 @@
 -export([
     start/0,
     stop/0,
-    process/3,
-    read/3
+    process/5,
+    read/5
 ]).
 
 -export([
-    start_link/2,
+    start_link/1,
     init/1,
     handle_call/3,
     handle_cast/2,
@@ -18,10 +18,11 @@
 ]).
 
 -record(st, {
-    metric,
-    resolution,
-    aggregation_fun,
-    last_persist
+    group,
+    interval,
+    count,
+    persisted,
+    aggregation_fun
 }).
 
 %% Minimim amount of seconds to wait before persisting to disk
@@ -41,13 +42,13 @@ start() ->
 stop() ->
     ok.
 
-process(Metric, Timestamp, Value) ->
-    multicast(Metric, {process, Timestamp, Value}).
+process(User, Name, Host, Timestamp, Value) ->
+    multicast(User, Name, Host, {process, Timestamp, Value}).
 
-read(Metric, From, Until) ->
+read(User, Name, Host, From, Until) ->
     {Megaseconds, Seconds, _} = erlang:now(),
     QueryTime = Megaseconds * 1000000 + Seconds,
-    Resolutions = multicall(Metric, get_resolution),
+    Resolutions = multicall(User, Name, Host, get_resolution),
     Resolutions1 = lists:sort(
         fun({_, {ok, {IntervalA, _}}}, {_, {ok, {IntervalB, _}}}) ->
             IntervalA >= IntervalB
@@ -63,32 +64,34 @@ read(Metric, From, Until) ->
         end, hd(Resolutions1), Resolutions1),
     gen_server:call(Pid, {read, From, Until}).
 
-start_link(Metric, Resolution) ->
-    gen_server:start_link(?MODULE, {Metric, Resolution}, []).
+start_link(Args) ->
+    gen_server:start_link(?MODULE, Args, []).
 
-init({Metric, Resolution}) ->
-    ok = pg2:join(Metric, self()),
-    %% TODO: get these from persistent store
-    AggregationFun = fun oscilloscope_cache_aggregations:avg/1,
-    LastPersist = 0,
-    case read({Metric, Resolution}) of
+init({Group, {Interval, Count, Persisted}, AggregationAtom}) ->
+    ok = pg2:join(Group, self()),
+    AggregationFun = fun(Vals) ->
+        erlang:apply(oscilloscope_cache_aggregations, AggregationAtom, [Vals])
+    end,
+    State = #st{
+        group = Group,
+        interval = Interval,
+        count = Count,
+        persisted = Persisted,
+        aggregation_fun = AggregationFun
+    },
+    case read(State) of
         not_found ->
-            write({Metric, Resolution}, {undefined, array:new({default, null})});
+            write(State, {undefined, array:new({default, null})});
         _ ->
             ok
     end,
-    {ok, #st{
-        metric = Metric,
-        resolution = Resolution,
-        aggregation_fun = AggregationFun,
-        last_persist = LastPersist
-    }}.
+    {ok, State}.
 
-handle_call(get_resolution, _From, #st{resolution=R}=State) ->
-    {reply, {ok, R}, State};
+handle_call(get_resolution, _From, #st{interval=I, count=C}=State) ->
+    {reply, {ok, {I, C}}, State};
 handle_call({read, From, Until}, _From, State) ->
-    #st{metric=M, aggregation_fun=AF, resolution={I, _C}=R} = State,
-    {T0, Points} = read({M, R}),
+    #st{interval=I, aggregation_fun=AF} = State,
+    {T0, Points} = read(State),
     %% FIXME: this method leads us to read one index too far back
     %% unless `From rem I == 0`.
     StartIndex = (From - T0) div I,
@@ -112,8 +115,8 @@ handle_call({read, From, Until}, _From, State) ->
         false ->
             InRange
     end,
-    RealFrom = T0 + StartIndex * I,
-    RealUntil = T0 + EndIndex * I,
+    RealFrom = timestamp_from_index(T0, StartIndex, I),
+    RealUntil = timestamp_from_index(T0, EndIndex, I),
     Reply = [
         {from, RealFrom},
         {until, RealUntil},
@@ -125,28 +128,35 @@ handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
 
 handle_cast({process, Timestamp, Value}, State) ->
-    #st{metric=M, resolution={I, _C}=R, last_persist=LP} = State,
-    Timestamp1 = Timestamp - (Timestamp rem I),
+    #st{interval=Interval, persisted=Persisted} = State,
+    Timestamp1 = Timestamp - (Timestamp rem Interval),
     %% We claim a ?MIN_PERSIST_AGE maximum age
     %% but that's enforced by not persisting newer points.
     %% In practice we'll accept anything that's newer than the last persist.
     %% ^^ I have no idea what this comment means, but I suspect it's sensible
+    LastPersist = case Persisted of
+        [] -> 0;
+        Persisted -> lists:last(Persisted)
+    end,
+    %% TODO: check if timestamp is too old
     if
-        Timestamp1 > LP ->
-            {T0, OldPoints} = read({M, R}),
+        Timestamp1 > LastPersist ->
+            {T0, OldPoints} = read(State),
             {T1, Index} = case T0 of
                 undefined ->
                     {Timestamp1, 0};
                 _ ->
-                    {T0, (Timestamp1 - T0) div I}
+                    {T0, (Timestamp1 - T0) div Interval}
             end,
             NewPoints = case array:get(Index, OldPoints) of
                 null ->
                     array:set(Index, [Value], OldPoints);
-                Vs ->
-                    array:set(Index, [Value|Vs], OldPoints)
+                V when is_list(V) ->
+                    array:set(Index, [Value|V], OldPoints);
+                V ->
+                    array:set(Index, [Value, V], OldPoints)
             end,
-            write({M, R}, {T1, NewPoints});
+            write(State, {T1, NewPoints});
         true ->
             ok
     end,
@@ -167,8 +177,9 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% TODO: this is a disaster
 maybe_persist_points(#st{}=State) ->
-    #st{metric=M, resolution={I, _C}=R, aggregation_fun=AF} = State,
-    {T0, Points} = read({M, R}),
+    #st{interval=I, persisted=Persisted, aggregation_fun=AF} = State,
+    {T0, Points} = read(State),
+    %% TODO: don't use NOW, use the last persisted time
     {Megaseconds, Seconds, _} = erlang:now(),
     Now = Megaseconds * 1000000 + Seconds,
     %% We only persist up to the epoch now - ?MIN_PERSIST_AGE
@@ -182,24 +193,27 @@ maybe_persist_points(#st{}=State) ->
                 false -> {Persist, [Value|Mem]}
             end
         end,
-        [],
+        {[], []},
         Points
     ),
     %% Split the points old enough to persist in to chunks of 1k
     {Remainder, PersistChunks} = chunkify(ToPersist, AF),
     %% Persist the relevant 1k chunks, crash if there's a failure
-    %% http://cl.ly/image/1h1y1U0L2L1G <- :rageface:
-    OKs = lists:duplicate(length(ToPersist), ok),
-    OKs = lists:map(
-       fun(Index, Value) -> T = T0 + (Index * I), persist(T, Value) end,
+    Timestamps = lists:map(
+       fun({Index, Value}) ->
+           Timestamp = timestamp_from_index(T0, Index, I),
+           ok = persist(Timestamp, Value),
+           Timestamp
+       end,
        PersistChunks
     ),
     %% TODO: Persist what timestamps we persisted
     %% Merge extras back with the points to remain in memory
     ToMem1 = Remainder ++ ToMem,
-    T1 = LatestPersistTime - (I * length(Remainder)),
-    write({M, R}, {T1, array:from_list(ToMem1)}),
-    State#st{last_persist=Now}.
+    PersistCount = length(ToPersist) - length(Remainder),
+    T1 = timestamp_from_index(T0, PersistCount, I),
+    write(State, {T1, array:from_list(ToMem1)}),
+    State#st{persisted=Persisted ++ lists:sort(Timestamps)}.
 
 persist(_Timestamp, _Value) ->
     %% TODO
@@ -221,29 +235,41 @@ chunkify([V|Vs], Index, ThisChunk, Chunked, Aggregator) ->
     end,
     chunkify(Vs, Index + 1, ThisChunk1, Chunked1, Aggregator).
 
-multicast(Metric, Msg) ->
-    Pids = get_pids(Metric),
+multicast(User, Name, Host, Msg) ->
+    Pids = get_pids(User, Name, Host),
     lists:map(fun(P) -> gen_server:cast(P, Msg) end, Pids).
 
-multicall(Metric, Msg) ->
-    Pids = get_pids(Metric),
+multicall(User, Name, Host, Msg) ->
+    Pids = get_pids(User, Name, Host),
     lists:map(fun(P) -> {P, gen_server:call(P, Msg)} end, Pids).
 
-get_pids(Metric) ->
-    case pg2:get_members(Metric) of
-        {error, {no_such_group, Metric}} ->
-            {ok, _Pid} = oscilloscope_cache_sup:spawn_cache(Metric),
-            pg2:get_members(Metric);
+get_pids(User, Name, Host) ->
+    Group = {User, Name, Host},
+    case pg2:get_members(Group) of
+        {error, {no_such_group, Group}} ->
+            {ok, _Pid} = oscilloscope_cache_sup:spawn_cache(Group),
+            pg2:get_members(Group);
+        [] ->
+            {ok, _Pid} = oscilloscope_cache_sup:spawn_cache(Group),
+            pg2:get_members(Group);
         P ->
             P
     end.
 
-read(Key) ->
+read(State) ->
+    Key = cache_key(State),
     case erp:q(["GET", term_to_binary(Key)]) of
         {ok, undefined} -> not_found;
         {ok, Value} -> ?VALDECODE(Value)
     end.
 
-write(Key, Value) ->
+write(State, Value) ->
+    Key = cache_key(State),
     {ok, <<"OK">>} = erp:q(["SET", term_to_binary(Key), ?VALENCODE(Value)]),
     ok.
+
+cache_key(#st{group=Group, interval=Interval, count=Count}) ->
+    {Group, Interval, Count}.
+
+timestamp_from_index(InitialTime, Index, Interval) ->
+    InitialTime + (Index * Interval).

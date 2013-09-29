@@ -7,6 +7,9 @@ avg(Values) ->
 
 go(_Fun, null) ->
     null;
-go(Fun, Values) ->
+go(Fun, Values) when is_list(Values) ->
     Values1 = lists:filter(fun(V) -> V =/= null end, Values),
-    Fun(Values1).
+    Fun(Values1);
+go(_, Value) ->
+    Value.
+
