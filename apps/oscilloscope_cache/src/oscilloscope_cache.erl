@@ -29,8 +29,8 @@
 -define(MIN_PERSIST_AGE, 300).
 
 %% TODO: compress
--define(VALENCODE(V), term_to_binary(V)).
--define(VALDECODE(V), binary_to_term(V)).
+-define(VALENCODE(V), zlib:compress(term_to_binary(V))).
+-define(VALDECODE(V), binary_to_term(zlib:decompress(V))).
 
 %% Number of bytes to store in each value
 -define(MIN_CHUNK_SIZE, 1000).
