@@ -1,0 +1,16 @@
+%% -*- mode: erlang -*-
+%% -*- tab-width: 4;erlang-indent-level: 4;indent-tabs-mode: nil -*-
+
+{application, oscilloscope_net, [
+    {description, "Network interfaces for Oscilloscope"},
+    {vsn, git},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib,
+        ranch,
+        oscilloscope_cache
+  ]},
+  {mod, {oscilloscope_net_app, []}},
+  {env, []}
+]}.
