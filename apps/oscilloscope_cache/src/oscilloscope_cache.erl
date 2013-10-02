@@ -18,11 +18,15 @@
 ]).
 
 -record(st, {
-    group,
+    id,
+    user,
+    name,
+    host,
     interval,
     count,
     persisted,
-    aggregation_fun
+    aggregation_fun,
+    commutator
 }).
 
 %% Minimim amount of seconds to wait before persisting to disk
@@ -30,11 +34,18 @@
 
 %% TODO: try zlib:zip instead
 -define(VALENCODE(V), zlib:compress(term_to_binary(V))).
--define(VALDECODE(V), binary_to_term(zlib:decompress(V))).
+-define(VALDECODE(V), binary_to_term(zlib:uncompress(V))).
 
 %% Number of bytes to store in each value
 -define(MIN_CHUNK_SIZE, 1000).
 -define(MAX_CHUNK_SIZE, 1024).
+
+%% Dynamo/commutator things. Should go in config
+-define(DYNAMO_TABLE, <<"oscilloscope-test">>).
+-define(DYNAMO_SCHEMA, [{<<"id">>, n}, {<<"t">>, n}, {<<"v">>, b}]).
+-define(DYNAMO_REGION, "us-east-1").
+-define(DYNAMO_ACCESSKEY, "AKIAJNCK2CQXCEEM6MDA").
+-define(DYNAMO_SECRETKEY, "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").
 
 start() ->
     application:start(oscilloscope_cache).
@@ -67,17 +78,28 @@ read(User, Name, Host, From, Until) ->
 start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
 
-init({Group, {Interval, Count, Persisted}, AggregationAtom}) ->
-    ok = pg2:join(Group, self()),
+init({User, Name, Host, {Id, Interval, Count, Persisted}, AggregationAtom}) ->
+    ok = pg2:join({User, Name, Host}, self()),
     AggregationFun = fun(Vals) ->
         erlang:apply(oscilloscope_cache_aggregations, AggregationAtom, [Vals])
     end,
+    {ok, C} = commutator:connect(
+        ?DYNAMO_TABLE,
+        ?DYNAMO_SCHEMA,
+        ?DYNAMO_REGION,
+        ?DYNAMO_ACCESSKEY,
+        ?DYNAMO_SECRETKEY
+    ),
     State = #st{
-        group = Group,
+        id = Id,
+        user = User,
+        name = Name,
+        host = Host,
         interval = Interval,
         count = Count,
         persisted = Persisted,
-        aggregation_fun = AggregationFun
+        aggregation_fun = AggregationFun,
+        commutator = C
     },
     case read(State) of
         not_found ->
@@ -177,46 +199,75 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% TODO: this is a disaster
 maybe_persist_points(#st{}=State) ->
-    #st{interval=I, persisted=Persisted, aggregation_fun=AF} = State,
+    #st{
+        id=Id,
+        user=User,
+        name=Name,
+        host=Host,
+        interval=Interval,
+        count=Count,
+        persisted=Persisted,
+        aggregation_fun=AggregationFun,
+        commutator=Commutator
+    } = State,
     {T0, Points} = read(State),
-    %% TODO: don't use NOW, use the last persisted time
-    {Megaseconds, Seconds, _} = erlang:now(),
-    Now = Megaseconds * 1000000 + Seconds,
-    %% We only persist up to the epoch now - ?MIN_PERSIST_AGE
-    LatestPersistTime = Now - ?MIN_PERSIST_AGE,
-    PersistIndex = (LatestPersistTime - (LatestPersistTime rem I) - T0) / I,
-    %% Split the array - points old enough to persist on the left, etc
-    {ToPersist, ToMem} = array:foldr(
-        fun(Idx, Value, {Persist, Mem}) ->
-            case Idx =< PersistIndex of
-                true -> {[Value|Persist], Mem};
-                false -> {Persist, [Value|Mem]}
+    %% We only persist up to the newest point - ?MIN_PERSIST_AGE
+    PersistIndex = erlang:trunc(array:size(Points) - ?MIN_PERSIST_AGE/Interval),
+    case PersistIndex =< 0 of
+        true ->
+            State;
+        false ->
+            %% Split the array
+            {ToPersist, ToMem} = divide_array(Points, PersistIndex),
+            %% Split the points old enough to persist in to chunks of 1k
+            {Remainder, PersistChunks} = chunkify(ToPersist, AggregationFun),
+            %% Persist the relevant 1k chunks, crash if there's a failure
+            Timestamps = lists:map(
+                fun({Index, Value}) ->
+                    Timestamp = timestamp_from_index(T0, Index, Interval),
+                    ok = persist(
+                        Id,
+                        User,
+                        Name,
+                        Host,
+                        Interval,
+                        Count,
+                        Timestamp,
+                        Value,
+                        Commutator
+                    ),
+                    Timestamp
+                end,
+                PersistChunks
+            ),
+            %% Merge extras back with the points to remain in memory
+            %% Increment the start timestamp for the number of points persisted
+            PersistCount = length(ToPersist) - length(Remainder),
+            T1 = timestamp_from_index(T0, PersistCount, Interval),
+            write(State, {T1, array:from_list(Remainder ++ ToMem)}),
+            State#st{persisted=Persisted ++ lists:sort(Timestamps)}
+    end.
+
+divide_array(Arr, DivIdx) ->
+    array:foldr(
+        fun(Idx, Value, {L, R}) ->
+            case Idx =< DivIdx of
+                true -> {[Value|L], R};
+                false -> {L, [Value|R]}
             end
         end,
         {[], []},
-        Points
-    ),
-    %% Split the points old enough to persist in to chunks of 1k
-    {Remainder, PersistChunks} = chunkify(ToPersist, AF),
-    %% Persist the relevant 1k chunks, crash if there's a failure
-    Timestamps = lists:map(
-       fun({Index, Value}) ->
-           Timestamp = timestamp_from_index(T0, Index, I),
-           ok = persist(Timestamp, Value),
-           Timestamp
-       end,
-       PersistChunks
-    ),
-    %% TODO: Persist what timestamps we persisted
-    %% Merge extras back with the points to remain in memory
-    ToMem1 = Remainder ++ ToMem,
-    PersistCount = length(ToPersist) - length(Remainder),
-    T1 = timestamp_from_index(T0, PersistCount, I),
-    write(State, {T1, array:from_list(ToMem1)}),
-    State#st{persisted=Persisted ++ lists:sort(Timestamps)}.
+        Arr
+    ).
 
-persist(_Timestamp, _Value) ->
-    %% TODO
+persist(Id, User, Name, Host, Interval, Count, Timestamp, Value, Commutator) ->
+    {ok, true} = commutator:put_item(
+        Commutator,
+        [{<<"id">>, Id}, {<<"t">>, Timestamp}, {<<"v">>, Value}]
+    ),
+    ok = oscilloscope_sql_metrics:update_persisted(
+           User, Name, Host, Interval, Count, Timestamp
+    ),
     ok.
 
 -spec chunkify([number()], fun()) -> {[number()], [{integer(), binary()}]}.
@@ -268,8 +319,8 @@ write(State, Value) ->
     {ok, <<"OK">>} = erp:q(["SET", term_to_binary(Key), ?VALENCODE(Value)]),
     ok.
 
-cache_key(#st{group=Group, interval=Interval, count=Count}) ->
-    {Group, Interval, Count}.
+cache_key(#st{user=U, name=N, host=H, interval=Interval, count=Count}) ->
+    {{U, N, H}, Interval, Count}.
 
 timestamp_from_index(InitialTime, Index, Interval) ->
     InitialTime + (Index * Interval).
