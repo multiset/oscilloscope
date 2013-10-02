@@ -27,7 +27,7 @@ init({User, Name, Host}=Group) ->
         fun(R) ->
             {
                 R,
-                {oscilloscope_cache, start_link, [{Group, R, AF}]},
+                {oscilloscope_cache, start_link, [{User, Name, Host, R, AF}]},
                 permanent, 5000, worker, [oscilloscope_cache]
             }
         end, Resolutions

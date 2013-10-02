@@ -32,13 +32,12 @@ get(User, Name, Host) ->
     ),
     case AggRows of
         [{AggBin}] ->
-            io:format("Got an aggbin: ~p~n", [AggBin]),
             {ok, _Schema, Rows} = oscilloscope_sql:named(
                 select_metric_resolutions, [User, Name, Host]
             ),
             Resolutions = lists:map(
-                fun({_, _, Interval, Count, Persisted}) ->
-                    {Interval, Count, Persisted}
+                fun({Id, _, Interval, Count, Persisted}) ->
+                    {Id, Interval, Count, Persisted}
                 end,
             Rows
             ),
