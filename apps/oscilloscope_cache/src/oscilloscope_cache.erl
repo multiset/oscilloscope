@@ -57,20 +57,20 @@ process(User, Name, Host, Timestamp, Value) ->
     multicast(User, Name, Host, {process, Timestamp, Value}).
 
 read(User, Name, Host, From, Until) ->
-    {Megaseconds, Seconds, _} = erlang:now(),
-    QueryTime = Megaseconds * 1000000 + Seconds,
-    Resolutions = multicall(User, Name, Host, get_resolution),
+    Resolutions = multicall(User, Name, Host, get_metadata),
     Resolutions1 = lists:sort(
-        fun({_, {ok, {IntervalA, _}}}, {_, {ok, {IntervalB, _}}}) ->
+        fun({_, {ok, MetaA}}, {_, {ok, MetaB}}) ->
+            IntervalA = proplists:get_value(interval, MetaA),
+            IntervalB = proplists:get_value(interval, MetaB),
             IntervalA >= IntervalB
         end,
         Resolutions
     ),
-    {Pid, _Resolution} = lists:foldl(
-        fun({_, {ok, {Interval, Count}}}=R, Result) ->
-            case QueryTime - Interval * Count < From of
-                true -> R;
-                false -> Result
+    Pid = lists:foldl(
+        fun({P, {ok, Meta}}, Acc) ->
+            case proplists:get_value(earliest_time, Meta) < From of
+                true -> P;
+                false -> Acc
             end
         end, hd(Resolutions1), Resolutions1),
     gen_server:call(Pid, {read, From, Until}).
@@ -109,8 +109,18 @@ init({User, Name, Host, {Id, Interval, Count, Persisted}, AggregationAtom}) ->
     end,
     {ok, State}.
 
-handle_call(get_resolution, _From, #st{interval=I, count=C}=State) ->
-    {reply, {ok, {I, C}}, State};
+handle_call(get_metadata, _From, #st{interval=Interval, count=Count}=State) ->
+    {T0, Points} = read(State),
+    LatestTime = timestamp_from_index(T0, array:size(Points) - 1, Interval),
+    EarliestTime = LatestTime - Interval * Count,
+    Metadata = [
+        {latest_time, LatestTime},
+        {earliest_time, EarliestTime},
+        {interval, Interval},
+        {count, Count},
+        {aggregation_fun, State#st.aggregation_fun}
+    ],
+    {reply, {ok, Metadata}, State};
 handle_call({read, From, Until}, _From, State) ->
     #st{interval=I, aggregation_fun=AF} = State,
     {T0, Points} = read(State),
