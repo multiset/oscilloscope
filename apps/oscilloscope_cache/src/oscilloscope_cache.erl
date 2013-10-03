@@ -17,15 +17,15 @@
     code_change/3
 ]).
 
+-include_lib("oscilloscope/include/oscilloscope_types.hrl").
+
 -record(st, {
-    id,
-    user,
-    name,
-    host,
-    interval,
-    count,
-    persisted,
-    aggregation_fun,
+    resolution_id :: resolution_id(),
+    group :: group(),
+    interval :: interval(),
+    count :: count(),
+    persisted :: persisted(),
+    aggregation_fun :: fun(),
     commutator
 }).
 
@@ -58,7 +58,7 @@ process(User, Name, Host, Timestamp, Value) ->
 
 read(User, Name, Host, From, Until) ->
     Resolutions = multicall(User, Name, Host, get_metadata),
-    Resolutions1 = lists:sort(
+    [{Pid0, _}|Rs] = lists:sort(
         fun({_, {ok, MetaA}}, {_, {ok, MetaB}}) ->
             IntervalA = proplists:get_value(interval, MetaA),
             IntervalB = proplists:get_value(interval, MetaB),
@@ -72,14 +72,14 @@ read(User, Name, Host, From, Until) ->
                 true -> P;
                 false -> Acc
             end
-        end, hd(Resolutions1), Resolutions1),
+        end, Pid0, Rs),
     gen_server:call(Pid, {read, From, Until}).
 
 start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
 
-init({User, Name, Host, {Id, Interval, Count, Persisted}, AggregationAtom}) ->
-    ok = pg2:join({User, Name, Host}, self()),
+init({Group, ResolutionId, Interval, Count, Persisted, AggregationAtom}) ->
+    ok = pg2:join(Group, self()),
     AggregationFun = fun(Vals) ->
         erlang:apply(oscilloscope_cache_aggregations, AggregationAtom, [Vals])
     end,
@@ -91,10 +91,8 @@ init({User, Name, Host, {Id, Interval, Count, Persisted}, AggregationAtom}) ->
         ?DYNAMO_SECRETKEY
     ),
     State = #st{
-        id = Id,
-        user = User,
-        name = Name,
-        host = Host,
+        resolution_id = ResolutionId,
+        group = Group,
         interval = Interval,
         count = Count,
         persisted = Persisted,
@@ -103,6 +101,7 @@ init({User, Name, Host, {Id, Interval, Count, Persisted}, AggregationAtom}) ->
     },
     case read(State) of
         not_found ->
+            %% TODO: get T0 (undefined here) from persistent store
             write(State, {undefined, array:new({default, null})});
         _ ->
             ok
@@ -111,8 +110,14 @@ init({User, Name, Host, {Id, Interval, Count, Persisted}, AggregationAtom}) ->
 
 handle_call(get_metadata, _From, #st{interval=Interval, count=Count}=State) ->
     {T0, Points} = read(State),
-    LatestTime = timestamp_from_index(T0, array:size(Points) - 1, Interval),
-    EarliestTime = LatestTime - Interval * Count,
+    {EarliestTime, LatestTime} = case T0 of
+        undefined ->
+            {undefined, undefined};
+        _ ->
+            L = timestamp_from_index(T0, array:size(Points) - 1, Interval),
+            E = L - Interval * Count,
+            {E, L}
+    end,
     Metadata = [
         {latest_time, LatestTime},
         {earliest_time, EarliestTime},
@@ -124,37 +129,44 @@ handle_call(get_metadata, _From, #st{interval=Interval, count=Count}=State) ->
 handle_call({read, From, Until}, _From, State) ->
     #st{interval=I, aggregation_fun=AF} = State,
     {T0, Points} = read(State),
-    %% FIXME: this method leads us to read one index too far back
-    %% unless `From rem I == 0`.
-    StartIndex = (From - T0) div I,
-    EndIndex = (Until - T0) div I,
-    Acc0 = case StartIndex < 0 of
-        true -> lists:duplicate(abs(StartIndex), null);
-        false -> []
+    Reply = case T0 of
+        undefined ->
+            PointCount = erlang:trunc((Until - From) / I),
+            Nulls = lists:duplicate(PointCount, null),
+            [{from, From}, {until, Until}, {interval, I}, {datapoints, Nulls}];
+        _ ->
+            %% FIXME: this method leads us to read one index too far back
+            %% unless `From rem I == 0`.
+            StartIndex = (From - T0) div I,
+            EndIndex = (Until - T0) div I,
+            RealFrom = timestamp_from_index(T0, StartIndex, I),
+            RealUntil = timestamp_from_index(T0, EndIndex, I),
+            Acc0 = case StartIndex < 0 of
+                true -> lists:duplicate(abs(StartIndex), null);
+                false -> []
+            end,
+            InRange = array:foldl(
+                fun(Index, Vs, Acc) ->
+                    case Index >= StartIndex andalso Index =< EndIndex of
+                        true -> [AF(Vs)|Acc];
+                        false -> Acc
+                    end
+                end, Acc0, Points
+            ),
+            MissingTail = (EndIndex - StartIndex) - (length(InRange) - 1),
+            Full = case MissingTail > 0 of
+                true ->
+                    lists:duplicate(MissingTail, null) ++ InRange;
+                false ->
+                    InRange
+            end,
+            [
+                {from, RealFrom},
+                {until, RealUntil},
+                {interval, I},
+                {datapoints, lists:reverse(Full)}
+            ]
     end,
-    InRange = array:foldl(
-        fun(Index, Vs, Acc) ->
-            case Index >= StartIndex andalso Index =< EndIndex of
-                true -> [AF(Vs)|Acc];
-                false -> Acc
-            end
-        end, Acc0, Points
-    ),
-    MissingTail = (EndIndex - StartIndex) - (length(InRange) - 1),
-    Full = case MissingTail > 0 of
-        true ->
-            lists:duplicate(MissingTail, null) ++ InRange;
-        false ->
-            InRange
-    end,
-    RealFrom = timestamp_from_index(T0, StartIndex, I),
-    RealUntil = timestamp_from_index(T0, EndIndex, I),
-    Reply = [
-        {from, RealFrom},
-        {until, RealUntil},
-        {interval, I},
-        {datapoints, lists:reverse(Full)}
-    ],
     {reply, {ok, Reply}, State};
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
@@ -210,12 +222,8 @@ code_change(_OldVsn, State, _Extra) ->
 %% TODO: this is a disaster
 maybe_persist_points(#st{}=State) ->
     #st{
-        id=Id,
-        user=User,
-        name=Name,
-        host=Host,
+        resolution_id=Id,
         interval=Interval,
-        count=Count,
         persisted=Persisted,
         aggregation_fun=AggregationFun,
         commutator=Commutator
@@ -235,17 +243,7 @@ maybe_persist_points(#st{}=State) ->
             Timestamps = lists:map(
                 fun({Index, Value}) ->
                     Timestamp = timestamp_from_index(T0, Index, Interval),
-                    ok = persist(
-                        Id,
-                        User,
-                        Name,
-                        Host,
-                        Interval,
-                        Count,
-                        Timestamp,
-                        Value,
-                        Commutator
-                    ),
+                    ok = persist(Id, Timestamp, Value, Commutator),
                     Timestamp
                 end,
                 PersistChunks
@@ -270,14 +268,13 @@ divide_array(Arr, DivIdx) ->
         Arr
     ).
 
-persist(Id, User, Name, Host, Interval, Count, Timestamp, Value, Commutator) ->
+
+persist(Id, Timestamp, Value, Commutator) ->
     {ok, true} = commutator:put_item(
         Commutator,
         [{<<"id">>, Id}, {<<"t">>, Timestamp}, {<<"v">>, Value}]
     ),
-    ok = oscilloscope_sql_metrics:update_persisted(
-           User, Name, Host, Interval, Count, Timestamp
-    ),
+    ok = oscilloscope_sql_metrics:update_persisted(Id, Timestamp),
     ok.
 
 -spec chunkify([number()], fun()) -> {[number()], [{integer(), binary()}]}.
@@ -329,8 +326,8 @@ write(State, Value) ->
     {ok, <<"OK">>} = erp:q(["SET", term_to_binary(Key), ?VALENCODE(Value)]),
     ok.
 
-cache_key(#st{user=U, name=N, host=H, interval=Interval, count=Count}) ->
-    {{U, N, H}, Interval, Count}.
+cache_key(#st{resolution_id=Resolution}) ->
+    Resolution.
 
 timestamp_from_index(InitialTime, Index, Interval) ->
     InitialTime + (Index * Interval).
