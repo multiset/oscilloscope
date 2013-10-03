@@ -127,7 +127,13 @@ handle_call(get_metadata, _From, #st{interval=Interval, count=Count}=State) ->
     ],
     {reply, {ok, Metadata}, State};
 handle_call({read, From, Until}, _From, State) ->
-    #st{interval=I, aggregation_fun=AF} = State,
+    #st{
+        resolution_id=Id,
+        interval=I,
+        persisted=Persisted,
+        aggregation_fun=AF,
+        commutator=Commutator
+    } = State,
     {T0, Points} = read(State),
     Reply = case T0 of
         undefined ->
@@ -142,7 +148,7 @@ handle_call({read, From, Until}, _From, State) ->
             RealFrom = timestamp_from_index(T0, StartIndex, I),
             RealUntil = timestamp_from_index(T0, EndIndex, I),
             Acc0 = case StartIndex < 0 of
-                true -> lists:duplicate(abs(StartIndex), null);
+                true -> persistent_read(Id, Commutator, From, Until, Persisted);
                 false -> []
             end,
             InRange = array:foldl(
@@ -276,6 +282,32 @@ persist(Id, Timestamp, Value, Commutator) ->
     ),
     ok = oscilloscope_sql_metrics:update_persisted(Id, Timestamp),
     ok.
+
+persistent_read(_Id, _Commutator, _From, _Until, []) ->
+    [];
+persistent_read(Id, Commutator, From, Until, Persisted) ->
+    StartTime = calculate_starttime(From, Persisted),
+    EndTime = calculate_endtime(Until, Persisted),
+    {ok, Rows} = commutator:query(
+        Commutator,
+        [{<<"id">>, eq, [Id]}, {<<"t">>, between, [StartTime, EndTime]}],
+        100000 %% TODO: paginate, and teach commutator to accept no limit
+    ),
+    lists:flatten([?VALDECODE(proplists:get_value(<<"v">>, I)) || I <- Rows]).
+
+calculate_starttime(T, Ts) ->
+    {Earlier, Later} = lists:partition(fun(I) -> I =< T end, Ts),
+    case Earlier of
+        [] -> hd(Later);
+        _Any -> lists:last(Earlier)
+    end.
+
+calculate_endtime(T, Ts) ->
+    {Later, _Earlier} = lists:partition(fun(I) -> I >= T end, Ts),
+    case Later of
+        [] -> T;
+        _Any -> hd(Later)
+    end.
 
 -spec chunkify([number()], fun()) -> {[number()], [{integer(), binary()}]}.
 chunkify(ToChunk, Aggregator) ->
