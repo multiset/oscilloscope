@@ -3,51 +3,45 @@
 -export([
     create/5,
     get/3,
-    update_persisted/6
+    update_persisted/2
 ]).
 
--type resolution() :: {pos_integer(), pos_integer(), [pos_integer()]}.
+-include_lib("oscilloscope/include/oscilloscope_types.hrl").
 
--spec create(binary(), binary(), binary(), atom(), [resolution()]) -> ok.
-create(User, Name, Host, AggregationFun, Resolutions) ->
+-spec create(user(), service(), host(), aggregation(), [resolution()]) -> ok.
+create(User, Service, Host, AggregationFun, Resolutions) ->
     {ok, 1} = oscilloscope_sql:named(
-        insert_metric, [User, Name, Host, term_to_binary(AggregationFun)]
+        insert_metric, [User, Service, Host, term_to_binary(AggregationFun)]
     ),
     lists:foreach(
         fun({Interval, Count, Persisted}) ->
             {ok, 1} = oscilloscope_sql:named(
                 insert_resolution,
-                [User, Name, Host, Interval, Count, Persisted]
+                [User, Service, Host, Interval, Count, Persisted]
             )
         end,
         Resolutions
     ).
 
--spec get(binary(), binary(), binary()) ->
-  {ok, {atom(), [resolution()]}} | {error, not_found}.
-get(User, Name, Host) ->
-    io:format("Getting for ~p ~p ~p~n", [User, Name, Host]),
+-spec get(user(), service(), host()) ->
+  {ok, {aggregation(), [resolution()]}} | {error, not_found}.
+get(User, Service, Host) ->
     {ok, _AggSchema, AggRows} = oscilloscope_sql:named(
-        select_metric_aggregation, [User, Name, Host]
+        select_metric_aggregation, [User, Service, Host]
     ),
     case AggRows of
         [{AggBin}] ->
-            {ok, _Schema, Rows} = oscilloscope_sql:named(
-                select_metric_resolutions, [User, Name, Host]
-            ),
-            Resolutions = lists:map(
-                fun({Id, _, Interval, Count, Persisted}) ->
-                    {Id, Interval, Count, Persisted}
-                end,
-            Rows
+            {ok, _Schema, Resolutions} = oscilloscope_sql:named(
+                select_metric_resolutions, [User, Service, Host]
             ),
             {ok, {binary_to_term(AggBin), Resolutions}};
         [] ->
             {error, not_found}
     end.
 
-update_persisted(User, Name, Host, Interval, Count, PersistTime) ->
+-spec update_persisted(resolution_id(), timestamp()) -> ok.
+update_persisted(Id, PersistTime) ->
     {ok, _Count} = oscilloscope_sql:named(
-        update_persisted, [User, Name, Host, Interval, Count, PersistTime]
+        update_persisted, [Id, PersistTime]
     ),
     ok.
