@@ -363,3 +363,65 @@ cache_key(#st{resolution_id=Resolution}) ->
 
 timestamp_from_index(InitialTime, Index, Interval) ->
     InitialTime + (Index * Interval).
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+divide_array_test() ->
+    ?assertEqual({[], []}, divide_array(array:new(), 4)),
+    ?assertEqual(
+        {[1, 2], [3, 4]},
+        divide_array(array:from_list([1, 2, 3, 4]), 2)
+    ),
+    ?assertEqual(
+        {[1, 2, 3, 4], []},
+        divide_array(array:from_list([1, 2, 3, 4]), 7)
+    ).
+
+calculate_starttime_test() ->
+    ?assertEqual(2, calculate_starttime(3, [2, 4, 6, 8])),
+    ?assertEqual(2, calculate_starttime(1, [2, 4, 6, 8])).
+
+calculate_endtime_test() ->
+    ?assertEqual(4, calculate_endtime(3, [2, 4, 6, 8])),
+    ?assertEqual(9, calculate_endtime(9, [2, 4, 6, 8])).
+
+chunkify_test() ->
+    %% No chunking
+    Input = [[1], [2], [3, 5]],
+    ?assertEqual(
+        {Input, []},
+        chunkify(
+            Input,
+            fun oscilloscope_cache_aggregations:avg/1,
+            1000000,
+            1000000
+        )
+    ),
+    %% Chunking each value
+    {Remainder, Chunked} = chunkify(
+        Input,
+        fun oscilloscope_cache_aggregations:avg/1,
+        0,
+        1000000
+    ),
+    Decoded = lists:map(fun({I, V}) -> {I, ?VALDECODE(V)} end, Chunked),
+    ?assertEqual([], Remainder),
+    ?assertEqual([{0, [1.0]}, {1, [2.0]}, {2, [4.0]}], Decoded),
+    %% Chunking multiple values together
+    Input1 = [[float(I)] || I <- lists:seq(0, 21)],
+    {Remainder1, Chunked1} = chunkify(
+        Input1,
+        fun oscilloscope_cache_aggregations:avg/1,
+        50,
+        75
+    ),
+    Decoded1 = lists:map(fun({I, V}) -> {I, ?VALDECODE(V)} end, Chunked1),
+    ?assertEqual([], Remainder1),
+    ?assertEqual([
+        {0, [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]},
+        {8, [8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0]},
+        {15, [15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0]}
+    ], Decoded1).
+
+-endif.
