@@ -243,9 +243,14 @@ maybe_persist_points(#st{}=State) ->
         false ->
             %% Split the array
             {ToPersist, ToMem} = divide_array(Points, PersistIndex),
-            %% Split the points old enough to persist in to chunks of 1k
-            {Remainder, PersistChunks} = chunkify(ToPersist, AggregationFun),
-            %% Persist the relevant 1k chunks, crash if there's a failure
+            %% Split the points old enough to persist in to chunks
+            {Remainder, PersistChunks} = chunkify(
+                ToPersist,
+                AggregationFun,
+                ?MIN_CHUNK_SIZE,
+                ?MAX_CHUNK_SIZE
+            ),
+            %% Persist the relevant chunks, crash if there's a failure
             Timestamps = lists:map(
                 fun({Index, Value}) ->
                     Timestamp = timestamp_from_index(T0, Index, Interval),
@@ -265,7 +270,7 @@ maybe_persist_points(#st{}=State) ->
 divide_array(Arr, DivIdx) ->
     array:foldr(
         fun(Idx, Value, {L, R}) ->
-            case Idx =< DivIdx of
+            case Idx < DivIdx of
                 true -> {[Value|L], R};
                 false -> {L, [Value|R]}
             end
@@ -309,21 +314,27 @@ calculate_endtime(T, Ts) ->
         _Any -> hd(Later)
     end.
 
--spec chunkify([number()], fun()) -> {[number()], [{integer(), binary()}]}.
-chunkify(ToChunk, Aggregator) ->
-    chunkify(ToChunk, 0, [], [], Aggregator).
-
-chunkify([], _Index, ThisChunk, Chunked, _Aggregator) ->
-    {ThisChunk, Chunked};
-chunkify([V|Vs], Index, ThisChunk, Chunked, Aggregator) ->
-    Encoded = ?VALENCODE(lists:reverse(ThisChunk)),
-    {ThisChunk1, Chunked1} = case byte_size(Encoded) of
-        Size when Size >= ?MIN_CHUNK_SIZE andalso Size =< ?MAX_CHUNK_SIZE ->
-            {[Aggregator(V)], [{Index, Encoded}|Chunked]};
-        Size when Size < ?MIN_CHUNK_SIZE ->
-            {[Aggregator(V)|ThisChunk], Chunked}
-    end,
-    chunkify(Vs, Index + 1, ThisChunk1, Chunked1, Aggregator).
+-spec chunkify([[number()]], fun(), integer(), integer()) ->
+  {[[number()]], [{integer(), binary()}]}.
+chunkify(Values, Aggregator, ChunkMin, ChunkMax) ->
+    {_, Remainder, Chunks} = lists:foldl(
+        fun(Value, {Count, Pending, Chunks}) ->
+            Pending1 = [Value|Pending],
+            %% TODO: lots of lists:reverse here!
+            Encoded = ?VALENCODE(lists:reverse(Pending1)),
+            case byte_size(Encoded) of
+                Size when Size >= ChunkMin andalso Size =< ChunkMax ->
+                    {Count + length(Pending1), [], [{Count, Encoded}|Chunks]};
+                Size when Size < ChunkMin ->
+                    {Count, Pending1, Chunks}
+            end
+        end,
+        {0, [], []},
+        lists:map(Aggregator, Values)
+    ),
+    RemainingValues = lists:sublist(
+        Values, length(Values) - length(Remainder) + 1, length(Values)),
+    {RemainingValues, lists:reverse(Chunks)}.
 
 multicast(User, Name, Host, Msg) ->
     Pids = get_pids(User, Name, Host),
