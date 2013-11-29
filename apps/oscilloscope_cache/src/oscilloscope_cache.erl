@@ -164,38 +164,17 @@ handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
 
 handle_cast({process, Timestamp, Value}, State) ->
-    #st{interval=Interval, persisted=Persisted} = State,
-    Timestamp1 = Timestamp - (Timestamp rem Interval),
-    %% We claim a ?MIN_PERSIST_AGE maximum age
-    %% but that's enforced by not persisting newer points.
-    %% In practice we'll accept anything that's newer than the last persist.
-    %% ^^ I have no idea what this comment means, but I suspect it's sensible
-    LastPersist = case Persisted of
-        [] -> 0;
-        Persisted -> lists:last(Persisted)
-    end,
-    %% TODO: check if timestamp is too old
-    if
-        Timestamp1 > LastPersist ->
-            {T0, OldPoints} = read(State),
-            {T1, Index} = case T0 of
-                undefined ->
-                    {Timestamp1, 0};
-                _ ->
-                    {T0, (Timestamp1 - T0) div Interval}
-            end,
-            NewPoints = case array:get(Index, OldPoints) of
-                null ->
-                    array:set(Index, [Value], OldPoints);
-                V when is_list(V) ->
-                    array:set(Index, [Value|V], OldPoints);
-                V ->
-                    array:set(Index, [Value, V], OldPoints)
-            end,
-            write(State, {T1, NewPoints});
-        true ->
-            ok
-    end,
+    Key = State#st.resolution_id,
+    {T0, ExistingPoints} = oscilloscope_cache_memory:read(Key),
+    {T1, NewPoints} = process(
+        Timestamp,
+        Value,
+        T0,
+        ExistingPoints,
+        State#st.interval,
+        State#st.persisted
+    ),
+    oscilloscope_cache_memory:write(Key, {T1, NewPoints}),
     {noreply, State, 0};
 handle_cast(Msg, State) ->
     {stop, {unknown_cast, Msg}, State}.
@@ -210,6 +189,53 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+process(Timestamp, Value, T0, Points, Interval, Persisted) ->
+    %% Timestamps are always floored to fit intervals exactly
+    Timestamp1 = Timestamp - (Timestamp rem Interval),
+    %% We claim a ?MIN_PERSIST_AGE maximum age
+    %% but that's enforced by not persisting newer points.
+    %% In practice we'll accept anything that's newer than the last persist.
+    LastPersist = case Persisted of
+        [] -> 0;
+        Persisted -> lists:last(Persisted)
+    end,
+    case Timestamp1 > LastPersist of
+        true ->
+            case T0 of
+                undefined ->
+                    {Timestamp1, append_point(0, Value, Points)};
+                T when T =< Timestamp1 ->
+                    Index = (Timestamp1 - T0) div Interval,
+                    {T0, append_point(Index, Value, Points)};
+                T when T - ?MIN_PERSIST_AGE =< Timestamp1 ->
+                    %% Need to slide the window backwards - this is a legal
+                    %% point that's at a negative index in the current array.
+                    %% N.B.: this is exploitable for metrics where no points
+                    %% have been persisted.
+                    IndexesToAdd = (T0 - Timestamp1) div Interval,
+                    {Timestamp1, prepend_point(IndexesToAdd, Value, Points)};
+                _T ->
+                    %% Illegal (too old) point, ignore
+                    {T0, Points}
+            end;
+        false ->
+            {T0, Points}
+    end.
+
+prepend_point(Index, Value, Points) ->
+    ListPoints = array:to_list(Points),
+    Prepend = lists:duplicate(Index, null),
+    Points1 = array:from_list(Prepend ++ ListPoints, null),
+    append_point(0, Value, Points1).
+
+append_point(Index, Value, Points) ->
+    case array:get(Index, Points) of
+        null ->
+            array:set(Index, [Value], Points);
+        Vs when is_list(Vs) ->
+            array:set(Index, [Value|Vs], Points)
+    end.
 
 %% TODO: this is a disaster
 maybe_persist_points(#st{}=State) ->
@@ -408,5 +434,69 @@ chunkify_test() ->
         {8, [8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0]},
         {15, [15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0]}
     ], Decoded1).
+
+process_null_test() ->
+    T0 = undefined,
+    Points = array:new({default, null}),
+    Interval = 10,
+    Persisted = [],
+    Timestamp = 12345,
+    Value = 42,
+    {T, P} = process(Timestamp, Value, T0, Points, Interval, Persisted),
+    ?assertEqual(12340, T),
+    ?assertEqual([[42]], array:to_list(P)).
+
+process_one_test() ->
+    T0 = 50,
+    Points = array:from_list([[1]], null),
+    Interval = 10,
+    Persisted = [],
+    Timestamp = 62,
+    Value = 42,
+    {T, P} = process(Timestamp, Value, T0, Points, Interval, Persisted),
+    ?assertEqual(50, T),
+    ?assertEqual([[1], [42]], array:to_list(P)).
+
+process_skip_test() ->
+    T0 = 50,
+    Points = array:from_list([[1]], null),
+    Interval = 10,
+    Persisted = [],
+    Timestamp = 72,
+    Value = 42,
+    {T, P} = process(Timestamp, Value, T0, Points, Interval, Persisted),
+    ?assertEqual(50, T),
+    ?assertEqual([[1], null, [42]], array:to_list(P)).
+
+process_negative_accept_test() ->
+    T0 = 50,
+    Points = array:from_list([[1]]),
+    Interval = 10,
+    Persisted = [],
+    Timestamp = 32,
+    Value = 40,
+    {T, P} = process(Timestamp, Value, T0, Points, Interval, Persisted),
+    ?assertEqual(30, T),
+    ?assertEqual([[40], null, [1]], array:to_list(P)).
+
+process_negative_reject_test() ->
+    T0 = 50000,
+    Points = array:from_list([[1]]),
+    Interval = 10,
+    Persisted = [],
+    Timestamp = T0 - ?MIN_PERSIST_AGE - Interval,
+    Value = 40,
+    {T, P} = process(Timestamp, Value, T0, Points, Interval, Persisted),
+    ?assertEqual(T0, T),
+    ?assertEqual(Points, P).
+
+append_point_test() ->
+    DP0 = array:new({default, null}),
+    DP1 = append_point(0, 45, DP0),
+    ?assertEqual([[45]], array:to_list(DP1)),
+    DP2 = append_point(0, 50, DP1),
+    ?assertEqual([[50, 45]], array:to_list(DP2)),
+    DP3 = append_point(2, 42, DP2),
+    ?assertEqual([[50, 45], null, [42]], array:to_list(DP3)).
 
 -endif.
