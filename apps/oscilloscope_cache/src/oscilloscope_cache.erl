@@ -122,9 +122,12 @@ handle_call({read, From, Until}, _From, State) ->
     } = State,
     {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
     RealFrom = From - (From rem Interval),
-    RealUntil = Until + Interval - (Until rem Interval),
+    RealUntil = case Until rem Interval of
+        0 -> Until;
+        N -> Until + Interval - N
+    end,
     Cached = cached_read(RealFrom, RealUntil, Interval, AF, T0, Points),
-    Points = case T0 >= RealFrom of
+    Data = case T0 >= RealFrom of
         false ->
             Cached;
         true ->
@@ -134,7 +137,7 @@ handle_call({read, From, Until}, _From, State) ->
         {from, From},
         {until, Until},
         {interval, Interval},
-        {datapoints, Points}
+        {datapoints, Data}
     ],
     {reply, {ok, Reply}, State};
 handle_call(Msg, _From, State) ->
@@ -211,20 +214,18 @@ process(Timestamp, Value, T0, Points, Interval, Persisted) ->
             {T0, Points}
     end.
 
-cached_read(From, Until, Interval, AF, T, Points) when T =< From ->
-    %% The full query result is in the cache
+cached_read(From, Until, Interval, AF, T, Points) when T =< Until ->
+    %% At least some of the query is in the cache
+    Acc0 = case (T - From) div Interval of
+        Count when Count > 0 -> lists:duplicate(Count, null);
+        _ -> []
+    end,
     StartIndex = (From - T) div Interval,
     EndIndex = (Until - T) div Interval,
-    Result = range_from_array(StartIndex, EndIndex, AF, [], Points),
+    Result = range_from_array(StartIndex, EndIndex, AF, Acc0, Points),
     %% But the cache might not have all the points we need
     Missing = erlang:trunc((((Until - From) / Interval) + 1) - length(Result)),
     Result ++ lists:duplicate(Missing, null);
-cached_read(From, Until, Interval, AF, T, Points) when T =< Until ->
-    %% Part of the query is in the cache
-    OutOfRange = (T - From) div Interval,
-    Acc0 = lists:duplicate(OutOfRange, null),
-    EndIndex = (Until - T) div Interval,
-    range_from_array(0, EndIndex, AF, Acc0, Points);
 cached_read(From, Until, Interval, _AF, _T, _Points) ->
     %% There's either no data in the cache, or the full dataset is in the
     %% persistent store
@@ -534,6 +535,19 @@ cached_read_some_start_test() ->
         array:from_list(Points, null)
     ),
     Expected = [20.0, 20.0, 20.0, null, null, null],
+    ?assertEqual(Expected, Result).
+
+cached_read_middle_test() ->
+    Points = [[20.0], [20.0]],
+    Result = cached_read(
+        12330,
+        12360,
+        10,
+        fun oscilloscope_cache_aggregations:avg/1,
+        12340,
+        array:from_list(Points, null)
+    ),
+    Expected = [null, 20.0, 20.0, null],
     ?assertEqual(Expected, Result).
 
 cached_read_all_test() ->
