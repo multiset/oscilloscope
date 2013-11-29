@@ -82,17 +82,20 @@ init({Group, ResolutionId, Interval, Count, Persisted, AggregationAtom}) ->
         aggregation_fun = AggregationFun,
         commutator = C
     },
-    case read(State) of
+    case oscilloscope_cache_memory:read(State#st.resolution_id) of
         not_found ->
             %% TODO: get T0 (undefined here) from persistent store
-            write(State, {undefined, array:new({default, null})});
+            oscilloscope_cache_memory:write(
+                State#st.resolution_id,
+                {undefined, array:new({default, null})}
+            );
         _ ->
             ok
     end,
     {ok, State}.
 
 handle_call(get_metadata, _From, #st{interval=Interval, count=Count}=State) ->
-    {T0, Points} = read(State),
+    {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
     {EarliestTime, LatestTime} = case T0 of
         undefined ->
             {undefined, undefined};
@@ -117,7 +120,7 @@ handle_call({read, From, Until}, _From, State) ->
         aggregation_fun=AF,
         commutator=Commutator
     } = State,
-    {T0, Points} = read(State),
+    {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
     Reply = case T0 of
         undefined ->
             PointCount = erlang:trunc((Until - From) / I),
@@ -217,7 +220,7 @@ maybe_persist_points(#st{}=State) ->
         aggregation_fun=AggregationFun,
         commutator=Commutator
     } = State,
-    {T0, Points} = read(State),
+    {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
     %% We only persist up to the newest point - ?MIN_PERSIST_AGE
     PersistIndex = erlang:trunc(array:size(Points) - ?MIN_PERSIST_AGE/Interval),
     case PersistIndex =< 0 of
@@ -246,7 +249,10 @@ maybe_persist_points(#st{}=State) ->
             %% Increment the start timestamp for the number of points persisted
             PersistCount = length(ToPersist) - length(Remainder),
             T1 = timestamp_from_index(T0, PersistCount, Interval),
-            write(State, {T1, array:from_list(Remainder ++ ToMem)}),
+            oscilloscope_cache_memory:write(
+                State#st.resolution_id,
+                {T1, array:from_list(Remainder ++ ToMem)}
+            ),
             State#st{persisted=Persisted ++ lists:sort(Timestamps)}
     end.
 
@@ -339,21 +345,6 @@ get_pids(User, Name, Host) ->
         P ->
             P
     end.
-
-read(State) ->
-    Key = cache_key(State),
-    case erp:q(["GET", term_to_binary(Key)]) of
-        {ok, undefined} -> not_found;
-        {ok, Value} -> ?VALDECODE(Value)
-    end.
-
-write(State, Value) ->
-    Key = cache_key(State),
-    {ok, <<"OK">>} = erp:q(["SET", term_to_binary(Key), ?VALENCODE(Value)]),
-    ok.
-
-cache_key(#st{resolution_id=Resolution}) ->
-    Resolution.
 
 timestamp_from_index(InitialTime, Index, Interval) ->
     InitialTime + (Index * Interval).
