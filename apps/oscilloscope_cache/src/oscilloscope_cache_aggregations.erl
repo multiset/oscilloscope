@@ -12,4 +12,3 @@ go(Fun, Values) when is_list(Values) ->
     Fun(Values1);
 go(_, Value) ->
     Value.
-
