@@ -112,7 +112,7 @@ handle_call(get_metadata, _From, #st{interval=Interval, count=Count}=State) ->
         {aggregation_fun, State#st.aggregation_fun}
     ],
     {reply, {ok, Metadata}, State};
-handle_call({read, From, Until}, _From, State) ->
+handle_call({read, From0, Until0}, _From, State) ->
     #st{
         resolution_id=Id,
         interval=Interval,
@@ -121,13 +121,9 @@ handle_call({read, From, Until}, _From, State) ->
         commutator=Commutator
     } = State,
     {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
-    RealFrom = From - (From rem Interval),
-    RealUntil = case Until rem Interval of
-        0 -> Until;
-        N -> Until + Interval - N
-    end,
-    Cached = cached_read(RealFrom, RealUntil, Interval, AF, T0, Points),
-    Data = case T0 >= RealFrom of
+    {From, Until} = calculate_query_bounds(From0, Until0, Interval),
+    Cached = cached_read(From, Until, Interval, AF, T0, Points),
+    Data = case T0 >= From of
         false ->
             Cached;
         true ->
@@ -213,6 +209,16 @@ process(Timestamp, Value, T0, Points, Interval, Persisted) ->
         false ->
             {T0, Points}
     end.
+
+calculate_query_bounds(From0, Until0, Interval) ->
+    %% Floor the query's From to the preceding interval bound
+    From = From0 - (From0 rem Interval),
+    %% Ceil the query's Until to the next interval bound
+    Until = case Until0 rem Interval of
+        0 -> Until0;
+        N -> Until0 + Interval - N
+    end,
+    {From, Until}.
 
 cached_read(From, Until, Interval, AF, T, Points) when T =< Until ->
     %% At least some of the query is in the cache
@@ -562,5 +568,10 @@ cached_read_all_test() ->
     ),
     Expected = [20.0, 20.0, 20.0, 20.0, 20.0, 20.0],
     ?assertEqual(Expected, Result).
+
+calculate_query_bounds_test() ->
+    ?assertEqual({10, 20}, calculate_query_bounds(12, 17, 10)),
+    ?assertEqual({10, 20}, calculate_query_bounds(10, 20, 10)),
+    ?assertEqual({10, 20}, calculate_query_bounds(12, 11, 10)).
 
 -endif.
