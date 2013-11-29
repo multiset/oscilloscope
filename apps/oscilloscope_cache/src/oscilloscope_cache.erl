@@ -157,7 +157,18 @@ handle_cast(Msg, State) ->
     {stop, {unknown_cast, Msg}, State}.
 
 handle_info(timeout, State) ->
-    {noreply, maybe_persist_points(State)};
+    #st{
+        resolution_id=Id,
+        interval=Interval,
+        persisted=Persisted,
+        aggregation_fun=AF,
+        commutator=Commutator
+    } = State,
+    {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
+    {ToPersist, T1, ToCache} = split_for_persisting(T0, Points, Interval, AF),
+    TimestampsPersisted = persist(ToPersist, Id, Commutator),
+    oscilloscope_cache_memory:write(State#st.resolution_id, {T1, ToCache}),
+    {noreply, State#st{persisted=Persisted ++ TimestampsPersisted}};
 handle_info(Msg, State) ->
     {stop, {unknown_info, Msg}, State}.
 
@@ -243,49 +254,29 @@ append_point(Index, Value, Points) ->
             array:set(Index, [Value|Vs], Points)
     end.
 
-%% TODO: this is a disaster
-maybe_persist_points(#st{}=State) ->
-    #st{
-        resolution_id=Id,
-        interval=Interval,
-        persisted=Persisted,
-        aggregation_fun=AggregationFun,
-        commutator=Commutator
-    } = State,
-    {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
-    %% We only persist up to the newest point - ?MIN_PERSIST_AGE
+split_for_persisting(T0, Points, Interval, AggregationFun) ->
+    %% Only persist up to the newest point - ?MIN_PERSIST_AGE
     PersistIndex = erlang:trunc(array:size(Points) - ?MIN_PERSIST_AGE/Interval),
-    case PersistIndex =< 0 of
-        true ->
-            State;
-        false ->
-            %% Split the array
-            {ToPersist, ToMem} = divide_array(Points, PersistIndex),
-            %% Split the points old enough to persist in to chunks
-            {Remainder, PersistChunks} = chunkify(
+    case divide_array(Points, PersistIndex) of
+        {[], _} ->
+            {[], T0, Points};
+        {ToPersist, ToMem} ->
+            %% Only persist chunks that are large enough
+            {Remainder, ChunksToPersist} = chunkify(
                 ToPersist,
                 AggregationFun,
                 ?MIN_CHUNK_SIZE,
                 ?MAX_CHUNK_SIZE
             ),
-            %% Persist the relevant chunks, crash if there's a failure
-            Timestamps = lists:map(
-                fun({Index, Value}) ->
-                    Timestamp = timestamp_from_index(T0, Index, Interval),
-                    ok = persist(Id, Timestamp, Value, Commutator),
-                    Timestamp
-                end,
-                PersistChunks
+            ChunksWithTimestamps = lists:map(
+                fun({I, V}) -> {timestamp_from_index(T0, I, Interval), V} end,
+                ChunksToPersist
             ),
-            %% Merge extras back with the points to remain in memory
-            %% Increment the start timestamp for the number of points persisted
+            %% Merge extras back with the points to remain in memory and
+            %% increment the start timestamp for the number of points persisted
             PersistCount = length(ToPersist) - length(Remainder),
             T1 = timestamp_from_index(T0, PersistCount, Interval),
-            oscilloscope_cache_memory:write(
-                State#st.resolution_id,
-                {T1, array:from_list(Remainder ++ ToMem)}
-            ),
-            State#st{persisted=Persisted ++ lists:sort(Timestamps)}
+            {ChunksWithTimestamps, T1, Remainder ++ ToMem}
     end.
 
 divide_array(Arr, DivIdx) ->
@@ -300,14 +291,17 @@ divide_array(Arr, DivIdx) ->
         Arr
     ).
 
-
-persist(Id, Timestamp, Value, Commutator) ->
-    {ok, true} = commutator:put_item(
-        Commutator,
-        [{<<"id">>, Id}, {<<"t">>, Timestamp}, {<<"v">>, Value}]
-    ),
-    ok = oscilloscope_sql_metrics:update_persisted(Id, Timestamp),
-    ok.
+persist(Points, Id, Commutator) ->
+    lists:map(
+        fun({Timestamp, Value}) ->
+            {ok, true} = commutator:put_item(
+                Commutator,
+                [{<<"id">>, Id}, {<<"t">>, Timestamp}, {<<"v">>, Value}]
+            ),
+            ok = oscilloscope_sql_metrics:update_persisted(Id, Timestamp),
+            Timestamp
+        end, Points
+    ).
 
 persistent_read(_Id, _Commutator, _From, _Until, []) ->
     [];
