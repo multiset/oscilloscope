@@ -115,50 +115,27 @@ handle_call(get_metadata, _From, #st{interval=Interval, count=Count}=State) ->
 handle_call({read, From, Until}, _From, State) ->
     #st{
         resolution_id=Id,
-        interval=I,
+        interval=Interval,
         persisted=Persisted,
         aggregation_fun=AF,
         commutator=Commutator
     } = State,
     {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
-    Reply = case T0 of
-        undefined ->
-            PointCount = erlang:trunc((Until - From) / I),
-            Nulls = lists:duplicate(PointCount, null),
-            [{from, From}, {until, Until}, {interval, I}, {datapoints, Nulls}];
-        _ ->
-            %% FIXME: this method leads us to read one index too far back
-            %% unless `From rem I == 0`.
-            StartIndex = (From - T0) div I,
-            EndIndex = (Until - T0) div I,
-            RealFrom = timestamp_from_index(T0, StartIndex, I),
-            RealUntil = timestamp_from_index(T0, EndIndex, I),
-            Acc0 = case StartIndex < 0 of
-                true -> persistent_read(Id, Commutator, From, Until, Persisted);
-                false -> []
-            end,
-            InRange = array:foldl(
-                fun(Index, Vs, Acc) ->
-                    case Index >= StartIndex andalso Index =< EndIndex of
-                        true -> [AF(Vs)|Acc];
-                        false -> Acc
-                    end
-                end, Acc0, Points
-            ),
-            MissingTail = (EndIndex - StartIndex) - (length(InRange) - 1),
-            Full = case MissingTail > 0 of
-                true ->
-                    lists:duplicate(MissingTail, null) ++ InRange;
-                false ->
-                    InRange
-            end,
-            [
-                {from, RealFrom},
-                {until, RealUntil},
-                {interval, I},
-                {datapoints, lists:reverse(Full)}
-            ]
+    RealFrom = From - (From rem Interval),
+    RealUntil = Until + Interval - (Until rem Interval),
+    Cached = cached_read(RealFrom, RealUntil, Interval, AF, T0, Points),
+    Points = case T0 >= RealFrom of
+        false ->
+            Cached;
+        true ->
+            persistent_read(Id, Commutator, From, Until, Persisted) ++ Cached
     end,
+    Reply = [
+        {from, From},
+        {until, Until},
+        {interval, Interval},
+        {datapoints, Points}
+    ],
     {reply, {ok, Reply}, State};
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
@@ -222,6 +199,35 @@ process(Timestamp, Value, T0, Points, Interval, Persisted) ->
         false ->
             {T0, Points}
     end.
+
+cached_read(From, Until, Interval, AF, T, Points) when T =< From ->
+    %% The full query result is in the cache
+    StartIndex = (From - T) div Interval,
+    EndIndex = (Until - T) div Interval,
+    Result = range_from_array(StartIndex, EndIndex, AF, [], Points),
+    %% But the cache might not have all the points we need
+    Missing = erlang:trunc((((Until - From) / Interval) + 1) - length(Result)),
+    Result ++ lists:duplicate(Missing, null);
+cached_read(From, Until, Interval, AF, T, Points) when T =< Until ->
+    %% Part of the query is in the cache
+    OutOfRange = (T - From) div Interval,
+    Acc0 = lists:duplicate(OutOfRange, null),
+    EndIndex = (Until - T) div Interval,
+    range_from_array(0, EndIndex, AF, Acc0, Points);
+cached_read(From, Until, Interval, _AF, _T, _Points) ->
+    %% There's either no data in the cache, or the full dataset is in the
+    %% persistent store
+    PointCount = erlang:trunc((Until - From) / Interval),
+    lists:duplicate(PointCount, null).
+
+range_from_array(Start, End, AF, Acc0, Points) ->
+    lists:reverse(array:foldl(
+        fun(I, Vs, Acc) when I >= Start andalso I =< End ->
+               [AF(Vs)|Acc];
+           (_I, _Vs, Acc) ->
+               Acc
+        end, Acc0, Points
+    )).
 
 prepend_point(Index, Value, Points) ->
     ListPoints = array:to_list(Points),
@@ -498,5 +504,55 @@ append_point_test() ->
     ?assertEqual([[50, 45]], array:to_list(DP2)),
     DP3 = append_point(2, 42, DP2),
     ?assertEqual([[50, 45], null, [42]], array:to_list(DP3)).
+
+cached_read_null_test() ->
+    Result = cached_read(
+        100,
+        200,
+        20,
+        fun oscilloscope_cache_aggregations:avg/1,
+        undefined,
+        array:new({default, null})
+    ),
+    ?assertEqual(lists:duplicate(5, null), Result).
+
+cached_read_some_end_test() ->
+    Points = [[20.0] || _ <- lists:seq(1, 10)],
+    Result = cached_read(
+        100,
+        200,
+        20,
+        fun oscilloscope_cache_aggregations:avg/1,
+        140,
+        array:from_list(Points, null)
+    ),
+    Expected = [null, null, 20.0, 20.0, 20.0, 20.0],
+    ?assertEqual(Expected, Result).
+
+cached_read_some_start_test() ->
+    Points = [[20.0] || _ <- lists:seq(1, 3)],
+    Result = cached_read(
+        100,
+        200,
+        20,
+        fun oscilloscope_cache_aggregations:avg/1,
+        100,
+        array:from_list(Points, null)
+    ),
+    Expected = [20.0, 20.0, 20.0, null, null, null],
+    ?assertEqual(Expected, Result).
+
+cached_read_all_test() ->
+    Points = [[20.0] || _ <- lists:seq(1, 10)],
+    Result = cached_read(
+        100,
+        200,
+        20,
+        fun oscilloscope_cache_aggregations:avg/1,
+        80,
+        array:from_list(Points, null)
+    ),
+    Expected = [20.0, 20.0, 20.0, 20.0, 20.0, 20.0],
+    ?assertEqual(Expected, Result).
 
 -endif.
