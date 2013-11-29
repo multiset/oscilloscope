@@ -40,22 +40,8 @@ process(User, Name, Host, Timestamp, Value) ->
     multicast(User, Name, Host, {process, Timestamp, Value}).
 
 read(User, Name, Host, From, Until) ->
-    Resolutions = multicall(User, Name, Host, get_metadata),
-    [{Pid0, _}|Rs] = lists:sort(
-        fun({_, {ok, MetaA}}, {_, {ok, MetaB}}) ->
-            IntervalA = proplists:get_value(interval, MetaA),
-            IntervalB = proplists:get_value(interval, MetaB),
-            IntervalA >= IntervalB
-        end,
-        Resolutions
-    ),
-    Pid = lists:foldl(
-        fun({P, {ok, Meta}}, Acc) ->
-            case proplists:get_value(earliest_time, Meta) < From of
-                true -> P;
-                false -> Acc
-            end
-        end, Pid0, Rs),
+    CacheMetadata = multicall(User, Name, Host, get_metadata),
+    Pid = select_pid_for_query(CacheMetadata, From),
     gen_server:call(Pid, {read, From, Until}).
 
 start_link(Args) ->
@@ -176,6 +162,23 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+select_pid_for_query(Metadata, From) ->
+    [{Pid0, _}|Ms] = lists:sort(
+        fun({_, {ok, MetaA}}, {_, {ok, MetaB}}) ->
+            IntervalA = proplists:get_value(interval, MetaA),
+            IntervalB = proplists:get_value(interval, MetaB),
+            IntervalA >= IntervalB
+        end,
+        Metadata
+    ),
+    lists:foldl(
+        fun({P, {ok, Meta}}, Acc) ->
+            case proplists:get_value(earliest_time, Meta) =< From of
+                true -> P;
+                false -> Acc
+            end
+    end, Pid0, Ms).
 
 process(Timestamp, Value, T0, Points, Interval, Persisted) ->
     %% Timestamps are always floored to fit intervals exactly
@@ -573,5 +576,16 @@ calculate_query_bounds_test() ->
     ?assertEqual({10, 20}, calculate_query_bounds(12, 17, 10)),
     ?assertEqual({10, 20}, calculate_query_bounds(10, 20, 10)),
     ?assertEqual({10, 20}, calculate_query_bounds(12, 11, 10)).
+
+select_pid_for_query_test() ->
+    Metadata = [
+        {a, {ok, [{interval, 10}, {earliest_time, 500}]}},
+        {b, {ok, [{interval, 20}, {earliest_time, 200}]}},
+        {c, {ok, [{interval, 30}, {earliest_time, 100}]}}
+    ],
+    ?assertEqual(a, select_pid_for_query(Metadata, 500)),
+    ?assertEqual(a, select_pid_for_query(Metadata, 550)),
+    ?assertEqual(b, select_pid_for_query(Metadata, 450)),
+    ?assertEqual(c, select_pid_for_query(Metadata, 0)).
 
 -endif.
