@@ -1,2 +1,3 @@
 :lib-dirs '("deps", "apps")
+:app-include-dirs '("include")
 :node-sname "oscilloscope-edts"
