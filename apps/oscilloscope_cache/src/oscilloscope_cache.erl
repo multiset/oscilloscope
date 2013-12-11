@@ -306,7 +306,7 @@ persist(Points, Id, Commutator) ->
         fun({Timestamp, Value}) ->
             {ok, true} = commutator:put_item(
                 Commutator,
-                [{<<"id">>, Id}, {<<"t">>, Timestamp}, {<<"v">>, Value}]
+                [Id, Timestamp, Value]
             ),
             ok = oscilloscope_sql_metrics:update_persisted(Id, Timestamp),
             Timestamp
@@ -320,8 +320,7 @@ persistent_read(Id, Commutator, From, Until, Persisted) ->
     EndTime = calculate_endtime(Until, Persisted),
     {ok, Rows} = commutator:query(
         Commutator,
-        [{<<"id">>, eq, [Id]}, {<<"t">>, between, [StartTime, EndTime]}],
-        100000 %% TODO: paginate, and teach commutator to accept no limit
+        [{<<"id">>, equals, [Id]}, {<<"t">>, between, [StartTime, EndTime]}]
     ),
     lists:flatten([?VALDECODE(proplists:get_value(<<"v">>, I)) || I <- Rows]).
 

@@ -11,7 +11,11 @@
 
 %% Dynamo/commutator things. Should go in config
 -define(DYNAMO_TABLE, <<"oscilloscope-test">>).
--define(DYNAMO_SCHEMA, [{<<"id">>, n}, {<<"t">>, n}, {<<"v">>, b}]).
+-define(DYNAMO_SCHEMA, [
+    {<<"id">>, number},
+    {<<"t">>, number},
+    {<<"v">>, binary}
+]).
 -define(DYNAMO_REGION, "us-east-1").
 -define(DYNAMO_ACCESSKEY, "AKIAJNCK2CQXCEEM6MDA").
 -define(DYNAMO_SECRETKEY, "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").
