@@ -1,7 +1,7 @@
 {application, oscilloscope_sql, [
     {description, "Oscilloscope SQL persistence"},
-    {vsn, "0.0.1"},
-    {registered, []},
+    {vsn, git},
+    {registered, [oscilloscope_sql_sup]},
     {applications, [
         kernel,
         stdlib

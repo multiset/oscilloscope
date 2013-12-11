@@ -4,7 +4,7 @@
 {application, oscilloscope_net, [
     {description, "Network interfaces for Oscilloscope"},
     {vsn, git},
-    {registered, []},
+    {registered, [oscilloscope_net_sup]},
     {applications, [
         kernel,
         stdlib,

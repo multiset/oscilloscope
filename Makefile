@@ -14,3 +14,6 @@ clean:
 
 test:
 	@./rebar skip_deps=true eunit
+
+release: deps compile
+	@./rebar generate

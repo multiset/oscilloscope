@@ -4,10 +4,12 @@
 {application, oscilloscope_cache, [
     {description, "Caches for Oscilloscope"},
     {vsn, git},
-    {registered, []},
+    {registered, [oscilloscope_cache_sup]},
     {applications, [
         kernel,
-        stdlib
+        stdlib,
+        erp,
+        commutator
   ]},
   {mod, {oscilloscope_cache_app, []}},
   {env, []}

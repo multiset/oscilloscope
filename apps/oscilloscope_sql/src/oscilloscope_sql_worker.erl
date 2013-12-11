@@ -27,8 +27,8 @@ init(Args) ->
     Database = proplists:get_value(database, Args),
     {ok, C} = pgsql:connect(Hostname, [{port, Port}, {database, Database}]),
     SmtPath = filename:join([
-        filename:dirname(code:which(?MODULE)),
-        "..", "priv",
+        code:lib_dir(oscilloscope_sql),
+        "priv",
         proplists:get_value(statements, Args)
     ]),
     {ok, Statements} = file:consult(SmtPath),
