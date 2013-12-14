@@ -18,10 +18,18 @@ init({User, Name, Host}=Group) ->
 -spec get_or_create_resolutions(binary(), binary(), binary()) ->
     {atom(), [resolution()]}.
 get_or_create_resolutions(User, Name, Host) ->
+    folsom_metrics:notify(
+        {oscilloscope_cache, group_spawns},
+        {inc, 1}
+    ),
     case oscilloscope_sql_metrics:get(User, Name, Host) of
         {ok, Values} ->
             Values;
         {error, not_found} ->
+            folsom_metrics:notify(
+                {oscilloscope_cache, group_creations},
+                {inc, 1}
+            ),
             %% TODO: get defaults from somewhere
             AggregationFun = avg,
             Resolutions = [{10, 1000, []}, {60, 1000, []}, {3600, 1000, []}],

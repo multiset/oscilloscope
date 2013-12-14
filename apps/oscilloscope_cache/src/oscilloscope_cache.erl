@@ -37,9 +37,17 @@ stop() ->
     ok.
 
 process(User, Name, Host, Timestamp, Value) ->
+    lager:debug(
+        "Processing point: ~p ~p ~p ~p ~p",
+        [User, Name, Host, Timestamp, Value]
+    ),
     multicast(User, Name, Host, {process, Timestamp, Value}).
 
 read(User, Name, Host, From, Until) ->
+    lager:debug(
+        "Processing read: ~p ~p ~p ~p ~p",
+        [User, Name, Host, From, Until]
+    ),
     CacheMetadata = multicall(User, Name, Host, get_metadata),
     Pid = select_pid_for_query(CacheMetadata, From),
     gen_server:call(Pid, {read, From, Until}).
@@ -48,6 +56,11 @@ start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
 
 init({Group, ResolutionId, Interval, Count, Persisted, AggregationAtom}) ->
+    lager:info(
+        "Booting cache pid ~p for group ~p, interval ~p, count ~p",
+        [self(), Group, Interval, Count]
+    ),
+    folsom_metrics:notify({oscilloscope_cache, cache_inits}, {inc, 1}),
     ok = pg2:join(Group, self()),
     AggregationFun = fun(Vals) ->
         erlang:apply(oscilloscope_cache_aggregations, AggregationAtom, [Vals])
@@ -71,6 +84,7 @@ init({Group, ResolutionId, Interval, Count, Persisted, AggregationAtom}) ->
     case oscilloscope_cache_memory:read(State#st.resolution_id) of
         not_found ->
             %% TODO: get T0 (undefined here) from persistent store
+            folsom_metrics:notify({oscilloscope_cache, mem_inits}, {inc, 1}),
             oscilloscope_cache_memory:write(
                 State#st.resolution_id,
                 {undefined, array:new({default, null})}
@@ -106,6 +120,7 @@ handle_call({read, From0, Until0}, _From, State) ->
         aggregation_fun=AF,
         commutator=Commutator
     } = State,
+    folsom_metrics:notify({oscilloscope_cache, reads}, {inc, 1}),
     {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
     {From, Until} = calculate_query_bounds(From0, Until0, Interval),
     Cached = cached_read(From, Until, Interval, AF, T0, Points),
@@ -113,8 +128,16 @@ handle_call({read, From0, Until0}, _From, State) ->
         false ->
             Cached;
         true ->
+            folsom_metrics:notify(
+                {oscilloscope_cache, persistent_reads},
+                {inc, 1}
+            ),
             persistent_read(Id, Commutator, From, Until, Persisted) ++ Cached
     end,
+    folsom_metrics:notify(
+        {oscilloscope_cache, points_read},
+        {inc, length(Data)}
+    ),
     Reply = [
         {from, From},
         {until, Until},
@@ -126,6 +149,7 @@ handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
 
 handle_cast({process, Timestamp, Value}, State) ->
+    folsom_metrics:notify({oscilloscope_cache, points_processed}, {inc, 1}),
     Key = State#st.resolution_id,
     {T0, ExistingPoints} = oscilloscope_cache_memory:read(Key),
     {T1, NewPoints} = process(
@@ -151,7 +175,21 @@ handle_info(timeout, State) ->
     } = State,
     {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
     {ToPersist, T1, ToCache} = split_for_persisting(T0, Points, Interval, AF),
-    TimestampsPersisted = persist(ToPersist, Id, Commutator),
+    TimestampsPersisted = case length(ToPersist) of
+        0 ->
+            folsom_metrics:notify(
+                {oscilloscope_cache, null_persists},
+                {inc, 1}
+            ),
+            [];
+        N ->
+            folsom_metrics:notify({oscilloscope_cache, persists}, {inc, 1}),
+            folsom_metrics:new_counter(
+                {oscilloscope_cache, points_persisted},
+                {inc, N}
+            ),
+            persist(ToPersist, Id, Commutator)
+    end,
     oscilloscope_cache_memory:write(State#st.resolution_id, {T1, ToCache}),
     {noreply, State#st{persisted=Persisted ++ TimestampsPersisted}};
 handle_info(Msg, State) ->
@@ -348,7 +386,16 @@ chunkify(Values, Aggregator, ChunkMin, ChunkMax) ->
             Encoded = ?VALENCODE(lists:reverse(Pending1)),
             case byte_size(Encoded) of
                 Size when Size >= ChunkMin andalso Size =< ChunkMax ->
-                    {Count + length(Pending1), [], [{Count, Encoded}|Chunks]};
+                    PointsChunked = length(Pending1),
+                    catch folsom_metrics:notify(
+                        {oscilloscope_cache, points_per_chunk},
+                        PointsChunked
+                    ),
+                    catch folsom_metrics:notify(
+                        {oscilloscope_cache, bytes_per_chunk},
+                        Size
+                    ),
+                    {Count + PointsChunked, [], [{Count, Encoded}|Chunks]};
                 Size when Size < ChunkMin ->
                     {Count, Pending1, Chunks}
             end
