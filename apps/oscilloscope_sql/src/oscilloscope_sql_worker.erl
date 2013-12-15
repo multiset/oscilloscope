@@ -20,18 +20,26 @@
 start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
 
-init(Args) ->
-    %% TODO: pass a tuple instead of a proplist?
-    Hostname = proplists:get_value(hostname, Args),
-    Port = proplists:get_value(port, Args),
-    Database = proplists:get_value(database, Args),
-    {ok, C} = pgsql:connect(Hostname, [{port, Port}, {database, Database}]),
-    SmtPath = filename:join([
+init(_) ->
+    folsom_metrics:notify({oscilloscope_sql, worker_inits}, {inc, 1}),
+    {ok, Hostname} = application:get_env(oscilloscope_sql, hostname),
+    {ok, Port} = application:get_env(oscilloscope_sql, port),
+    {ok, Database} = application:get_env(oscilloscope_sql, database),
+    {ok, Username} = application:get_env(oscilloscope_sql, username),
+    {ok, Password} = application:get_env(oscilloscope_sql, password),
+    {ok, C} = pgsql:connect(
+        Hostname,
+        Username,
+        Password,
+        [{port, Port}, {database, Database}]
+    ),
+    {ok, StatementFile} = application:get_env(oscilloscope_sql, statements),
+    StatementPath = filename:join([
         code:lib_dir(oscilloscope_sql),
         "priv",
-        proplists:get_value(statements, Args)
+        StatementFile
     ]),
-    {ok, Statements} = file:consult(SmtPath),
+    {ok, Statements} = file:consult(StatementPath),
     {ok, #st{conn=C, statements=Statements}}.
 
 handle_call({adhoc, SQL, Fields}, _From, #st{conn=C}=State) ->

@@ -27,7 +27,10 @@
     count :: count(),
     persisted :: persisted(),
     aggregation_fun :: fun(),
-    commutator
+    commutator,
+    min_chunk_size :: pos_integer(),
+    max_chunk_size :: pos_integer(),
+    min_persist_age :: pos_integer()
 }).
 
 start() ->
@@ -36,10 +39,20 @@ start() ->
 stop() ->
     ok.
 
+-spec process(user(), service(), host(), timestamp(), float()) -> any().
 process(User, Name, Host, Timestamp, Value) ->
+    lager:debug(
+        "Processing point: ~p ~p ~p ~p ~p",
+        [User, Name, Host, Timestamp, Value]
+    ),
     multicast(User, Name, Host, {process, Timestamp, Value}).
 
+-spec read(user(), service(), host(), timestamp(), timestamp()) -> [tuple()].
 read(User, Name, Host, From, Until) ->
+    lager:debug(
+        "Processing read: ~p ~p ~p ~p ~p",
+        [User, Name, Host, From, Until]
+    ),
     CacheMetadata = multicall(User, Name, Host, get_metadata),
     Pid = select_pid_for_query(CacheMetadata, From),
     gen_server:call(Pid, {read, From, Until}).
@@ -47,17 +60,34 @@ read(User, Name, Host, From, Until) ->
 start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
 
-init({Group, ResolutionId, Interval, Count, Persisted, AggregationAtom}) ->
+init(Args) ->
+    {
+        Group,
+        ResolutionId,
+        Interval,
+        Count,
+        Persisted,
+        AggregationAtom,
+        Commutator,
+        MinChunkSize,
+        MaxChunkSize,
+        MinPersistAge
+    } = Args,
+    lager:info(
+        "Booting cache pid ~p for group ~p, interval ~p, count ~p",
+        [self(), Group, Interval, Count]
+    ),
+    folsom_metrics:notify({oscilloscope_cache, cache_inits}, {inc, 1}),
     ok = pg2:join(Group, self()),
     AggregationFun = fun(Vals) ->
         erlang:apply(oscilloscope_cache_aggregations, AggregationAtom, [Vals])
     end,
     {ok, C} = commutator:connect(
-        ?DYNAMO_TABLE,
-        ?DYNAMO_SCHEMA,
-        ?DYNAMO_REGION,
-        ?DYNAMO_ACCESSKEY,
-        ?DYNAMO_SECRETKEY
+        proplists:get_value(table, Commutator),
+        proplists:get_value(schema, Commutator),
+        proplists:get_value(region, Commutator),
+        proplists:get_value(accesskey, Commutator),
+        proplists:get_value(secretkey, Commutator)
     ),
     State = #st{
         resolution_id = ResolutionId,
@@ -66,11 +96,15 @@ init({Group, ResolutionId, Interval, Count, Persisted, AggregationAtom}) ->
         count = Count,
         persisted = Persisted,
         aggregation_fun = AggregationFun,
-        commutator = C
+        commutator = C,
+        min_chunk_size = MinChunkSize,
+        max_chunk_size = MaxChunkSize,
+        min_persist_age = MinPersistAge
     },
     case oscilloscope_cache_memory:read(State#st.resolution_id) of
         not_found ->
             %% TODO: get T0 (undefined here) from persistent store
+            folsom_metrics:notify({oscilloscope_cache, mem_inits}, {inc, 1}),
             oscilloscope_cache_memory:write(
                 State#st.resolution_id,
                 {undefined, array:new({default, null})}
@@ -106,6 +140,7 @@ handle_call({read, From0, Until0}, _From, State) ->
         aggregation_fun=AF,
         commutator=Commutator
     } = State,
+    folsom_metrics:notify({oscilloscope_cache, reads}, {inc, 1}),
     {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
     {From, Until} = calculate_query_bounds(From0, Until0, Interval),
     Cached = cached_read(From, Until, Interval, AF, T0, Points),
@@ -113,8 +148,16 @@ handle_call({read, From0, Until0}, _From, State) ->
         false ->
             Cached;
         true ->
+            folsom_metrics:notify(
+                {oscilloscope_cache, persistent_reads},
+                {inc, 1}
+            ),
             persistent_read(Id, Commutator, From, Until, Persisted) ++ Cached
     end,
+    folsom_metrics:notify(
+        {oscilloscope_cache, points_read},
+        {inc, length(Data)}
+    ),
     Reply = [
         {from, From},
         {until, Until},
@@ -126,6 +169,7 @@ handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
 
 handle_cast({process, Timestamp, Value}, State) ->
+    folsom_metrics:notify({oscilloscope_cache, points_processed}, {inc, 1}),
     Key = State#st.resolution_id,
     {T0, ExistingPoints} = oscilloscope_cache_memory:read(Key),
     {T1, NewPoints} = process(
@@ -134,7 +178,8 @@ handle_cast({process, Timestamp, Value}, State) ->
         T0,
         ExistingPoints,
         State#st.interval,
-        State#st.persisted
+        State#st.persisted,
+        State#st.min_persist_age
     ),
     oscilloscope_cache_memory:write(Key, {T1, NewPoints}),
     {noreply, State, 0};
@@ -146,12 +191,37 @@ handle_info(timeout, State) ->
         resolution_id=Id,
         interval=Interval,
         persisted=Persisted,
-        aggregation_fun=AF,
-        commutator=Commutator
+        aggregation_fun=AggFun,
+        commutator=Commutator,
+        min_chunk_size=MinChunkSize,
+        max_chunk_size=MaxChunkSize,
+        min_persist_age=MinPersistAge
     } = State,
     {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
-    {ToPersist, T1, ToCache} = split_for_persisting(T0, Points, Interval, AF),
-    TimestampsPersisted = persist(ToPersist, Id, Commutator),
+    {ToPersist, T1, ToCache} = split_for_persisting(
+        T0,
+        Points,
+        Interval,
+        AggFun,
+        MinChunkSize,
+        MaxChunkSize,
+        MinPersistAge
+    ),
+    TimestampsPersisted = case length(ToPersist) of
+        0 ->
+            folsom_metrics:notify(
+                {oscilloscope_cache, null_persists},
+                {inc, 1}
+            ),
+            [];
+        N ->
+            folsom_metrics:notify({oscilloscope_cache, persists}, {inc, 1}),
+            folsom_metrics:new_counter(
+                {oscilloscope_cache, points_persisted},
+                {inc, N}
+            ),
+            persist(ToPersist, Id, Commutator)
+    end,
     oscilloscope_cache_memory:write(State#st.resolution_id, {T1, ToCache}),
     {noreply, State#st{persisted=Persisted ++ TimestampsPersisted}};
 handle_info(Msg, State) ->
@@ -180,10 +250,10 @@ select_pid_for_query(Metadata, From) ->
             end
     end, Pid0, Ms).
 
-process(Timestamp, Value, T0, Points, Interval, Persisted) ->
+process(Timestamp, Value, T0, Points, Interval, Persisted, MinPersistAge) ->
     %% Timestamps are always floored to fit intervals exactly
     Timestamp1 = Timestamp - (Timestamp rem Interval),
-    %% We claim a ?MIN_PERSIST_AGE maximum age
+    %% We claim a MinPersistAge maximum age
     %% but that's enforced by not persisting newer points.
     %% In practice we'll accept anything that's newer than the last persist.
     LastPersist = case Persisted of
@@ -198,7 +268,7 @@ process(Timestamp, Value, T0, Points, Interval, Persisted) ->
                 T when T =< Timestamp1 ->
                     Index = (Timestamp1 - T0) div Interval,
                     {T0, append_point(Index, Value, Points)};
-                T when T - ?MIN_PERSIST_AGE =< Timestamp1 ->
+                T when T - MinPersistAge =< Timestamp1 ->
                     %% Need to slide the window backwards - this is a legal
                     %% point that's at a negative index in the current array.
                     %% N.B.: this is exploitable for metrics where no points
@@ -264,9 +334,9 @@ append_point(Index, Value, Points) ->
             array:set(Index, [Value|Vs], Points)
     end.
 
-split_for_persisting(T0, Points, Interval, AggregationFun) ->
-    %% Only persist up to the newest point - ?MIN_PERSIST_AGE
-    PersistIndex = erlang:trunc(array:size(Points) - ?MIN_PERSIST_AGE/Interval),
+split_for_persisting(T0, Points, Interval, AF, MinChunk, MaxChunk, MinPersistAge) ->
+    %% Only persist up to the newest point - MinPersistAge
+    PersistIndex = erlang:trunc(array:size(Points) - MinPersistAge/Interval),
     case divide_array(Points, PersistIndex) of
         {[], _} ->
             {[], T0, Points};
@@ -274,9 +344,9 @@ split_for_persisting(T0, Points, Interval, AggregationFun) ->
             %% Only persist chunks that are large enough
             {Remainder, ChunksToPersist} = chunkify(
                 ToPersist,
-                AggregationFun,
-                ?MIN_CHUNK_SIZE,
-                ?MAX_CHUNK_SIZE
+                AF,
+                MinChunk,
+                MaxChunk
             ),
             ChunksWithTimestamps = lists:map(
                 fun({I, V}) -> {timestamp_from_index(T0, I, Interval), V} end,
@@ -348,7 +418,16 @@ chunkify(Values, Aggregator, ChunkMin, ChunkMax) ->
             Encoded = ?VALENCODE(lists:reverse(Pending1)),
             case byte_size(Encoded) of
                 Size when Size >= ChunkMin andalso Size =< ChunkMax ->
-                    {Count + length(Pending1), [], [{Count, Encoded}|Chunks]};
+                    PointsChunked = length(Pending1),
+                    catch folsom_metrics:notify(
+                        {oscilloscope_cache, points_per_chunk},
+                        PointsChunked
+                    ),
+                    catch folsom_metrics:notify(
+                        {oscilloscope_cache, bytes_per_chunk},
+                        Size
+                    ),
+                    {Count + PointsChunked, [], [{Count, Encoded}|Chunks]};
                 Size when Size < ChunkMin ->
                     {Count, Pending1, Chunks}
             end
@@ -451,7 +530,16 @@ process_null_test() ->
     Persisted = [],
     Timestamp = 12345,
     Value = 42,
-    {T, P} = process(Timestamp, Value, T0, Points, Interval, Persisted),
+    MinPersistAge = 300,
+    {T, P} = process(
+        Timestamp,
+        Value,
+        T0,
+        Points,
+        Interval,
+        Persisted,
+        MinPersistAge
+    ),
     ?assertEqual(12340, T),
     ?assertEqual([[42]], array:to_list(P)).
 
@@ -462,7 +550,16 @@ process_one_test() ->
     Persisted = [],
     Timestamp = 62,
     Value = 42,
-    {T, P} = process(Timestamp, Value, T0, Points, Interval, Persisted),
+    MinPersistAge = 300,
+    {T, P} = process(
+        Timestamp,
+        Value,
+        T0,
+        Points,
+        Interval,
+        Persisted,
+        MinPersistAge
+    ),
     ?assertEqual(50, T),
     ?assertEqual([[1], [42]], array:to_list(P)).
 
@@ -473,7 +570,16 @@ process_skip_test() ->
     Persisted = [],
     Timestamp = 72,
     Value = 42,
-    {T, P} = process(Timestamp, Value, T0, Points, Interval, Persisted),
+    MinPersistAge = 300,
+    {T, P} = process(
+        Timestamp,
+        Value,
+        T0,
+        Points,
+        Interval,
+        Persisted,
+        MinPersistAge
+    ),
     ?assertEqual(50, T),
     ?assertEqual([[1], null, [42]], array:to_list(P)).
 
@@ -484,18 +590,37 @@ process_negative_accept_test() ->
     Persisted = [],
     Timestamp = 32,
     Value = 40,
-    {T, P} = process(Timestamp, Value, T0, Points, Interval, Persisted),
+    MinPersistAge = 300,
+    {T, P} = process(
+        Timestamp,
+        Value,
+        T0,
+        Points,
+        Interval,
+        Persisted,
+        MinPersistAge
+    ),
     ?assertEqual(30, T),
     ?assertEqual([[40], null, [1]], array:to_list(P)).
 
 process_negative_reject_test() ->
+    MinPersistAge = 300,
     T0 = 50000,
     Points = array:from_list([[1]]),
     Interval = 10,
     Persisted = [],
-    Timestamp = T0 - ?MIN_PERSIST_AGE - Interval,
+    Timestamp = T0 - MinPersistAge - Interval,
     Value = 40,
-    {T, P} = process(Timestamp, Value, T0, Points, Interval, Persisted),
+    MinPersistAge = 300,
+    {T, P} = process(
+        Timestamp,
+        Value,
+        T0,
+        Points,
+        Interval,
+        Persisted,
+        MinPersistAge
+    ),
     ?assertEqual(T0, T),
     ?assertEqual(Points, P).
 

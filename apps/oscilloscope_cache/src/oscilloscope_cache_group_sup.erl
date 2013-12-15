@@ -18,13 +18,21 @@ init({User, Name, Host}=Group) ->
 -spec get_or_create_resolutions(binary(), binary(), binary()) ->
     {atom(), [resolution()]}.
 get_or_create_resolutions(User, Name, Host) ->
+    folsom_metrics:notify(
+        {oscilloscope_cache, group_spawns},
+        {inc, 1}
+    ),
     case oscilloscope_sql_metrics:get(User, Name, Host) of
         {ok, Values} ->
             Values;
         {error, not_found} ->
-            %% TODO: get defaults from somewhere
-            AggregationFun = avg,
-            Resolutions = [{10, 1000, []}, {60, 1000, []}, {3600, 1000, []}],
+            folsom_metrics:notify(
+                {oscilloscope_cache, group_creations},
+                {inc, 1}
+            ),
+            {AggregationFun, Resolutions} = get_metric_configuration(
+                User, Name, Host
+            ),
             ok = oscilloscope_sql_metrics:create(
                 User, Name, Host, AggregationFun, Resolutions
             ),
@@ -33,9 +41,56 @@ get_or_create_resolutions(User, Name, Host) ->
 
 -spec generate_spec(group(), aggregation(), resolution()) -> child_spec().
 generate_spec(Group, AggregationFun, {Id, Interval, Count, Persisted}=Res) ->
-    Args = {Group, Id, Interval, Count, Persisted, AggregationFun},
+    {ok, Table} = application:get_env(oscilloscope_cache, dynamo_table),
+    {ok, Schema} = application:get_env(oscilloscope_cache, dynamo_schema),
+    {ok, Region} = application:get_env(oscilloscope_cache, dynamo_region),
+    {ok, AccessKey} = application:get_env(oscilloscope_cache, dynamo_accesskey),
+    {ok, SecretKey} = application:get_env(oscilloscope_cache, dynamo_secretkey),
+    Commutator = [
+        {table, Table},
+        {schema, Schema},
+        {region, Region},
+        {accesskey, AccessKey},
+        {secretkey, SecretKey}
+    ],
+    {ok, MinChunkSize} = application:get_env(
+        oscilloscope_cache,
+        min_chunk_size
+    ),
+    {ok, MaxChunkSize} = application:get_env(
+        oscilloscope_cache,
+        max_chunk_size
+    ),
+    {ok, MinPersistAge} = application:get_env(
+        oscilloscope_cache,
+        min_persist_age
+    ),
+    Args = {
+        Group,
+        Id,
+        Interval,
+        Count,
+        Persisted,
+        AggregationFun,
+        Commutator,
+        MinChunkSize,
+        MaxChunkSize,
+        MinPersistAge
+    },
     {
         Res,
         {oscilloscope_cache, start_link, [Args]},
         permanent, 5000, worker, [oscilloscope_cache]
     }.
+
+get_metric_configuration(_User, _Name, _Host) ->
+    %% TODO: get from database
+    {ok, AggregationFun} = application:get_env(
+        oscilloscope_cache,
+        default_aggregation_fun
+    ),
+    {ok, Resolutions} = application:get_env(
+        oscilloscope_cache,
+        default_resolutions
+    ),
+    {AggregationFun, Resolutions}.

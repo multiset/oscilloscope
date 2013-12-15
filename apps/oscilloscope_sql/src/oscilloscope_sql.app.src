@@ -9,15 +9,13 @@
     {mod, {oscilloscope_sql_app, []}},
     {env, [
         {pools, [
-            {pgsql, [
-                {size, 10},
-                {max_overflow, 20}
-            ], [
-              {hostname, {127, 0, 0, 1}},
-              {port, 5432},
-              {database, "oscilloscope"},
-              {statements, "statements.config"}
-           ]}
-        ]}
+            {pgsql, [{size, 10}, {max_overflow, 20}], []}
+        ]},
+        {hostname, {127, 0, 0, 1}},
+        {port, 5432},
+        {database, "oscilloscope"},
+        {username, "oscilloscope"},
+        {password, ""},
+        {statements, "statements.config"}
     ]}
 ]}.
