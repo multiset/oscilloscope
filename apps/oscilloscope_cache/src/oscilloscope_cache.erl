@@ -36,6 +36,7 @@ start() ->
 stop() ->
     ok.
 
+-spec process(user(), service(), host(), timestamp(), float()) -> any().
 process(User, Name, Host, Timestamp, Value) ->
     lager:debug(
         "Processing point: ~p ~p ~p ~p ~p",
@@ -43,6 +44,7 @@ process(User, Name, Host, Timestamp, Value) ->
     ),
     multicast(User, Name, Host, {process, Timestamp, Value}).
 
+-spec read(user(), service(), host(), timestamp(), timestamp()) -> [tuple()].
 read(User, Name, Host, From, Until) ->
     lager:debug(
         "Processing read: ~p ~p ~p ~p ~p",
