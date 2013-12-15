@@ -30,9 +30,9 @@ get_or_create_resolutions(User, Name, Host) ->
                 {oscilloscope_cache, group_creations},
                 {inc, 1}
             ),
-            %% TODO: get defaults from somewhere
-            AggregationFun = avg,
-            Resolutions = [{10, 1000, []}, {60, 1000, []}, {3600, 1000, []}],
+            {AggregationFun, Resolutions} = get_metric_configuration(
+                User, Name, Host
+            ),
             ok = oscilloscope_sql_metrics:create(
                 User, Name, Host, AggregationFun, Resolutions
             ),
@@ -47,3 +47,15 @@ generate_spec(Group, AggregationFun, {Id, Interval, Count, Persisted}=Res) ->
         {oscilloscope_cache, start_link, [Args]},
         permanent, 5000, worker, [oscilloscope_cache]
     }.
+
+get_metric_configuration(_User, _Name, _Host) ->
+    %% TODO: get from database
+    {ok, AggregationFun} = application:get_env(
+        oscilloscope_cache,
+        default_aggregation_fun
+    ),
+    Resolutions = application:get_env(
+        oscilloscope_cache,
+        default_resolutions
+    ),
+    {AggregationFun, Resolutions}.
