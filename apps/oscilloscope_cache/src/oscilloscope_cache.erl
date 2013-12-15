@@ -57,7 +57,16 @@ read(User, Name, Host, From, Until) ->
 start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
 
-init({Group, ResolutionId, Interval, Count, Persisted, AggregationAtom}) ->
+init(Args) ->
+    {
+        Group,
+        ResolutionId,
+        Interval,
+        Count,
+        Persisted,
+        AggregationAtom,
+        Commutator
+    } = Args,
     lager:info(
         "Booting cache pid ~p for group ~p, interval ~p, count ~p",
         [self(), Group, Interval, Count]
@@ -68,11 +77,11 @@ init({Group, ResolutionId, Interval, Count, Persisted, AggregationAtom}) ->
         erlang:apply(oscilloscope_cache_aggregations, AggregationAtom, [Vals])
     end,
     {ok, C} = commutator:connect(
-        ?DYNAMO_TABLE,
-        ?DYNAMO_SCHEMA,
-        ?DYNAMO_REGION,
-        ?DYNAMO_ACCESSKEY,
-        ?DYNAMO_SECRETKEY
+        proplists:get_value(table, Commutator),
+        proplists:get_value(schema, Commutator),
+        proplists:get_value(region, Commutator),
+        proplists:get_value(accesskey, Commutator),
+        proplists:get_value(secretkey, Commutator)
     ),
     State = #st{
         resolution_id = ResolutionId,

@@ -41,7 +41,19 @@ get_or_create_resolutions(User, Name, Host) ->
 
 -spec generate_spec(group(), aggregation(), resolution()) -> child_spec().
 generate_spec(Group, AggregationFun, {Id, Interval, Count, Persisted}=Res) ->
-    Args = {Group, Id, Interval, Count, Persisted, AggregationFun},
+    {ok, Table} = application:get_env(oscilloscope_cache, dynamo_table),
+    {ok, Schema} = application:get_env(oscilloscope_cache, dynamo_schema),
+    {ok, Region} = application:get_env(oscilloscope_cache, dynamo_region),
+    {ok, AccessKey} = application:get_env(oscilloscope_cache, dynamo_accesskey),
+    {ok, SecretKey} = application:get_env(oscilloscope_cache, dynamo_secretkey),
+    Commutator = [
+        {table, Table},
+        {schema, Schema},
+        {region, Region},
+        {accesskey, AccessKey},
+        {secretkey, SecretKey}
+    ],
+    Args = {Group, Id, Interval, Count, Persisted, AggregationFun, Commutator},
     {
         Res,
         {oscilloscope_cache, start_link, [Args]},
