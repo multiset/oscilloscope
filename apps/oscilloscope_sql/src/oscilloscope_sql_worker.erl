@@ -22,28 +22,24 @@ start_link(Args) ->
 
 init(_) ->
     folsom_metrics:notify({oscilloscope_sql, worker_inits}, {inc, 1}),
-    Hostname = application:get_env(
-        oscilloscope_sql, hostname, {127, 0, 0, 1}),
-    Port = application:get_env(
-        oscilloscope_sql, port, 5432),
-    Database = application:get_env(
-        oscilloscope_sql, database, "oscilloscope"),
-    Username = application:get_env(
-        oscilloscope_sql, username, os:getenv("USER")),
-    Password = application:get_env(
-        oscilloscope_sql, password, ""),
+    {ok, Hostname} = application:get_env(oscilloscope_sql, hostname),
+    {ok, Port} = application:get_env(oscilloscope_sql, port),
+    {ok, Database} = application:get_env(oscilloscope_sql, database),
+    {ok, Username} = application:get_env(oscilloscope_sql, username),
+    {ok, Password} = application:get_env(oscilloscope_sql, password),
     {ok, C} = pgsql:connect(
         Hostname,
         Username,
         Password,
         [{port, Port}, {database, Database}]
     ),
-    SmtPath = filename:join([
+    {ok, StatementFile} = application:get_env(oscilloscope_sql, statements),
+    StatementPath = filename:join([
         code:lib_dir(oscilloscope_sql),
         "priv",
-        application:get_env(oscilloscope_sql, statements, "statements.config")
+        StatementFile
     ]),
-    {ok, Statements} = file:consult(SmtPath),
+    {ok, Statements} = file:consult(StatementPath),
     {ok, #st{conn=C, statements=Statements}}.
 
 handle_call({adhoc, SQL, Fields}, _From, #st{conn=C}=State) ->
