@@ -54,7 +54,7 @@ get_metric_configuration(_User, _Name, _Host) ->
         oscilloscope_cache,
         default_aggregation_fun
     ),
-    Resolutions = application:get_env(
+    {ok, Resolutions} = application:get_env(
         oscilloscope_cache,
         default_resolutions
     ),
