@@ -20,16 +20,27 @@
 start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
 
-init(Args) ->
-    %% TODO: pass a tuple instead of a proplist?
-    Hostname = proplists:get_value(hostname, Args),
-    Port = proplists:get_value(port, Args),
-    Database = proplists:get_value(database, Args),
-    {ok, C} = pgsql:connect(Hostname, [{port, Port}, {database, Database}]),
+init(_) ->
+    Hostname = application:get_env(
+        oscilloscope_sql, hostname, {127, 0, 0, 1}),
+    Port = application:get_env(
+        oscilloscope_sql, port, 5432),
+    Database = application:get_env(
+        oscilloscope_sql, database, "oscilloscope"),
+    Username = application:get_env(
+        oscilloscope_sql, username, os:getenv("USER")),
+    Password = application:get_env(
+        oscilloscope_sql, password, ""),
+    {ok, C} = pgsql:connect(
+        Hostname,
+        Username,
+        Password,
+        [{port, Port}, {database, Database}]
+    ),
     SmtPath = filename:join([
         code:lib_dir(oscilloscope_sql),
         "priv",
-        proplists:get_value(statements, Args)
+        application:get_env(oscilloscope_sql, statements, "statements.config")
     ]),
     {ok, Statements} = file:consult(SmtPath),
     {ok, #st{conn=C, statements=Statements}}.
