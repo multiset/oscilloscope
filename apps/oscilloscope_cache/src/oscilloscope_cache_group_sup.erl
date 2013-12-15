@@ -53,7 +53,25 @@ generate_spec(Group, AggregationFun, {Id, Interval, Count, Persisted}=Res) ->
         {accesskey, AccessKey},
         {secretkey, SecretKey}
     ],
-    Args = {Group, Id, Interval, Count, Persisted, AggregationFun, Commutator},
+    {ok, MinChunkSize} = application:get_env(
+        oscilloscope_cache,
+        min_chunk_size
+    ),
+    {ok, MaxChunkSize} = application:get_env(
+        oscilloscope_cache,
+        max_chunk_size
+    ),
+    Args = {
+        Group,
+        Id,
+        Interval,
+        Count,
+        Persisted,
+        AggregationFun,
+        Commutator,
+        MinChunkSize,
+        MaxChunkSize
+    },
     {
         Res,
         {oscilloscope_cache, start_link, [Args]},

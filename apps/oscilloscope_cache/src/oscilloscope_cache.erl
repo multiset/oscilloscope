@@ -27,7 +27,9 @@
     count :: count(),
     persisted :: persisted(),
     aggregation_fun :: fun(),
-    commutator
+    commutator,
+    min_chunk_size :: pos_integer(),
+    max_chunk_size :: pos_integer()
 }).
 
 start() ->
@@ -65,7 +67,9 @@ init(Args) ->
         Count,
         Persisted,
         AggregationAtom,
-        Commutator
+        Commutator,
+        MinChunkSize,
+        MaxChunkSize
     } = Args,
     lager:info(
         "Booting cache pid ~p for group ~p, interval ~p, count ~p",
@@ -90,7 +94,9 @@ init(Args) ->
         count = Count,
         persisted = Persisted,
         aggregation_fun = AggregationFun,
-        commutator = C
+        commutator = C,
+        min_chunk_size = MinChunkSize,
+        max_chunk_size = MaxChunkSize
     },
     case oscilloscope_cache_memory:read(State#st.resolution_id) of
         not_found ->
@@ -181,11 +187,20 @@ handle_info(timeout, State) ->
         resolution_id=Id,
         interval=Interval,
         persisted=Persisted,
-        aggregation_fun=AF,
-        commutator=Commutator
+        aggregation_fun=AggFun,
+        commutator=Commutator,
+        min_chunk_size=MinChunkSize,
+        max_chunk_size=MaxChunkSize
     } = State,
     {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
-    {ToPersist, T1, ToCache} = split_for_persisting(T0, Points, Interval, AF),
+    {ToPersist, T1, ToCache} = split_for_persisting(
+        T0,
+        Points,
+        Interval,
+        AggFun,
+        MinChunkSize,
+        MaxChunkSize
+    ),
     TimestampsPersisted = case length(ToPersist) of
         0 ->
             folsom_metrics:notify(
@@ -313,7 +328,7 @@ append_point(Index, Value, Points) ->
             array:set(Index, [Value|Vs], Points)
     end.
 
-split_for_persisting(T0, Points, Interval, AggregationFun) ->
+split_for_persisting(T0, Points, Interval, AggFun, MinChunk, MaxChunk) ->
     %% Only persist up to the newest point - ?MIN_PERSIST_AGE
     PersistIndex = erlang:trunc(array:size(Points) - ?MIN_PERSIST_AGE/Interval),
     case divide_array(Points, PersistIndex) of
@@ -323,9 +338,9 @@ split_for_persisting(T0, Points, Interval, AggregationFun) ->
             %% Only persist chunks that are large enough
             {Remainder, ChunksToPersist} = chunkify(
                 ToPersist,
-                AggregationFun,
-                ?MIN_CHUNK_SIZE,
-                ?MAX_CHUNK_SIZE
+                AggFun,
+                MinChunk,
+                MaxChunk
             ),
             ChunksWithTimestamps = lists:map(
                 fun({I, V}) -> {timestamp_from_index(T0, I, Interval), V} end,
