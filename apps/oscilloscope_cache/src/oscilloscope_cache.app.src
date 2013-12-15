@@ -10,7 +10,8 @@
         stdlib,
         erp,
         commutator
-  ]},
-  {mod, {oscilloscope_cache_app, []}},
-  {env, []}
+    ]},
+    {mod, {oscilloscope_cache_app, []}},
+    {env, [
+    ]}
 ]}.
