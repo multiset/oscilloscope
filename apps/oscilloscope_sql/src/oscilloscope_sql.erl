@@ -10,10 +10,11 @@ stop() ->
     application:stop(oscilloscope_sql).
 
 adhoc(SQL, Fields) ->
+    folsom_metrics:notify({oscilloscope_sql, adhoc_queries}, {inc, 1}),
     transact({adhoc, SQL, Fields}).
 
 named(Smt, Fields) ->
-    % TODO: instrument me
+    folsom_metrics:notify({oscilloscope_sql, named_queries}, {inc, 1}),
     transact({named, Smt, Fields}).
 
 transact(Msg) ->

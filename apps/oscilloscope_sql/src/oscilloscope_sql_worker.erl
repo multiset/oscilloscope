@@ -21,6 +21,7 @@ start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
 
 init(_) ->
+    folsom_metrics:notify({oscilloscope_sql, worker_inits}, {inc, 1}),
     Hostname = application:get_env(
         oscilloscope_sql, hostname, {127, 0, 0, 1}),
     Port = application:get_env(
