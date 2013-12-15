@@ -61,6 +61,10 @@ generate_spec(Group, AggregationFun, {Id, Interval, Count, Persisted}=Res) ->
         oscilloscope_cache,
         max_chunk_size
     ),
+    {ok, MinPersistAge} = application:get_env(
+        oscilloscope_cache,
+        min_persist_age
+    ),
     Args = {
         Group,
         Id,
@@ -70,7 +74,8 @@ generate_spec(Group, AggregationFun, {Id, Interval, Count, Persisted}=Res) ->
         AggregationFun,
         Commutator,
         MinChunkSize,
-        MaxChunkSize
+        MaxChunkSize,
+        MinPersistAge
     },
     {
         Res,

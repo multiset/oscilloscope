@@ -29,6 +29,7 @@
         {dynamo_accesskey, "AKIAJNCK2CQXCEEM6MDA"},
         {dynamo_secretkey, "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"},
         {min_chunk_size, 1000},
-        {max_chunk_size, 1024}
+        {max_chunk_size, 1024},
+        {min_persist_age, 300}
     ]}
 ]}.
