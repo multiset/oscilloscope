@@ -11,5 +11,8 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init([]) ->
+    folsom_metrics:new_counter({oscilloscope_net, inits, graphite}),
+    folsom_metrics:new_counter({oscilloscope_net, recvs, tcp}),
+    folsom_metrics:new_counter({oscilloscope_net, recvs, graphite}),
     {ok, {{one_for_one, 5, 10}, []}}.
 
