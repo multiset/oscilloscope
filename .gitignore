@@ -3,3 +3,4 @@ deps
 erl_crash.dump
 apps/*/.eunit
 rel/oscilloscope
+log
