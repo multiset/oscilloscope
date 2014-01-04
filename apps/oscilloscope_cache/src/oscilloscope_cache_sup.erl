@@ -6,12 +6,17 @@
 -export([start_link/0, init/1]).
 
 spawn_cache(Group) ->
-    supervisor:start_child(?MODULE, [Group]).
+    CacheSpec = {
+        Group,
+        {oscilloscope_cache_group_sup, start_link, [Group]},
+        temporary, 5000, supervisor, [oscilloscope_cache_group_sup]
+    },
+    supervisor:start_child(?MODULE, CacheSpec).
 
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-init(Args) ->
+init(_Args) ->
     folsom_metrics:new_counter({oscilloscope_cache, cache_inits}),
     folsom_metrics:new_counter({oscilloscope_cache, mem_inits}),
     folsom_metrics:new_counter({oscilloscope_cache, reads}),
@@ -36,9 +41,4 @@ init(Args) ->
         slide_uniform,
         {60, 1028}
     ),
-    CacheSpec = {
-        oscilloscope_cache_group_sup,
-        {oscilloscope_cache_group_sup, start_link, Args},
-        temporary, 5000, supervisor, [oscilloscope_cache_group_sup]
-    },
-    {ok, {{simple_one_for_one, 10, 10}, [CacheSpec]}}.
+    {ok, {{one_for_one, 10, 10}, []}}.

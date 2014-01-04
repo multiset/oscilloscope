@@ -7,7 +7,7 @@
 -include_lib("oscilloscope/include/oscilloscope_types.hrl").
 
 start_link(Args) ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, Args).
+    supervisor:start_link(?MODULE, Args).
 
 init({User, Name, Host}=Group) ->
     ok = pg2:create(Group),
