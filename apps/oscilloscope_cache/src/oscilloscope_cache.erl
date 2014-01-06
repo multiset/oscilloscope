@@ -449,15 +449,11 @@ multicall(User, Name, Host, Msg) ->
 
 get_pids(User, Name, Host) ->
     Group = {User, Name, Host},
-    case pg2:get_members(Group) of
-        {error, {no_such_group, Group}} ->
-            {ok, _Pid} = oscilloscope_cache_sup:spawn_cache(Group),
-            pg2:get_members(Group);
-        [] ->
-            {ok, _Pid} = oscilloscope_cache_sup:spawn_cache(Group),
-            pg2:get_members(Group);
-        P ->
-            P
+    case oscilloscope_cache_sup:find_group(Group) of
+        not_found ->
+            oscilloscope_cache_sup:spawn_group(Group);
+        Pids ->
+            Pids
     end.
 
 timestamp_from_index(InitialTime, Index, Interval) ->
