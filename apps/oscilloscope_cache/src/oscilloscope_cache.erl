@@ -31,7 +31,7 @@
     min_chunk_size :: pos_integer(),
     max_chunk_size :: pos_integer(),
     min_persist_age :: pos_integer(),
-    last_touch :: timestamp()
+    last_touch :: {non_neg_integer(),non_neg_integer(),non_neg_integer()}
 }).
 
 start() ->
