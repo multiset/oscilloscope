@@ -3,7 +3,7 @@
 
 -include("oscilloscope_cache.hrl").
 
--spec read(binary()) -> not_found | any().
+-spec read(term()) -> not_found | any().
 read(Key) ->
     folsom_metrics:notify(
         {oscilloscope_cache, memory_cache_reads},
@@ -14,7 +14,7 @@ read(Key) ->
         {ok, Value} -> ?VALDECODE(Value)
     end.
 
--spec write(binary(), term()) -> ok.
+-spec write(term(), term()) -> ok.
 write(Key, Value) ->
     folsom_metrics:notify(
         {oscilloscope_cache, memory_cache_writes},
