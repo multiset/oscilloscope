@@ -1,4 +1,4 @@
--module(oscilloscope_query_sup).
+-module(oscilloscope_http_sup).
 
 -behaviour(supervisor).
 

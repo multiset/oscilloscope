@@ -1,4 +1,4 @@
--module(oscilloscope_query_metric).
+-module(oscilloscope_http_metric).
 
 -export([
     init/1,
