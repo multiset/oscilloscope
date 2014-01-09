@@ -26,7 +26,7 @@ CREATE TABLE users (
 
 CREATE TABLE metrics (
     id serial PRIMARY KEY,
-    user_id integer NOT NULL,
+    user_id integer NOT NULL REFERENCES users(id),
     name bytea NOT NULL,
     host bytea NOT NULL,
     aggregation bytea NOT NULL,
@@ -35,7 +35,7 @@ CREATE TABLE metrics (
 
 CREATE TABLE resolutions (
     id serial PRIMARY KEY,
-    metric_id integer NOT NULL,
+    metric_id integer NOT NULL REFERENCES metrics(id),
     "interval" integer,
     count integer,
     persisted integer[],
