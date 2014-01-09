@@ -3,7 +3,9 @@
 -export([
     create/5,
     get/3,
-    update_persisted/2
+    update_persisted/2,
+    get_aggregation_configuration/1,
+    get_resolution_configuration/1
 ]).
 
 -include_lib("oscilloscope/include/oscilloscope_types.hrl").
@@ -45,3 +47,11 @@ update_persisted(Id, PersistTime) ->
         update_persisted, [Id, PersistTime]
     ),
     ok.
+
+-spec get_aggregation_configuration(user()) -> {ok, [resolution()]}.
+get_aggregation_configuration(_User) ->
+    {ok, []}.
+
+-spec get_resolution_configuration(user()) -> {ok, [resolution()]}.
+get_resolution_configuration(_User) ->
+    {ok, []}.
