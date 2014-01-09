@@ -30,7 +30,8 @@
     commutator,
     min_chunk_size :: pos_integer(),
     max_chunk_size :: pos_integer(),
-    min_persist_age :: pos_integer()
+    min_persist_age :: pos_integer(),
+    last_touch :: timestamp()
 }).
 
 start() ->
@@ -99,7 +100,8 @@ init(Args) ->
         commutator = C,
         min_chunk_size = MinChunkSize,
         max_chunk_size = MaxChunkSize,
-        min_persist_age = MinPersistAge
+        min_persist_age = MinPersistAge,
+        last_touch = erlang:now()
     },
     case oscilloscope_cache_memory:read(State#st.resolution_id) of
         not_found ->
@@ -114,7 +116,12 @@ init(Args) ->
     end,
     {ok, State}.
 
-handle_call(get_metadata, _From, #st{interval=Interval, count=Count}=State) ->
+handle_call(get_metadata, _From, State) ->
+    #st{
+         interval=Interval,
+         count=Count,
+         last_touch=LastTouch
+    } = State,
     {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
     {EarliestTime, LatestTime} = case T0 of
         undefined ->
@@ -129,6 +136,7 @@ handle_call(get_metadata, _From, #st{interval=Interval, count=Count}=State) ->
         {earliest_time, EarliestTime},
         {interval, Interval},
         {count, Count},
+        {last_touch, LastTouch},
         {aggregation_fun, State#st.aggregation_fun}
     ],
     {reply, {ok, Metadata}, State};
@@ -164,7 +172,7 @@ handle_call({read, From0, Until0}, _From, State) ->
         {interval, Interval},
         {datapoints, Data}
     ],
-    {reply, {ok, Reply}, State};
+    {reply, {ok, Reply}, State#st{last_touch = erlang:now()}};
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
 
@@ -223,7 +231,11 @@ handle_info(timeout, State) ->
             persist(ToPersist, Id, Commutator)
     end,
     oscilloscope_cache_memory:write(State#st.resolution_id, {T1, ToCache}),
-    {noreply, State#st{persisted=Persisted ++ TimestampsPersisted}};
+    State1 = State#st{
+        persisted = Persisted ++ TimestampsPersisted,
+        last_touch = erlang:now()
+    },
+    {noreply, State1};
 handle_info(Msg, State) ->
     {stop, {unknown_info, Msg}, State}.
 
@@ -449,15 +461,11 @@ multicall(User, Name, Host, Msg) ->
 
 get_pids(User, Name, Host) ->
     Group = {User, Name, Host},
-    case pg2:get_members(Group) of
-        {error, {no_such_group, Group}} ->
-            {ok, _Pid} = oscilloscope_cache_sup:spawn_cache(Group),
-            pg2:get_members(Group);
-        [] ->
-            {ok, _Pid} = oscilloscope_cache_sup:spawn_cache(Group),
-            pg2:get_members(Group);
-        P ->
-            P
+    case oscilloscope_cache_sup:find_group(Group) of
+        not_found ->
+            oscilloscope_cache_sup:spawn_group(Group);
+        Pids ->
+            Pids
     end.
 
 timestamp_from_index(InitialTime, Index, Interval) ->
