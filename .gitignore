@@ -4,3 +4,4 @@ erl_crash.dump
 apps/*/.eunit
 rel/oscilloscope
 log
+sql_data
