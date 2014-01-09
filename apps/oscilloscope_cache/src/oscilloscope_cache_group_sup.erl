@@ -10,6 +10,10 @@ start_link(Args) ->
     supervisor:start_link(?MODULE, Args).
 
 init({UserID, Name, Host}=Group) ->
+    folsom_metrics:notify(
+        {oscilloscope_cache, group_spawns},
+        {inc, 1}
+    ),
     {AF, Resolutions} = get_or_create_resolutions(UserID, Name, Host),
     Specs = lists:map(fun(R) -> generate_spec(Group, AF, R) end, Resolutions),
     {ok, {{one_for_all, 10, 10}, Specs}}.
@@ -17,11 +21,7 @@ init({UserID, Name, Host}=Group) ->
 -spec get_or_create_resolutions(binary(), binary(), binary()) ->
     {atom(), [resolution()]}.
 get_or_create_resolutions(UserID, Name, Host) ->
-    folsom_metrics:notify(
-        {oscilloscope_cache, group_spawns},
-        {inc, 1}
-    ),
-    case oscilloscope_sql_metrics:get(UserID, Name, Host) of
+    case oscilloscope_sql_metrics:get(User, Name, Host) of
         {ok, Values} ->
             Values;
         {error, not_found} ->
