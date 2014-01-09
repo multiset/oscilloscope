@@ -79,7 +79,6 @@ init(Args) ->
         [self(), Group, Interval, Count]
     ),
     folsom_metrics:notify({oscilloscope_cache, cache_inits}, {inc, 1}),
-    ok = pg2:join(Group, self()),
     AggregationFun = fun(Vals) ->
         erlang:apply(oscilloscope_cache_aggregations, AggregationAtom, [Vals])
     end,

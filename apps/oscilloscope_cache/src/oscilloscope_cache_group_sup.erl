@@ -10,7 +10,6 @@ start_link(Args) ->
     supervisor:start_link(?MODULE, Args).
 
 init({User, Name, Host}=Group) ->
-    ok = pg2:create(Group),
     {AF, Resolutions} = get_or_create_resolutions(User, Name, Host),
     Specs = lists:map(fun(R) -> generate_spec(Group, AF, R) end, Resolutions),
     {ok, {{one_for_all, 10, 10}, Specs}}.
