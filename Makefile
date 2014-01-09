@@ -12,8 +12,13 @@ run:
 clean:
 	@./rebar clean
 
-test:
+test: eunit dialyze
+
+eunit:
 	@./rebar skip_deps=true eunit
+
+dialyze:
+	@dialyzer --src apps/*/src/ -pa apps/oscilloscope
 
 release: deps compile
 	@./rebar generate
