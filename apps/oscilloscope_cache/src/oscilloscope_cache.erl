@@ -40,21 +40,21 @@ start() ->
 stop() ->
     ok.
 
--spec process(user(), service(), host(), timestamp(), float()) -> any().
-process(User, Name, Host, Timestamp, Value) ->
+-spec process(userid(), service(), host(), timestamp(), float()) -> any().
+process(UserID, Name, Host, Timestamp, Value) ->
     lager:debug(
         "Processing point: ~p ~p ~p ~p ~p",
-        [User, Name, Host, Timestamp, Value]
+        [UserID, Name, Host, Timestamp, Value]
     ),
-    multicast(User, Name, Host, {process, Timestamp, Value}).
+    multicast(UserID, Name, Host, {process, Timestamp, Value}).
 
--spec read(user(), service(), host(), timestamp(), timestamp()) -> [tuple()].
-read(User, Name, Host, From, Until) ->
+-spec read(userid(), service(), host(), timestamp(), timestamp()) -> [tuple()].
+read(UserID, Name, Host, From, Until) ->
     lager:debug(
         "Processing read: ~p ~p ~p ~p ~p",
-        [User, Name, Host, From, Until]
+        [UserID, Name, Host, From, Until]
     ),
-    CacheMetadata = multicall(User, Name, Host, get_metadata),
+    CacheMetadata = multicall(UserID, Name, Host, get_metadata),
     Pid = select_pid_for_query(CacheMetadata, From),
     gen_server:call(Pid, {read, From, Until}).
 
@@ -450,16 +450,16 @@ chunkify(Values, Aggregator, ChunkMin, ChunkMax) ->
         Values, length(Values) - length(Remainder) + 1, length(Values)),
     {RemainingValues, lists:reverse(Chunks)}.
 
-multicast(User, Name, Host, Msg) ->
-    Pids = get_pids(User, Name, Host),
+multicast(UserID, Name, Host, Msg) ->
+    Pids = get_pids(UserID, Name, Host),
     lists:map(fun(P) -> gen_server:cast(P, Msg) end, Pids).
 
-multicall(User, Name, Host, Msg) ->
-    Pids = get_pids(User, Name, Host),
+multicall(UserID, Name, Host, Msg) ->
+    Pids = get_pids(UserID, Name, Host),
     lists:map(fun(P) -> {P, gen_server:call(P, Msg)} end, Pids).
 
-get_pids(User, Name, Host) ->
-    Group = {User, Name, Host},
+get_pids(UserID, Name, Host) ->
+    Group = {UserID, Name, Host},
     case oscilloscope_cache_sup:find_group(Group) of
         not_found ->
             oscilloscope_cache_sup:spawn_group(Group);

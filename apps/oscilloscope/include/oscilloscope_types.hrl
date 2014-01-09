@@ -1,4 +1,5 @@
 -type user() :: binary().
+-type userid() :: integer().
 -type host() :: binary().
 -type service() :: binary().
 -type group() :: {user(), service(), host()}.
