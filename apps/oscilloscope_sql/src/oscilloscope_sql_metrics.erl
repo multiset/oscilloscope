@@ -48,10 +48,10 @@ update_persisted(Id, PersistTime) ->
     ),
     ok.
 
--spec get_aggregation_configuration(user()) -> {ok, [resolution()]}.
-get_aggregation_configuration(_User) ->
+-spec get_aggregation_configuration(userid()) -> {ok, [resolution()]}.
+get_aggregation_configuration(_UserID) ->
     {ok, []}.
 
--spec get_resolution_configuration(user()) -> {ok, [resolution()]}.
-get_resolution_configuration(_User) ->
+-spec get_resolution_configuration(userid()) -> {ok, [resolution()]}.
+get_resolution_configuration(_UserID) ->
     {ok, []}.
