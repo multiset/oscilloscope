@@ -360,7 +360,9 @@ split_for_persisting(T0, Points, Interval, AF, MinChunk, MaxChunk, MinPersistAge
                 MaxChunk
             ),
             ChunksWithTimestamps = lists:map(
-                fun({I, V}) -> {timestamp_from_index(T0, I, Interval), V} end,
+                fun({I, V, S}) ->
+                    {timestamp_from_index(T0, I, Interval), V, S}
+                end,
                 ChunksToPersist
             ),
             %% Merge extras back with the points to remain in memory and
@@ -384,12 +386,12 @@ divide_array(Arr, DivIdx) ->
 
 persist(Points, Id, Commutator) ->
     lists:map(
-        fun({Timestamp, Value}) ->
+        fun({Timestamp, Value, Size}) ->
             {ok, true} = commutator:put_item(
                 Commutator,
                 [Id, Timestamp, Value]
             ),
-            ok = oscilloscope_sql_metrics:update_persisted(Id, Timestamp),
+            ok = oscilloscope_sql_metrics:insert_persisted(Id, Timestamp, Size),
             Timestamp
         end, Points
     ).
@@ -406,17 +408,23 @@ persistent_read(Id, Commutator, From, Until, Persisted) ->
     lists:flatten([?VALDECODE(proplists:get_value(<<"v">>, I)) || I <- Rows]).
 
 calculate_starttime(T, Ts) ->
-    {Earlier, Later} = lists:partition(fun(I) -> I =< T end, Ts),
+    {Earlier, Later} = lists:partition(fun({T1, _C}) -> T1 =< T end, Ts),
     case Earlier of
-        [] -> hd(Later);
-        _Any -> lists:last(Earlier)
+        [] ->
+            {Time, _Count} = hd(Later),
+            Time;
+        _Any ->
+            {Time, _Count} = lists:last(Earlier),
+            Time
     end.
 
 calculate_endtime(T, Ts) ->
-    {Later, _Earlier} = lists:partition(fun(I) -> I >= T end, Ts),
+    {Later, _Earlier} = lists:partition(fun({T1, _C}) -> T1 >= T end, Ts),
     case Later of
         [] -> T;
-        _Any -> hd(Later)
+        _Any ->
+            {Time, _Count} = hd(Later),
+            Time
     end.
 
 -spec chunkify([[number()]], fun(), integer(), integer()) ->
@@ -438,7 +446,11 @@ chunkify(Values, Aggregator, ChunkMin, ChunkMax) ->
                         {oscilloscope_cache, bytes_per_chunk},
                         Size
                     ),
-                    {Count + PointsChunked, [], [{Count, Encoded}|Chunks]};
+                    {
+                        Count + PointsChunked,
+                        [],
+                        [{Count, Encoded, PointsChunked}|Chunks]
+                    };
                 Size when Size < ChunkMin ->
                     {Count, Pending1, Chunks}
             end
@@ -485,12 +497,12 @@ divide_array_test() ->
     ).
 
 calculate_starttime_test() ->
-    ?assertEqual(2, calculate_starttime(3, [2, 4, 6, 8])),
-    ?assertEqual(2, calculate_starttime(1, [2, 4, 6, 8])).
+    ?assertEqual(2, calculate_starttime(3, [{2, 2}, {4, 2}, {6, 2}, {8, 2}])),
+    ?assertEqual(2, calculate_starttime(1, [{2, 2}, {4, 2}, {6, 2}, {8, 2}])).
 
 calculate_endtime_test() ->
-    ?assertEqual(4, calculate_endtime(3, [2, 4, 6, 8])),
-    ?assertEqual(9, calculate_endtime(9, [2, 4, 6, 8])).
+    ?assertEqual(4, calculate_endtime(3, [{2, 2}, {4, 2}, {6, 2}, {8, 2}])),
+    ?assertEqual(9, calculate_endtime(9, [{2, 2}, {4, 2}, {6, 2}, {8, 2}])).
 
 chunkify_test() ->
     %% No chunking
@@ -511,7 +523,7 @@ chunkify_test() ->
         0,
         1000000
     ),
-    Decoded = lists:map(fun({I, V}) -> {I, ?VALDECODE(V)} end, Chunked),
+    Decoded = lists:map(fun({I, V, _}) -> {I, ?VALDECODE(V)} end, Chunked),
     ?assertEqual([], Remainder),
     ?assertEqual([{0, [1.0]}, {1, [2.0]}, {2, [4.0]}], Decoded),
     %% Chunking multiple values together
@@ -522,7 +534,7 @@ chunkify_test() ->
         50,
         75
     ),
-    Decoded1 = lists:map(fun({I, V}) -> {I, ?VALDECODE(V)} end, Chunked1),
+    Decoded1 = lists:map(fun({I, V, _}) -> {I, ?VALDECODE(V)} end, Chunked1),
     ?assertEqual([], Remainder1),
     ?assertEqual([
         {0, [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]},

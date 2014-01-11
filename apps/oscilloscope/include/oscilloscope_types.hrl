@@ -10,8 +10,8 @@
 -type interval() :: pos_integer().
 -type count() :: pos_integer().
 -type timestamp() :: pos_integer().
--type persisted() :: [timestamp()].
--type resolution() :: {resolution_id(), interval(), count(), persisted()}.
+-type persisted() :: [{timestamp(), pos_integer()}].
+-type resolution() :: {resolution_id(), interval(), count()}.
 
 %% TODO: import proper type from supervisor
 -type child_spec() :: any().
