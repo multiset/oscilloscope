@@ -33,6 +33,9 @@ fuck-it-all:
 	@echo -n "Fuck it all... "
 	@rm -rf ./sql_data
 	@echo "Done."
+	@$(MAKE) cluster
+
+cluster:
 	@echo -n "Recreating directory... "
 	@mkdir ./sql_data
 	@echo "Done."
