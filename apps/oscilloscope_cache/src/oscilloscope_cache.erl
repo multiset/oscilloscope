@@ -367,7 +367,7 @@ split_for_persisting(T0, Points, Interval, AF, MinChunk, MaxChunk, MinPersistAge
             %% increment the start timestamp for the number of points persisted
             PersistCount = length(ToPersist) - length(Remainder),
             T1 = timestamp_from_index(T0, PersistCount, Interval),
-            {ChunksWithTimestamps, T1, Remainder ++ ToMem}
+            {ChunksWithTimestamps, T1, array:from_list(Remainder ++ ToMem, null)}
     end.
 
 divide_array(Arr, DivIdx) ->
