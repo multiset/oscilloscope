@@ -19,7 +19,7 @@
             {3600, 1000}
         ]},
         {default_aggregation_fun, avg},
-        {dynamo_table, <<"oscilloscope_test">>},
+        {dynamo_table, <<"oscilloscope-test">>},
         {dynamo_schema, [
             {<<"id">>, number},
             {<<"t">>, number},

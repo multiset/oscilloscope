@@ -38,8 +38,15 @@ CREATE TABLE resolutions (
     metric_id integer NOT NULL REFERENCES metrics(id),
     "interval" integer,
     count integer,
-    persisted integer[],
-    UNIQUE(metric_id, "interval", count, persisted)
+    UNIQUE(metric_id, "interval", count)
+);
+
+CREATE TABLE persists (
+    id serial PRIMARY KEY,
+    resolution_id integer NOT NULL REFERENCES resolutions(id),
+    "timestamp" integer NOT NULL,
+    count integer NOT NULL,
+    UNIQUE(resolution_id, "timestamp")
 );
 
 CREATE TABLE shared_metrics (

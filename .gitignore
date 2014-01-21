@@ -5,3 +5,4 @@ apps/*/.eunit
 rel/oscilloscope
 log
 sql_data
+dump.rdb
