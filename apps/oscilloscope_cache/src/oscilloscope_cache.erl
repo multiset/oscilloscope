@@ -151,7 +151,7 @@ handle_call({read, From0, Until0}, _From, State) ->
     {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
     {From, Until} = calculate_query_bounds(From0, Until0, Interval),
     Cached = cached_read(From, Until, Interval, AF, T0, Points),
-    Data = case T0 >= From of
+    Data = case T0 > From of
         false ->
             Cached;
         true ->
