@@ -159,7 +159,10 @@ handle_call({read, From0, Until0}, _From, State) ->
                 {oscilloscope_cache, persistent_reads},
                 {inc, 1}
             ),
-            persistent_read(Id, Commutator, From, Until, Persisted) ++ Cached
+            Disk = persistent_read(Id, Commutator, From, Until, Persisted),
+            DiskCount = length(Disk),
+            CachedNonNull = length(Cached) - DiskCount,
+            Disk ++ lists:sublist(Cached, DiskCount + 1, CachedNonNull)
     end,
     folsom_metrics:notify(
         {oscilloscope_cache, points_read},
