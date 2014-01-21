@@ -407,7 +407,8 @@ persistent_read(Id, Commutator, From, Until, Persisted) ->
     EndTime = calculate_endtime(Until, Persisted),
     {ok, Rows} = commutator:query(
         Commutator,
-        [{<<"id">>, equals, [Id]}, {<<"t">>, between, [StartTime, EndTime]}]
+        [{<<"id">>, equals, [Id]}, {<<"t">>, between, [StartTime, EndTime]}],
+        100000 %% TODO: paginate, and teach commutator to accept no limit
     ),
     lists:flatten([?VALDECODE(proplists:get_value(<<"v">>, I)) || I <- Rows]).
 
