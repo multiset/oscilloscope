@@ -223,7 +223,7 @@ handle_info(timeout, State) ->
             [];
         N ->
             folsom_metrics:notify({oscilloscope_cache, persists}, {inc, 1}),
-            folsom_metrics:new_counter(
+            folsom_metrics:notify(
                 {oscilloscope_cache, points_persisted},
                 {inc, N}
             ),
