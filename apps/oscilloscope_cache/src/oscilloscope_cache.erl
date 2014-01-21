@@ -387,6 +387,7 @@ divide_array(Arr, DivIdx) ->
 persist(Points, Id, Commutator) ->
     lists:map(
         fun({Timestamp, Value, Size}) ->
+            %% TODO: this will badmatch if, e.g., we're rate-limited
             {ok, true} = commutator:put_item(
                 Commutator,
                 [Id, Timestamp, Value]
