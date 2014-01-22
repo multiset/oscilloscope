@@ -9,7 +9,7 @@ compile:
 	@./rebar compile
 
 run:
-	@erl -pa deps/*/ebin -pa apps/*/ebin -s folsom -s lager -s oscilloscope_net -s oscilloscope_sql -s inets -s crypto -s mochiweb -s webmachine -s erp -s commutator -s oscilloscope_cache -s oscilloscope_http
+	@erl -pa deps/*/ebin -pa apps/*/ebin -s folsom -s lager -s oscilloscope_net -s oscilloscope_sql -s inets -s crypto -s mochiweb -s webmachine -s erp -s commutator -s oscilloscope_cache -s oscilloscope_http -s oscilloscope_net
 
 clean:
 	@./rebar clean
