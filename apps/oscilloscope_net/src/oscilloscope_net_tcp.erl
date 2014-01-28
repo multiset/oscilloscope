@@ -25,6 +25,10 @@ loop(Socket, Transport, Parse, UserID) ->
                 Parse(Data)
             ),
             loop(Socket, Transport, Parse, UserID);
-        _ ->
+        Error ->
+            lager:error(
+                "Got error ~p when attempting to receive from socket ~p",
+                [Error, Socket]
+            ),
             ok = Transport:close(Socket)
     end.
