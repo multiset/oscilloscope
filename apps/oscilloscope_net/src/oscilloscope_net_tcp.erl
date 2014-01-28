@@ -12,7 +12,7 @@ init(UserID, Socket, Transport, Opts) ->
     loop(Socket, Transport, Parser, UserID).
 
 loop(Socket, Transport, Parse, UserID) ->
-    case Transport:recv(Socket, 0, 60000) of
+    case Transport:recv(Socket, 0, 600000) of
         {ok, Data} ->
             folsom_metrics:notify({oscilloscope_net, recvs, tcp}, {inc, 1}),
             folsom_metrics:notify(
