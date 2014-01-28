@@ -271,8 +271,11 @@ process(Timestamp, Value, T0, Points, Interval, Persisted, MinPersistAge) ->
     %% but that's enforced by not persisting newer points.
     %% In practice we'll accept anything that's newer than the last persist.
     LastPersist = case Persisted of
-        [] -> 0;
-        Persisted -> lists:last(Persisted)
+        [] ->
+            0;
+        Persisted ->
+            {LastPersistTime, LastPersistCount} = lists:last(Persisted),
+            LastPersistTime
     end,
     case Timestamp1 > LastPersist of
         true ->
