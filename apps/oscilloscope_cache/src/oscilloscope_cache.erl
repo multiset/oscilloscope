@@ -399,7 +399,7 @@ persist(Points, Id, Commutator) ->
                 [Id, Timestamp, Value]
             ),
             ok = oscilloscope_sql_metrics:insert_persisted(Id, Timestamp, Size),
-            Timestamp
+            {Timestamp, Size}
         end, Points
     ).
 
