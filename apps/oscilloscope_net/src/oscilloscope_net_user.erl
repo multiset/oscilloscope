@@ -5,7 +5,7 @@
 start(UserID, Port) ->
     {ok, Pid} = ranch:start_listener(
         UserID,
-        1,
+        10,
         ranch_tcp,
         [{port, Port}],
         oscilloscope_net_tcp,
