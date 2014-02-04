@@ -159,7 +159,14 @@ handle_call({read, From0, Until0}, _From, State) ->
                 {oscilloscope_cache, persistent_reads},
                 {inc, 1}
             ),
-            Disk = persistent_read(Id, Commutator, From, Until, Persisted),
+            Disk = persistent_read(
+                Id,
+                Commutator,
+                From,
+                Until,
+                Interval,
+                Persisted
+            ),
             DiskCount = length(Disk),
             CachedNonNull = length(Cached) - DiskCount,
             Disk ++ lists:sublist(Cached, DiskCount + 1, CachedNonNull)
@@ -408,9 +415,9 @@ persist(Points, Id, Commutator) ->
         end, Points
     ).
 
-persistent_read(_Id, _Commutator, _From, _Until, []) ->
+persistent_read(_Id, _Commutator, _From, _Until, _Interval, []) ->
     [];
-persistent_read(Id, Commutator, From, Until, Persisted) ->
+persistent_read(Id, Commutator, From, Until, Interval, Persisted) ->
     StartTime = calculate_starttime(From, Persisted),
     EndTime = calculate_endtime(Until, Persisted),
     Start = erlang:now(),
@@ -423,7 +430,12 @@ persistent_read(Id, Commutator, From, Until, Persisted) ->
         {oscilloscope_cache, persistent_store, read_latency},
         timer:now_diff(erlang:now(), Start)
     ),
-    lists:flatten([?VALDECODE(proplists:get_value(<<"v">>, I)) || I <- Rows]).
+    Points = lists:flatten(
+        [?VALDECODE(proplists:get_value(<<"v">>, I)) || I <- Rows]
+    ),
+    StartIndex = (From - StartTime) div Interval,
+    EndIndex = (Until - EndTime) div Interval,
+    lists:sublist(Points, StartIndex, EndIndex - StartIndex + 1).
 
 calculate_starttime(T, Ts) ->
     {Earlier, Later} = lists:partition(fun({T1, _C}) -> T1 =< T end, Ts),
