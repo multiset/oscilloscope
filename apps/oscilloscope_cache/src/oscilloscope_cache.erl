@@ -274,7 +274,7 @@ process(Timestamp, Value, T0, Points, Interval, Persisted, MinPersistAge) ->
         [] ->
             0;
         Persisted ->
-            {LastPersistTime, LastPersistCount} = lists:last(Persisted),
+            {LastPersistTime, _LastPersistCount} = lists:last(Persisted),
             LastPersistTime
     end,
     case Timestamp1 > LastPersist of
