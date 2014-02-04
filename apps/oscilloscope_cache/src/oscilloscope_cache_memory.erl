@@ -9,10 +9,16 @@ read(Key) ->
         {oscilloscope_cache, memory_cache_reads},
         {inc, 1}
     ),
-    case erp:q(["GET", term_to_binary(Key)]) of
+    Start = erlang:now(),
+    Response = case erp:q(["GET", term_to_binary(Key)]) of
         {ok, undefined} -> not_found;
         {ok, Value} -> ?VALDECODE(Value)
-    end.
+    end,
+    folsom_metrics:notify(
+        {oscilloscope_cache, memory_cache, read_latency},
+        timer:now_diff(erlang:now(), Start)
+    ),
+    Response.
 
 -spec write(term(), term()) -> ok.
 write(Key, Value) ->
@@ -20,5 +26,10 @@ write(Key, Value) ->
         {oscilloscope_cache, memory_cache_writes},
         {inc, 1}
     ),
+    Start = erlang:now(),
     {ok, <<"OK">>} = erp:q(["SET", term_to_binary(Key), ?VALENCODE(Value)]),
+    folsom_metrics:notify(
+        {oscilloscope_cache, memory_cache, write_latency},
+        timer:now_diff(erlang:now(), Start)
+    ),
     ok.

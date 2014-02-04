@@ -394,9 +394,14 @@ persist(Points, Id, Commutator) ->
     lists:map(
         fun({Timestamp, Value, Size}) ->
             %% TODO: this will badmatch if, e.g., we're rate-limited
+            Start = erlang:now(),
             {ok, true} = commutator:put_item(
                 Commutator,
                 [Id, Timestamp, Value]
+            ),
+            folsom_metrics:notify(
+                {oscilloscope_cache, persistent_store, write_latency},
+                timer:now_diff(erlang:now(), Start)
             ),
             ok = oscilloscope_sql_metrics:insert_persisted(Id, Timestamp, Size),
             {Timestamp, Size}
@@ -408,10 +413,15 @@ persistent_read(_Id, _Commutator, _From, _Until, []) ->
 persistent_read(Id, Commutator, From, Until, Persisted) ->
     StartTime = calculate_starttime(From, Persisted),
     EndTime = calculate_endtime(Until, Persisted),
+    Start = erlang:now(),
     {ok, Rows} = commutator:query(
         Commutator,
         [{<<"id">>, equals, [Id]}, {<<"t">>, between, [StartTime, EndTime]}],
         100000 %% TODO: paginate, and teach commutator to accept no limit
+    ),
+    folsom_metrics:notify(
+        {oscilloscope_cache, persistent_store, read_latency},
+        timer:now_diff(erlang:now(), Start)
     ),
     lists:flatten([?VALDECODE(proplists:get_value(<<"v">>, I)) || I <- Rows]).
 

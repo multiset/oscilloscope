@@ -63,4 +63,25 @@ init(_Args) ->
         slide_uniform,
         {60, 1028}
     ),
+    folsom_metrics:new_histogram(
+        {oscilloscope_cache, memory_cache, write_latency},
+        slide_uniform,
+        {60, 1028}
+    ),
+    folsom_metrics:new_histogram(
+        {oscilloscope_cache, memory_cache, read_latency},
+        slide_uniform,
+        {60, 1028}
+    ),
+    folsom_metrics:new_histogram(
+        {oscilloscope_cache, persistent_store, read_latency},
+        slide_uniform,
+        {60, 1028}
+    ),
+    folsom_metrics:new_histogram(
+        {oscilloscope_cache, persistent_store, write_latency},
+        slide_uniform,
+        {60, 1028}
+    ),
+
     {ok, {{one_for_one, 10, 10}, []}}.
