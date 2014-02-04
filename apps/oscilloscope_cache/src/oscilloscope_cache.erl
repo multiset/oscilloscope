@@ -131,8 +131,8 @@ handle_call(get_metadata, _From, State) ->
             {E, L}
     end,
     Metadata = [
-        {latest_time, LatestTime},
         {earliest_time, EarliestTime},
+        {latest_time, LatestTime},
         {interval, Interval},
         {count, Count},
         {last_touch, LastTouch},
