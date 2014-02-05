@@ -20,7 +20,7 @@ eunit:
 	@./rebar skip_deps=true eunit
 
 dialyze:
-	@dialyzer --src apps/*/src/ -pa apps/oscilloscope
+	@dialyzer --src apps/*/src/ -pa apps/oscilloscope -pa apps/oscilloscope_http
 
 release: deps compile
 	@./rebar generate

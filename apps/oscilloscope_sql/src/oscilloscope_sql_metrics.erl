@@ -65,7 +65,8 @@ get_metric_resolutions(UserID, Service, Host) ->
     {ok, Resolutions}.
 
 
--spec get_metric_persists(pos_integer()) -> [{timestamp(), pos_integer()}].
+-spec get_metric_persists(resolution_id()) ->
+  {ok, [{timestamp(), pos_integer()}]}.
 get_metric_persists(ResolutionID) ->
     {ok, _Schema, Persists} = oscilloscope_sql:named(
         select_metric_persists, [ResolutionID]

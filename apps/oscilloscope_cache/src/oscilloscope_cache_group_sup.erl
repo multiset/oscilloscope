@@ -22,7 +22,7 @@ init({UserID, Name, Host}=Group) ->
     Specs = lists:map(fun(R) -> generate_spec(Group, AF, R) end, Resolutions),
     {ok, {{one_for_all, 10, 10}, Specs}}.
 
--spec get_or_create_group_configuration(binary(), binary(), binary()) ->
+-spec get_or_create_group_configuration(userid(), service(), host()) ->
     {atom(), [resolution()]}.
 get_or_create_group_configuration(UserID, Name, Host) ->
     case oscilloscope_sql_metrics:get(UserID, Name, Host) of
@@ -42,7 +42,11 @@ get_or_create_group_configuration(UserID, Name, Host) ->
             get_or_create_group_configuration(UserID, Name, Host)
     end.
 
--spec generate_spec(group(), aggregation(), resolution()) -> child_spec().
+-spec generate_spec(
+  group(),
+  aggregation(),
+  {resolution_id(), interval(), count(), persisted()}
+) -> child_spec().
 generate_spec(Group, AggregationFun, {ResID, Interval, Count, Persisted}) ->
     {ok, Table} = application:get_env(oscilloscope_cache, dynamo_table),
     {ok, Schema} = application:get_env(oscilloscope_cache, dynamo_schema),

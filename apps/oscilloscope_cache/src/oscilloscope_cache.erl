@@ -48,7 +48,8 @@ process(UserID, Name, Host, Timestamp, Value) ->
     ),
     multicast(UserID, Name, Host, {process, Timestamp, Value}).
 
--spec read(userid(), service(), host(), timestamp(), timestamp()) -> [tuple()].
+-spec read(userid(), service(), host(), timestamp(), timestamp()) ->
+  {ok, [{atom, any()}]}.
 read(UserID, Name, Host, From, Until) ->
     lager:debug(
         "Processing read: ~p ~p ~p ~p ~p",
