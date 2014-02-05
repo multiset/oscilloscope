@@ -47,41 +47,59 @@ init(_Args) ->
     folsom_metrics:new_counter({oscilloscope_cache, persists}),
     folsom_metrics:new_counter({oscilloscope_cache, null_persists}),
     folsom_metrics:new_counter({oscilloscope_cache, points_persisted}),
-    folsom_metrics:new_counter({oscilloscope_cache, memory_cache_reads}),
-    folsom_metrics:new_counter({oscilloscope_cache, memory_cache_writes}),
+    folsom_metrics:new_counter({oscilloscope_cache, memory_cache, reads}),
+    folsom_metrics:new_counter({oscilloscope_cache, memory_cache, writes}),
     folsom_metrics:new_counter({oscilloscope_cache, group_spawns}),
     folsom_metrics:new_counter({oscilloscope_cache, group_creations}),
     folsom_metrics:new_counter({oscilloscope_cache, group_terminations}),
 
     folsom_metrics:new_histogram(
-        {oscilloscope_cache, points_per_chunk},
+        {oscilloscope_cache, points_per_chunk, sliding},
         slide_uniform,
         {60, 1028}
     ),
     folsom_metrics:new_histogram(
-        {oscilloscope_cache, bytes_per_chunk},
+        {oscilloscope_cache, points_per_chunk, uniform}
+    ),
+    folsom_metrics:new_histogram(
+        {oscilloscope_cache, bytes_per_chunk, sliding},
         slide_uniform,
         {60, 1028}
     ),
     folsom_metrics:new_histogram(
-        {oscilloscope_cache, memory_cache, write_latency},
+        {oscilloscope_cache, bytes_per_chunk, uniform}
+    ),
+    folsom_metrics:new_histogram(
+        {oscilloscope_cache, memory_cache, write_latency, sliding},
         slide_uniform,
         {60, 1028}
     ),
     folsom_metrics:new_histogram(
-        {oscilloscope_cache, memory_cache, read_latency},
+        {oscilloscope_cache, memory_cache, write_latency, uniform}
+    ),
+    folsom_metrics:new_histogram(
+        {oscilloscope_cache, memory_cache, read_latency, sliding},
         slide_uniform,
         {60, 1028}
     ),
     folsom_metrics:new_histogram(
-        {oscilloscope_cache, persistent_store, read_latency},
+        {oscilloscope_cache, memory_cache, read_latency, uniform}
+    ),
+    folsom_metrics:new_histogram(
+        {oscilloscope_cache, persistent_store, read_latency, sliding},
         slide_uniform,
         {60, 1028}
     ),
     folsom_metrics:new_histogram(
-        {oscilloscope_cache, persistent_store, write_latency},
+        {oscilloscope_cache, persistent_store, read_latency, uniform}
+    ),
+    folsom_metrics:new_histogram(
+        {oscilloscope_cache, persistent_store, write_latency, sliding},
         slide_uniform,
         {60, 1028}
+    ),
+    folsom_metrics:new_histogram(
+        {oscilloscope_cache, persistent_store, write_latency, uniform}
     ),
 
     {ok, {{one_for_one, 10, 10}, []}}.

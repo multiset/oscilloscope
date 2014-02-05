@@ -406,9 +406,14 @@ persist(Points, Id, Commutator) ->
                 Commutator,
                 [Id, Timestamp, Value]
             ),
+            Latency = timer:now_diff(erlang:now(), Start),
             folsom_metrics:notify(
-                {oscilloscope_cache, persistent_store, write_latency},
-                timer:now_diff(erlang:now(), Start)
+                {oscilloscope_cache, persistent_store, write_latency, sliding},
+                Latency
+            ),
+            folsom_metrics:notify(
+                {oscilloscope_cache, persistent_store, write_latency, uniform},
+                Latency
             ),
             ok = oscilloscope_sql_metrics:insert_persisted(Id, Timestamp, Size),
             {Timestamp, Size}
@@ -426,9 +431,14 @@ persistent_read(Id, Commutator, From, Until, Interval, Persisted) ->
         [{<<"id">>, equals, [Id]}, {<<"t">>, between, [StartTime, EndTime]}],
         100000 %% TODO: paginate, and teach commutator to accept no limit
     ),
+    Latency = timer:now_diff(erlang:now(), Start),
     folsom_metrics:notify(
-        {oscilloscope_cache, persistent_store, read_latency},
-        timer:now_diff(erlang:now(), Start)
+        {oscilloscope_cache, persistent_store, read_latency, sliding},
+        Latency
+    ),
+    folsom_metrics:notify(
+        {oscilloscope_cache, persistent_store, read_latency, uniform},
+        Latency
     ),
     Points = lists:flatten(
         [?VALDECODE(proplists:get_value(<<"v">>, I)) || I <- Rows]
@@ -469,11 +479,19 @@ chunkify(Values, Aggregator, ChunkMin, ChunkMax) ->
                 Size when Size >= ChunkMin andalso Size =< ChunkMax ->
                     PointsChunked = length(Pending1),
                     catch folsom_metrics:notify(
-                        {oscilloscope_cache, points_per_chunk},
+                        {oscilloscope_cache, points_per_chunk, sliding},
                         PointsChunked
                     ),
                     catch folsom_metrics:notify(
-                        {oscilloscope_cache, bytes_per_chunk},
+                        {oscilloscope_cache, points_per_chunk, uniform},
+                        PointsChunked
+                    ),
+                    catch folsom_metrics:notify(
+                        {oscilloscope_cache, bytes_per_chunk, sliding},
+                        Size
+                    ),
+                    catch folsom_metrics:notify(
+                        {oscilloscope_cache, bytes_per_chunk, uniform},
                         Size
                     ),
                     {
