@@ -47,7 +47,7 @@ malformed_request(Req, #st{}=State) ->
 process_post(Req, State) ->
     #st{new_user={Username, Email, Password}, ports=[Port|Ports]} = State,
     create_user(Username, Port, Email, Password),
-    Resp = wrq:set_resp_body("ok", Req),
+    Resp = wrq:set_resp_body(jiffy:encode({[{ok, true}, {port, Port}]}), Req),
     {true, Resp, State#st{ports=Ports, new_user=undefined}}.
 
 
