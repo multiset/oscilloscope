@@ -1,10 +1,12 @@
 -module(oscilloscope_net_protocols).
 
--export([graphite/1]).
+-export([graphite/2]).
 
-graphite(Bin) ->
-    BinPoints = re:split(Bin, "[\r\n]+", [trim]),
-    [graphite_int(BP) || BP <- BinPoints].
+graphite(Bin0, PrevBuffer) ->
+    Bin = <<PrevBuffer/binary, Bin0/binary>>,
+    BinPoints0 = re:split(Bin, "[\r\n]+", []),
+    {BinPoints, [Buffer]} = lists:split(length(BinPoints0)-1, BinPoints0),
+    {[graphite_int(BP) || BP <- BinPoints], Buffer}.
 
 graphite_int(Bin) ->
     [Metric, ValueBin, TimestampBin] = re:split(Bin, "\s"),
