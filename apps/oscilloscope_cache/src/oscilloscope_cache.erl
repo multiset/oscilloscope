@@ -31,7 +31,9 @@
     min_chunk_size :: pos_integer(),
     max_chunk_size :: pos_integer(),
     min_persist_age :: pos_integer(),
-    last_touch :: {non_neg_integer(),non_neg_integer(),non_neg_integer()}
+    last_touch :: {non_neg_integer(),non_neg_integer(),non_neg_integer()},
+    persist_pid :: pid(),
+    vacuum_pid :: pid()
 }).
 
 start() ->
@@ -75,6 +77,7 @@ init(Args) ->
         MaxChunkSize,
         MinPersistAge
     } = Args,
+    process_flag(trap_exit, true),
     lager:info(
         "Booting cache pid ~p for group ~p, interval ~p, count ~p",
         [self(), Group, Interval, Count]
@@ -101,7 +104,9 @@ init(Args) ->
         min_chunk_size = MinChunkSize,
         max_chunk_size = MaxChunkSize,
         min_persist_age = MinPersistAge,
-        last_touch = erlang:now()
+        last_touch = erlang:now(),
+        persist_pid = nil,
+        vacuum_pid = nil
     },
     case oscilloscope_cache_memory:read(State#st.resolution_id) of
         not_found ->
@@ -211,48 +216,97 @@ handle_cast({process, Timestamp, Value}, State) ->
 handle_cast(Msg, State) ->
     {stop, {unknown_cast, Msg}, State}.
 
-handle_info(timeout, State) ->
+handle_info(timeout, #st{persist_pid=nil, vacuum_pid=nil}=State) ->
     #st{
         resolution_id=Id,
         interval=Interval,
+        count=Count,
         persisted=Persisted,
         aggregation_fun=AggFun,
-        commutator=Commutator,
         min_chunk_size=MinChunkSize,
         max_chunk_size=MaxChunkSize,
         min_persist_age=MinPersistAge
     } = State,
     {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
-    {ToPersist, T1, ToCache} = split_for_persisting(
-        T0,
-        Points,
-        Interval,
+    PersistIndex = erlang:trunc(array:size(Points) - MinPersistAge / Interval),
+    {PersistCandidates, _} = divide_array(Points, PersistIndex),
+    Chunks = chunkify(
+        PersistCandidates,
         AggFun,
         MinChunkSize,
-        MaxChunkSize,
-        MinPersistAge
+        MaxChunkSize
     ),
-    TimestampsPersisted = case length(ToPersist) of
+    ToPersist = lists:map(
+        fun({I, V, S}) ->
+            {timestamp_from_index(T0, I, Interval), V, S}
+        end,
+        Chunks
+    ),
+    {PersistPid, VacuumPid} = case length(ToPersist) of
         0 ->
             folsom_metrics:notify(
                 {oscilloscope_cache, null_persists},
                 {inc, 1}
             ),
-            [];
+            {nil, nil};
         N ->
             folsom_metrics:notify({oscilloscope_cache, persists}, {inc, 1}),
             folsom_metrics:notify(
                 {oscilloscope_cache, points_persisted},
                 {inc, N}
             ),
-            persist(ToPersist, Id, Commutator)
+            PP = spawn_link(
+                fun() ->
+                    ok = oscilloscope_cache_persistence:persist(Id, ToPersist),
+                    exit({ok, ToPersist})
+                end
+            ),
+            ToVacuum = select_for_vacuuming(Persisted, Interval, Count, T0),
+            VP = spawn_link(
+                fun() ->
+                    ok = oscilloscope_cache_persistence:vacuum(Id, ToVacuum),
+                    exit({ok, ToVacuum})
+                end
+            ),
+            {PP, VP}
     end,
-    oscilloscope_cache_memory:write(State#st.resolution_id, {T1, ToCache}),
     State1 = State#st{
-        persisted = Persisted ++ TimestampsPersisted,
-        last_touch = erlang:now()
+        last_touch = erlang:now(),
+        persist_pid = PersistPid,
+        vacuum_pid = VacuumPid
     },
     {noreply, State1};
+handle_info(timeout, State) ->
+    %% Persist and/or vacuum pids are still outstanding
+    {noreply, State};
+handle_info({'EXIT', From, {ok, Persisted}}, #st{persist_pid=From}=State) ->
+    #st{
+        resolution_id = ResId,
+        interval = Interval
+    } = State,
+    {_T0, Points0} = oscilloscope_cache_memory:read(ResId),
+    {T1, Points1} = trim_persisted_points(Persisted, Points0, Interval),
+    oscilloscope_cache_memory:write(ResId, {T1, Points1}),
+    {noreply, State#st{persist_pid=nil}};
+handle_info({'EXIT', From, Reason}, #st{persist_pid=From}=State) ->
+    lager:error(
+        "Persist attempt for ResolutionID ~p failed with reason ~p",
+        [State#st.resolution_id, Reason]
+    ),
+    {noreply, State#st{persist_pid=nil}};
+handle_info({'EXIT', From, {ok, Vacuumed}}, #st{vacuum_pid=From}=State) ->
+    Persisted = lists:foldl(
+        fun(T, Acc) -> lists:keydelete(T, 1, Acc) end,
+        State#st.persisted,
+        Vacuumed
+    ),
+    {noreply, State#st{vacuum_pid=nil, persisted=Persisted}};
+handle_info({'EXIT', From, Reason}, #st{vacuum_pid=From}=State) ->
+    lager:error(
+        "Vacuum attempt for ResolutionID ~p failed with reason ~p",
+        [State#st.resolution_id, Reason]
+    ),
+    {noreply, State#st{vacuum_pid=nil}};
 handle_info(Msg, State) ->
     {stop, {unknown_info, Msg}, State}.
 
@@ -378,32 +432,16 @@ append_point(Index, Value, Points) ->
             array:set(Index, [Value|Vs], Points)
     end.
 
-split_for_persisting(T0, Points, Interval, AF, MinChunk, MaxChunk, MinPersistAge) ->
-    %% Only persist up to the newest point - MinPersistAge
-    PersistIndex = erlang:trunc(array:size(Points) - MinPersistAge/Interval),
-    case divide_array(Points, PersistIndex) of
-        {[], _} ->
-            {[], T0, Points};
-        {ToPersist, ToMem} ->
-            %% Only persist chunks that are large enough
-            {Remainder, ChunksToPersist} = chunkify(
-                ToPersist,
-                AF,
-                MinChunk,
-                MaxChunk
-            ),
-            ChunksWithTimestamps = lists:map(
-                fun({I, V, S}) ->
-                    {timestamp_from_index(T0, I, Interval), V, S}
-                end,
-                ChunksToPersist
-            ),
-            %% Merge extras back with the points to remain in memory and
-            %% increment the start timestamp for the number of points persisted
-            PersistCount = length(ToPersist) - length(Remainder),
-            T1 = timestamp_from_index(T0, PersistCount, Interval),
-            {ChunksWithTimestamps, T1, array:from_list(Remainder ++ ToMem, null)}
-    end.
+select_for_vacuuming(Persisted, Interval, Count, CurrentTime) ->
+    Cutoff = CurrentTime - (Interval * Count),
+    lists:filtermap(
+        fun({T, _}) -> case T < Cutoff of
+                true -> {true, T};
+                false -> false
+            end
+        end,
+        Persisted
+    ).
 
 divide_array(Arr, DivIdx) ->
     array:foldr(
@@ -415,29 +453,6 @@ divide_array(Arr, DivIdx) ->
         end,
         {[], []},
         Arr
-    ).
-
-persist(Points, Id, Commutator) ->
-    lists:map(
-        fun({Timestamp, Value, Size}) ->
-            %% TODO: this will badmatch if, e.g., we're rate-limited
-            Start = erlang:now(),
-            {ok, true} = commutator:put_item(
-                Commutator,
-                [Id, Timestamp, Value]
-            ),
-            Latency = timer:now_diff(erlang:now(), Start),
-            folsom_metrics:notify(
-                {oscilloscope_cache, persistent_store, write_latency, sliding},
-                Latency
-            ),
-            folsom_metrics:notify(
-                {oscilloscope_cache, persistent_store, write_latency, uniform},
-                Latency
-            ),
-            ok = oscilloscope_sql_metrics:insert_persisted(Id, Timestamp, Size),
-            {Timestamp, Size}
-        end, Points
     ).
 
 persistent_read(_Id, _Commutator, _From, _Until, _Interval, []) ->
@@ -487,9 +502,9 @@ calculate_endtime(T, Ts) ->
     end.
 
 -spec chunkify([[number()]], fun(), integer(), integer()) ->
-  {[[number()]], [{integer(), binary()}]}.
+  [{integer(), binary(), integer()}].
 chunkify(Values, Aggregator, ChunkMin, ChunkMax) ->
-    {_, Remainder, Chunks} = lists:foldl(
+    {_TotalChunked, _Remainder, Chunks} = lists:foldl(
         fun(Value, {Count, Pending, Chunks}) ->
             Pending1 = [Value|Pending],
             %% TODO: lots of lists:reverse here!
@@ -525,9 +540,19 @@ chunkify(Values, Aggregator, ChunkMin, ChunkMax) ->
         {0, [], []},
         lists:map(Aggregator, Values)
     ),
-    RemainingValues = lists:sublist(
-        Values, length(Values) - length(Remainder) + 1, length(Values)),
-    {RemainingValues, lists:reverse(Chunks)}.
+    lists:reverse(Chunks).
+
+trim_persisted_points(Persisted, Points0, Interval) ->
+    {Timestamp, _, Size} = lists:last(Persisted),
+    T = Timestamp + (Interval * Size),
+    TotalPersisted = lists:foldl(
+        fun({_, _, S}, Acc) -> S + Acc end,
+        0,
+        Persisted
+    ),
+    {_, PointsList} = divide_array(Points0, TotalPersisted),
+    Points1 = array:from_list(PointsList, null),
+    {T, Points1}.
 
 multicast(UserID, Name, Host, Msg) ->
     Pids = get_pids(UserID, Name, Host),
@@ -575,7 +600,7 @@ chunkify_test() ->
     %% No chunking
     Input = [[1], [2], [3, 5]],
     ?assertEqual(
-        {Input, []},
+        [],
         chunkify(
             Input,
             fun oscilloscope_cache_aggregations:avg/1,
@@ -584,25 +609,23 @@ chunkify_test() ->
         )
     ),
     %% Chunking each value
-    {Remainder, Chunked} = chunkify(
+    Chunked = chunkify(
         Input,
         fun oscilloscope_cache_aggregations:avg/1,
         0,
         1000000
     ),
     Decoded = lists:map(fun({I, V, _}) -> {I, ?VALDECODE(V)} end, Chunked),
-    ?assertEqual([], Remainder),
     ?assertEqual([{0, [1.0]}, {1, [2.0]}, {2, [4.0]}], Decoded),
     %% Chunking multiple values together
     Input1 = [[float(I)] || I <- lists:seq(0, 21)],
-    {Remainder1, Chunked1} = chunkify(
+    Chunked1 = chunkify(
         Input1,
         fun oscilloscope_cache_aggregations:avg/1,
         50,
         75
     ),
     Decoded1 = lists:map(fun({I, V, _}) -> {I, ?VALDECODE(V)} end, Chunked1),
-    ?assertEqual([], Remainder1),
     ?assertEqual([
         {0, [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]},
         {8, [8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0]},
@@ -807,5 +830,12 @@ maybe_trim_points_test() ->
         {120, array:from_list([c, d], null)},
         maybe_trim_points(100, array:from_list([a, b, c, d], null), 10, 2)
     ).
+
+trim_persisted_points_test() ->
+    Points = array:from_list([[20.0] || _ <- lists:seq(1, 10)], null),
+    Persisted = [{10, foo, 1}, {20, bar, 1}, {30, baz, 1}],
+    Interval = 10,
+    Output = {40, array:from_list([[20.0] || _ <- lists:seq(1, 7)], null)},
+    ?assertEqual(Output, trim_persisted_points(Persisted, Points, Interval)).
 
 -endif.
