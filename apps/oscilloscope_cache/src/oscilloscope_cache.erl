@@ -223,6 +223,7 @@ handle_info(timeout, #st{persist_pid=nil, vacuum_pid=nil}=State) ->
         count=Count,
         persisted=Persisted,
         aggregation_fun=AggFun,
+        commutator=Commutator,
         min_chunk_size=MinChunkSize,
         max_chunk_size=MaxChunkSize,
         min_persist_age=MinPersistAge
@@ -257,14 +258,22 @@ handle_info(timeout, #st{persist_pid=nil, vacuum_pid=nil}=State) ->
             ),
             PP = spawn_link(
                 fun() ->
-                    ok = oscilloscope_cache_persistence:persist(Id, ToPersist),
+                    oscilloscope_cache_persistence:persist(
+                        Id,
+                        ToPersist,
+                        Commutator
+                    ),
                     exit({ok, ToPersist})
                 end
             ),
             ToVacuum = select_for_vacuuming(Persisted, Interval, Count, T0),
             VP = spawn_link(
                 fun() ->
-                    ok = oscilloscope_cache_persistence:vacuum(Id, ToVacuum),
+                    ok = oscilloscope_cache_persistence:vacuum(
+                        Id,
+                        ToVacuum,
+                        Commutator
+                    ),
                     exit({ok, ToVacuum})
                 end
             ),
