@@ -86,13 +86,6 @@ init(Args) ->
     AggregationFun = fun(Vals) ->
         erlang:apply(oscilloscope_cache_aggregations, AggregationAtom, [Vals])
     end,
-    {ok, C} = commutator:connect(
-        proplists:get_value(table, Commutator),
-        proplists:get_value(schema, Commutator),
-        proplists:get_value(region, Commutator),
-        proplists:get_value(accesskey, Commutator),
-        proplists:get_value(secretkey, Commutator)
-    ),
     State = #st{
         resolution_id = ResolutionId,
         group = Group,
@@ -100,7 +93,7 @@ init(Args) ->
         count = Count,
         persisted = Persisted,
         aggregation_fun = AggregationFun,
-        commutator = C,
+        commutator = Commutator,
         min_chunk_size = MinChunkSize,
         max_chunk_size = MaxChunkSize,
         min_persist_age = MinPersistAge,
