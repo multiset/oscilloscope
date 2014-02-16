@@ -16,11 +16,11 @@ persist(ResolutionId, Points, Commutator) ->
             ),
             Latency = timer:now_diff(erlang:now(), Start),
             folsom_metrics:notify(
-                {oscilloscope_cache, persistent_store, write_latency, sliding},
+                {oscilloscope_cache, persistent_store, write, latency, sliding},
                 Latency
             ),
             folsom_metrics:notify(
-                {oscilloscope_cache, persistent_store, write_latency, uniform},
+                {oscilloscope_cache, persistent_store, write, latency, uniform},
                 Latency
             ),
             ok = oscilloscope_sql_metrics:insert_persisted(
@@ -42,11 +42,11 @@ vacuum(ResolutionId, Points, Commutator) ->
            ),
             Latency = timer:now_diff(erlang:now(), Start),
             folsom_metrics:notify(
-                {oscilloscope_cache, persistent_store, delete_latency, sliding},
+                {oscilloscope_cache, persistent_store, delete, latency, sliding},
                 Latency
             ),
             folsom_metrics:notify(
-                {oscilloscope_cache, persistent_store, delete_latency, uniform},
+                {oscilloscope_cache, persistent_store, delete, latency, uniform},
                 Latency
             ),
             ok = oscilloscope_sql_metrics:delete_persisted(

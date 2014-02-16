@@ -469,11 +469,11 @@ persistent_read(Id, Commutator, From, Until, Interval, Persisted) ->
     ),
     Latency = timer:now_diff(erlang:now(), Start),
     folsom_metrics:notify(
-        {oscilloscope_cache, persistent_store, read_latency, sliding},
+        {oscilloscope_cache, persistent_store, read, latency, sliding},
         Latency
     ),
     folsom_metrics:notify(
-        {oscilloscope_cache, persistent_store, read_latency, uniform},
+        {oscilloscope_cache, persistent_store, read, latency, uniform},
         Latency
     ),
     Points = lists:flatten(
