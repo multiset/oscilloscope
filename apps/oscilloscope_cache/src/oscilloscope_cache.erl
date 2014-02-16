@@ -120,16 +120,28 @@ handle_call(get_metadata, _From, State) ->
     #st{
          interval=Interval,
          count=Count,
+         persisted=Persisted,
          last_touch=LastTouch
     } = State,
     {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
-    {EarliestTime, LatestTime} = case T0 of
+    {EarliestCache, LatestCache} = case T0 of
         undefined ->
             {undefined, undefined};
         _ ->
-            L = timestamp_from_index(T0, array:size(Points) - 1, Interval),
-            E = L - Interval * Count,
-            {E, L}
+            {T0, timestamp_from_index(T0, array:size(Points) - 1, Interval)}
+    end,
+    {EarliestTime, LatestTime} = case Persisted of
+        [] ->
+            {EarliestCache, LatestCache};
+        [{P0, _}|_] ->
+            case LatestCache of
+                undefined ->
+                    %% No data in the cache, return the bounds of persisted data
+                    {TimeN, CountN} = lists:last(Persisted),
+                    {P0, timestamp_from_index(TimeN, CountN, Interval)};
+                _ ->
+                    {P0, LatestCache}
+            end
     end,
     Metadata = [
         {earliest_time, EarliestTime},
