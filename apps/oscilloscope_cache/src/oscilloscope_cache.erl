@@ -140,6 +140,8 @@ handle_call(get_metadata, _From, State) ->
         {aggregation_fun, State#st.aggregation_fun}
     ],
     {reply, {ok, Metadata}, State};
+handle_call({read, From0, Until0}, _From, State) when From0 > Until0 ->
+    {reply, {error, temporal_inversion}, State};
 handle_call({read, From0, Until0}, _From, State) ->
     #st{
         resolution_id=Id,
