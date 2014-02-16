@@ -33,4 +33,26 @@ persist(ResolutionId, Points, Commutator) ->
     ).
 
 vacuum(ResolutionId, Points, Commutator) ->
-    ok.
+    lists:map(
+        fun(Timestamp) ->
+           Start = erlang:now(),
+           {ok, true} = commutator:delete_item(
+               Commutator,
+               [ResolutionId, Timestamp]
+           ),
+            Latency = timer:now_diff(erlang:now(), Start),
+            folsom_metrics:notify(
+                {oscilloscope_cache, persistent_store, delete_latency, sliding},
+                Latency
+            ),
+            folsom_metrics:notify(
+                {oscilloscope_cache, persistent_store, delete_latency, uniform},
+                Latency
+            ),
+            ok = oscilloscope_sql_metrics:delete_persisted(
+                ResolutionId,
+                Timestamp
+            )
+        end,
+        Points
+    ).

@@ -262,7 +262,7 @@ handle_info(timeout, #st{persist_pid=nil, vacuum_pid=nil}=State) ->
             ToVacuum = select_for_vacuuming(Persisted, Interval, Count, T0),
             VP = spawn_link(
                 fun() ->
-                    ok = oscilloscope_cache_persistence:vacuum(
+                    oscilloscope_cache_persistence:vacuum(
                         Id,
                         ToVacuum,
                         Commutator

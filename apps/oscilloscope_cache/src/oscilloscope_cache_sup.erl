@@ -101,5 +101,13 @@ init(_Args) ->
     folsom_metrics:new_histogram(
         {oscilloscope_cache, persistent_store, write_latency, uniform}
     ),
+    folsom_metrics:new_histogram(
+        {oscilloscope_cache, persistent_store, delete_latency, sliding},
+        slide_uniform,
+        {60, 1028}
+    ),
+    folsom_metrics:new_histogram(
+        {oscilloscope_cache, persistent_store, delete_latency, uniform}
+    ),
 
     {ok, {{one_for_one, 10, 10}, []}}.
