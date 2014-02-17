@@ -9,6 +9,6 @@ start(UserID, Port) ->
         ranch_tcp,
         [{port, Port}],
         oscilloscope_net_tcp,
-        [{parser, fun oscilloscope_net_protocols:graphite/1}]
+        [{parser, fun oscilloscope_net_protocols:graphite/2}]
     ),
     {ok, Pid}.

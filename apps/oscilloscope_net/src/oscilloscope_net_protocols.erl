@@ -1,17 +1,21 @@
 -module(oscilloscope_net_protocols).
 
--export([graphite/1]).
+-export([graphite/2]).
 
-graphite(Bin) ->
-    BinPoints = re:split(Bin, "[\r\n]+", [trim]),
-    [graphite_int(BP) || BP <- BinPoints].
+graphite(Bin, PrevBuffer) ->
+    graphite_int(<<PrevBuffer/binary, Bin/binary>>, []).
 
-graphite_int(Bin) ->
-    [Metric, ValueBin, TimestampBin] = re:split(Bin, "\s"),
-    Value = binary_to_number(ValueBin),
-    % Timestamp can't be a float!
-    Timestamp = list_to_integer(binary_to_list(TimestampBin)),
-    {Metric, Value, Timestamp}.
+graphite_int(Bin, Acc) ->
+    case re:split(Bin, "[\r\n]+", [{parts, 2}]) of
+        [Buffer] ->
+            {Acc, Buffer};
+        [Line, Rest] ->
+            [Metric, ValueBin, TimestampBin] = re:split(Line, "\s"),
+            Value = binary_to_number(ValueBin),
+            % Timestamp can't be a float!
+            Timestamp = list_to_integer(binary_to_list(TimestampBin)),
+            graphite_int(Rest, [{Metric, Value, Timestamp}|Acc])
+    end.
 
 binary_to_number(B) ->
     list_to_number(binary_to_list(B)).
