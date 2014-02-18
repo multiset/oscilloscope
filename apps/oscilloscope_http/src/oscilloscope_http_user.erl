@@ -52,12 +52,17 @@ process_post(Req, State) ->
 
 
 create_user(Username, Port, Email, Password) ->
-    {ok, _} = oscilloscope_sql:named(insert_user, [Username, Port, Email, Password]),
+    {ok, Salt} = bcrypt:gen_salt(),
+    {ok, Hash} = bcrypt:hashpw(Password, Salt),
+    {ok, _} = oscilloscope_sql:named(
+        insert_user,
+        [Username, Port, Email, Hash]
+    ),
     {ok, _, [{Id}]} = oscilloscope_sql:named(select_user_id, [Username]),
     User = #user{
         id=Id,
         name=list_to_binary(Username),
-        password=list_to_binary(Password),
+        password=Hash,
         port=Port
     },
     ets:insert(user_cache, User).
