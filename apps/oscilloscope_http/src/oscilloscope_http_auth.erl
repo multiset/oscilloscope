@@ -7,14 +7,17 @@
 get_authorized_user(Req) ->
     case wrq:get_req_header("authorization", Req) of
         "Basic " ++ Base64 ->
-            Str = base64:mime_decode_to_string(Base64),
-            case string:tokens(Str, ":") of
-                [Name0, Pass0] ->
-                    Name = list_to_binary(Name0),
-                    Pass = list_to_binary(Pass0),
-                    case ets:match_object(user_cache, #user{name=Name, _='_'}) of
-                        [#user{password=Pass}=User] ->
-                            User;
+            case string:tokens(base64:mime_decode_to_string(Base64), ":") of
+                [Name, Pass] ->
+                    Match = #user{name=list_to_binary(Name), _='_'},
+                    case ets:match_object(user_cache, Match) of
+                        [#user{password=Hash}=User] ->
+                            case {ok, Hash} =:= bcrypt:hashpw(Pass, Hash) of
+                                true ->
+                                    User;
+                                false ->
+                                    "Basic realm=webmachine"
+                            end;
                         _ ->
                             "Basic realm=webmachine"
                     end;
