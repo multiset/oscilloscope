@@ -11,10 +11,14 @@ graphite_int(Bin, Acc) ->
             {Acc, Buffer};
         [Line, Rest] ->
             [Metric, ValueBin, TimestampBin] = re:split(Line, "\s"),
-            Value = binary_to_number(ValueBin),
-            % Timestamp can't be a float!
-            Timestamp = list_to_integer(binary_to_list(TimestampBin)),
-            graphite_int(Rest, [{Metric, Value, Timestamp}|Acc])
+            Acc1 = try
+                Value = binary_to_number(ValueBin),
+                % Timestamp can't be a float!
+                Timestamp = list_to_integer(binary_to_list(TimestampBin)),
+                [{Metric, Value, Timestamp}|Acc]
+            catch error:badarg -> Acc
+            end,
+            graphite_int(Rest, Acc1)
     end.
 
 binary_to_number(B) ->
