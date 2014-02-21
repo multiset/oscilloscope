@@ -429,8 +429,7 @@ persistent_read(Id, Commutator, From, Until, Interval, Persisted) ->
     Start = erlang:now(),
     {ok, Rows} = commutator:query(
         Commutator,
-        [{<<"id">>, equals, [Id]}, {<<"t">>, between, [StartTime, EndTime]}],
-        100000 %% TODO: paginate, and teach commutator to accept no limit
+        [{<<"id">>, equals, [Id]}, {<<"t">>, between, [StartTime, EndTime]}]
     ),
     Latency = timer:now_diff(erlang:now(), Start),
     folsom_metrics:notify(
