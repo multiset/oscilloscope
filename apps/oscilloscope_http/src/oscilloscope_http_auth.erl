@@ -12,7 +12,8 @@ get_authorized_user(Req) ->
                     Match = #user{name=list_to_binary(Name), _='_'},
                     case ets:match_object(user_cache, Match) of
                         [#user{password=Hash}=User] ->
-                            case {ok, Hash} =:= bcrypt:hashpw(Pass, Hash) of
+                            {ok, LHash} = bcrypt:hashpw(Pass, Hash),
+                            case Hash =:= list_to_binary(LHash) of
                                 true ->
                                     User;
                                 false ->
