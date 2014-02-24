@@ -21,6 +21,16 @@
 
 init([]) ->
     Ports = get_unused_ports(),
+    {ok, _, Users} = oscilloscope_sql:named(all_users, []),
+    lists:foldl(fun({Username, Password, Port, Id}, _) ->
+        User = #user{
+            id=Id,
+            name=Username,
+            password=Password,
+            port=Port
+        },
+        ets:insert(user_cache, User)
+    end, nil, Users),
     {ok, #st{ports=Ports}}.
 
 get_unused_ports() ->
@@ -56,13 +66,13 @@ create_user(Username, Port, Email, Password) ->
     {ok, Hash} = bcrypt:hashpw(Password, Salt),
     {ok, _} = oscilloscope_sql:named(
         insert_user,
-        [Username, Port, Email, Hash]
+        [list_to_binary(Username), Port, Email, list_to_binary(Hash)]
     ),
     {ok, _, [{Id}]} = oscilloscope_sql:named(select_user_id, [Username]),
     User = #user{
         id=Id,
         name=list_to_binary(Username),
-        password=Hash,
+        password=list_to_binary(Hash),
         port=Port
     },
     ets:insert(user_cache, User).
