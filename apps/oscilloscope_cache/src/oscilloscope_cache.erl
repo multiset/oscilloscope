@@ -509,33 +509,38 @@ chunkify(Values, Aggregator, ChunkMin, ChunkMax) ->
     {_TotalChunked, _Remainder, Chunks} = lists:foldl(
         fun(Value, {Count, Pending, Chunks}) ->
             Pending1 = [Value|Pending],
-            %% TODO: lots of lists:reverse here!
-            Encoded = ?VALENCODE(lists:reverse(Pending1)),
-            case byte_size(Encoded) of
-                Size when Size >= ChunkMin andalso Size =< ChunkMax ->
-                    PointsChunked = length(Pending1),
-                    catch folsom_metrics:notify(
-                        {oscilloscope_cache, points_per_chunk, sliding},
-                        PointsChunked
-                    ),
-                    catch folsom_metrics:notify(
-                        {oscilloscope_cache, points_per_chunk, uniform},
-                        PointsChunked
-                    ),
-                    catch folsom_metrics:notify(
-                        {oscilloscope_cache, bytes_per_chunk, sliding},
-                        Size
-                    ),
-                    catch folsom_metrics:notify(
-                        {oscilloscope_cache, bytes_per_chunk, uniform},
-                        Size
-                    ),
-                    {
-                        Count + PointsChunked,
-                        [],
-                        [{Count, Encoded, PointsChunked}|Chunks]
-                    };
-                Size when Size < ChunkMin ->
+            case byte_size(Pending1) > ChunkMin of
+                true ->
+                    %% TODO: lots of lists:reverse here!
+                    Encoded = ?VALENCODE(lists:reverse(Pending1)),
+                    case byte_size(Encoded) of
+                        Size when Size >= ChunkMin andalso Size =< ChunkMax ->
+                            PointsChunked = length(Pending1),
+                            catch folsom_metrics:notify(
+                                {oscilloscope_cache, points_per_chunk, sliding},
+                                PointsChunked
+                            ),
+                            catch folsom_metrics:notify(
+                                {oscilloscope_cache, points_per_chunk, uniform},
+                                PointsChunked
+                            ),
+                            catch folsom_metrics:notify(
+                                {oscilloscope_cache, bytes_per_chunk, sliding},
+                                Size
+                            ),
+                            catch folsom_metrics:notify(
+                                {oscilloscope_cache, bytes_per_chunk, uniform},
+                                Size
+                            ),
+                            {
+                                Count + PointsChunked,
+                                [],
+                                [{Count, Encoded, PointsChunked}|Chunks]
+                            };
+                        Size when Size < ChunkMin ->
+                            {Count, Pending1, Chunks}
+                    end;
+                false ->
                     {Count, Pending1, Chunks}
             end
         end,
