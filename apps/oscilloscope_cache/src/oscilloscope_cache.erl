@@ -509,7 +509,7 @@ chunkify(Values, Aggregator, ChunkMin, ChunkMax) ->
     {_TotalChunked, _Remainder, Chunks} = lists:foldl(
         fun(Value, {Count, Pending, Chunks}) ->
             Pending1 = [Value|Pending],
-            case byte_size(Pending1) > ChunkMin of
+            case byte_size(term_to_binary(Pending1)) > ChunkMin of
                 true ->
                     %% TODO: lots of lists:reverse here!
                     Encoded = ?VALENCODE(lists:reverse(Pending1)),
