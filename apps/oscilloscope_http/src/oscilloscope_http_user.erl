@@ -62,7 +62,7 @@ process_post(Req, State) ->
 
 
 create_user(Username, Port, Email, Password) ->
-    {ok, Salt} = bcrypt:gen_salt(),
+    {ok, Salt} = bcrypt:gen_salt(4),
     {ok, Hash} = bcrypt:hashpw(Password, Salt),
     {ok, _} = oscilloscope_sql:named(
         insert_user,
