@@ -231,8 +231,8 @@ handle_info(timeout, #st{persisting={nil, []}, vacuuming={nil, []}}=State) ->
         MaxChunkSize
     ),
     ToPersist = lists:map(
-        fun({I, V, S}) ->
-            {timestamp_from_index(T0, I, Interval), V, S}
+        fun({Index, Value, Size}) ->
+            {timestamp_from_index(T0, Index, Interval), Value, Size}
         end,
         Chunks
     ),
