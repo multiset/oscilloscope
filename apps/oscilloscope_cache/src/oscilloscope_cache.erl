@@ -187,19 +187,26 @@ handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
 
 handle_cast({process, Timestamp, Value}, State) ->
-    folsom_metrics:notify({oscilloscope_cache, points_processed}, {inc, 1}),
-    Key = State#st.resolution_id,
-    {T0, ExistingPoints} = oscilloscope_cache_memory:read(Key),
-    {T1, NewPoints} = process(
+    #st{
+        resolution_id=ResolutionId,
+        interval=Interval,
+        count=Count,
+        persisted=Persisted,
+        min_persist_age=MinPersistAge
+    } = State,
+    {T0, Points0} = oscilloscope_cache_memory:read(ResolutionId),
+    {T1, Points1} = process(
         Timestamp,
         Value,
         T0,
-        ExistingPoints,
-        State#st.interval,
-        State#st.persisted,
-        State#st.min_persist_age
+        Points0,
+        Interval,
+        Persisted,
+        MinPersistAge
     ),
-    oscilloscope_cache_memory:write(Key, {T1, NewPoints}),
+    {T2, Points2} = maybe_trim_points(T1, Points1, Interval, Count),
+    oscilloscope_cache_memory:write(ResolutionId, {T2, Points2}),
+    folsom_metrics:notify({oscilloscope_cache, points_processed}, {inc, 1}),
     {noreply, State, 0};
 handle_cast(Msg, State) ->
     {stop, {unknown_cast, Msg}, State}.
@@ -306,6 +313,18 @@ process(Timestamp, Value, T0, Points, Interval, Persisted, MinPersistAge) ->
             end;
         false ->
             {T0, Points}
+    end.
+
+maybe_trim_points(T, Points0, Interval, Count) ->
+    LatestTime = T + (array:size(Points0) - 1) * Interval,
+    EarliestTime = LatestTime - Interval * (Count - 1), % Inclusive
+    SplitIndex = (EarliestTime - T) / Interval,
+    case SplitIndex > 0 of
+        false ->
+            {T, Points0};
+        true ->
+            {_, Points1} = divide_array(Points0, SplitIndex),
+            {EarliestTime, array:from_list(Points1, null)}
     end.
 
 calculate_query_bounds(From0, Until0, Interval) ->
@@ -778,5 +797,15 @@ select_pid_for_query_test() ->
     ?assertEqual(a, select_pid_for_query(Metadata, 550)),
     ?assertEqual(b, select_pid_for_query(Metadata, 450)),
     ?assertEqual(c, select_pid_for_query(Metadata, 0)).
+
+maybe_trim_points_test() ->
+    ?assertEqual(
+        {100, array:from_list([a, b, c, d], null)},
+        maybe_trim_points(100, array:from_list([a, b, c, d], null), 10, 20)
+    ),
+    ?assertEqual(
+        {120, array:from_list([c, d], null)},
+        maybe_trim_points(100, array:from_list([a, b, c, d], null), 10, 2)
+    ).
 
 -endif.
