@@ -32,8 +32,8 @@
     max_chunk_size :: pos_integer(),
     min_persist_age :: pos_integer(),
     last_touch :: {non_neg_integer(),non_neg_integer(),non_neg_integer()},
-    persist_pid :: pid(),
-    vacuum_pid :: pid()
+    persisting :: {pid(), list()} | nil,
+    vacuuming :: {pid(), list()} | nil
 }).
 
 start() ->
@@ -98,8 +98,8 @@ init(Args) ->
         max_chunk_size = MaxChunkSize,
         min_persist_age = MinPersistAge,
         last_touch = erlang:now(),
-        persist_pid = nil,
-        vacuum_pid = nil
+        persisting = nil,
+        vacuuming = nil
     },
     case oscilloscope_cache_memory:read(State#st.resolution_id) of
         not_found ->
@@ -209,7 +209,7 @@ handle_cast({process, Timestamp, Value}, State) ->
 handle_cast(Msg, State) ->
     {stop, {unknown_cast, Msg}, State}.
 
-handle_info(timeout, #st{persist_pid=nil, vacuum_pid=nil}=State) ->
+handle_info(timeout, #st{persisting={nil, []}, vacuuming={nil, []}}=State) ->
     #st{
         resolution_id=Id,
         interval=Interval,
@@ -236,7 +236,7 @@ handle_info(timeout, #st{persist_pid=nil, vacuum_pid=nil}=State) ->
         end,
         Chunks
     ),
-    {PersistPid, VacuumPid} = case length(ToPersist) of
+    {Persisting, Vacuuming} = case length(ToPersist) of
         0 ->
             folsom_metrics:notify(
                 {oscilloscope_cache, null_persists},
@@ -249,66 +249,66 @@ handle_info(timeout, #st{persist_pid=nil, vacuum_pid=nil}=State) ->
                 {oscilloscope_cache, points_persisted},
                 {inc, N}
             ),
-            PP = spawn_link(
+            PersistPid = spawn_link(
                 fun() ->
                     oscilloscope_cache_persistence:persist(
                         Id,
                         ToPersist,
                         Commutator
                     ),
-                    exit({ok, ToPersist})
+                    exit(ok)
                 end
             ),
             ToVacuum = select_for_vacuuming(Persisted, Interval, Count, T0),
-            VP = spawn_link(
+            VacuumPid = spawn_link(
                 fun() ->
                     oscilloscope_cache_persistence:vacuum(
                         Id,
                         ToVacuum,
                         Commutator
                     ),
-                    exit({ok, ToVacuum})
+                    exit(ok)
                 end
             ),
-            {PP, VP}
+            {{PersistPid, ToPersist}, {VacuumPid, ToVacuum}}
     end,
     State1 = State#st{
         last_touch = erlang:now(),
-        persist_pid = PersistPid,
-        vacuum_pid = VacuumPid
+        persisting = Persisting,
+        vacuuming = Vacuuming
     },
     {noreply, State1};
 handle_info(timeout, State) ->
     %% Persist and/or vacuum pids are still outstanding
     {noreply, State};
-handle_info({'EXIT', From, {ok, Persisted}}, #st{persist_pid=From}=State) ->
+handle_info({'EXIT', From, ok}, #st{persisting={From, Persisting}}=State) ->
     #st{
         resolution_id = ResId,
         interval = Interval
     } = State,
     {_T0, Points0} = oscilloscope_cache_memory:read(ResId),
-    {T1, Points1} = trim_persisted_points(Persisted, Points0, Interval),
+    {T1, Points1} = trim_persisted_points(Persisting, Points0, Interval),
     oscilloscope_cache_memory:write(ResId, {T1, Points1}),
-    {noreply, State#st{persist_pid=nil}};
-handle_info({'EXIT', From, Reason}, #st{persist_pid=From}=State) ->
+    {noreply, State#st{persisting=nil}};
+handle_info({'EXIT', From, Reason}, #st{persisting={From, Persisting}}=State) ->
     lager:error(
-        "Persist attempt for ResolutionID ~p failed with reason ~p",
-        [State#st.resolution_id, Reason]
+        "Persist attempt for ResolutionID ~p with points ~p failed with ~p",
+        [State#st.resolution_id, Persisting, Reason]
     ),
-    {noreply, State#st{persist_pid=nil}};
-handle_info({'EXIT', From, {ok, Vacuumed}}, #st{vacuum_pid=From}=State) ->
+    {noreply, State#st{persisting=nil}};
+handle_info({'EXIT', From, ok}, #st{vacuuming={From, Vacuuming}}=State) ->
     Persisted = lists:foldl(
         fun(T, Acc) -> lists:keydelete(T, 1, Acc) end,
         State#st.persisted,
-        Vacuumed
+        Vacuuming
     ),
-    {noreply, State#st{vacuum_pid=nil, persisted=Persisted}};
-handle_info({'EXIT', From, Reason}, #st{vacuum_pid=From}=State) ->
+    {noreply, State#st{vacuuming=nil, persisted=Persisted}};
+handle_info({'EXIT', From, Reason}, #st{vacuuming={From, Vacuuming}}=State) ->
     lager:error(
-        "Vacuum attempt for ResolutionID ~p failed with reason ~p",
-        [State#st.resolution_id, Reason]
+        "Vacuum attempt for ResolutionID ~p with points ~p failed with  ~p",
+        [State#st.resolution_id, Vacuuming, Reason]
     ),
-    {noreply, State#st{vacuum_pid=nil}};
+    {noreply, State#st{vacuuming=nil}};
 handle_info(Msg, State) ->
     {stop, {unknown_info, Msg}, State}.
 
