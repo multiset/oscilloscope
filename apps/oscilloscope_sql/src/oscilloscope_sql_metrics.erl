@@ -4,6 +4,7 @@
     create/5,
     get/3,
     insert_persisted/3,
+    delete_persisted/2,
     get_aggregation_configuration/1,
     get_resolution_configuration/1
 ]).
@@ -77,6 +78,12 @@ get_metric_persists(ResolutionID) ->
 insert_persisted(Id, PersistTime, Count) ->
     {ok, _Count} = oscilloscope_sql:named(
         insert_persist, [Id, PersistTime, Count]
+    ),
+    ok.
+
+delete_persisted(Id, PersistTime) ->
+    {ok, _Count} = oscilloscope_sql:named(
+        delete_persist, [Id, PersistTime]
     ),
     ok.
 

@@ -8,8 +8,7 @@
     {applications, [
         kernel,
         stdlib,
-        erp,
-        commutator
+        erp
     ]},
     {mod, {oscilloscope_cache_app, []}},
     {env, [

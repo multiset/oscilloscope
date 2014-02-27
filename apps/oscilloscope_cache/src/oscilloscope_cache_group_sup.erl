@@ -53,13 +53,13 @@ generate_spec(Group, AggregationFun, {ResID, Interval, Count, Persisted}) ->
     {ok, Region} = application:get_env(oscilloscope_cache, dynamo_region),
     {ok, AccessKey} = application:get_env(oscilloscope_cache, dynamo_accesskey),
     {ok, SecretKey} = application:get_env(oscilloscope_cache, dynamo_secretkey),
-    Commutator = [
-        {table, Table},
-        {schema, Schema},
-        {region, Region},
-        {accesskey, AccessKey},
-        {secretkey, SecretKey}
-    ],
+    {ok, Commutator} = commutator:init(
+        Table,
+        Schema,
+        Region,
+        AccessKey,
+        SecretKey
+    ),
     {ok, MinChunkSize} = application:get_env(
         oscilloscope_cache,
         min_chunk_size
