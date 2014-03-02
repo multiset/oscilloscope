@@ -151,7 +151,7 @@ handle_call(get_metadata, _From, State) ->
     ],
     {reply, {ok, Metadata}, State};
 handle_call(get_cached, _From, #st{resolution_id=Id}=State) ->
-    {T, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
+    {T, Points} = oscilloscope_cache_memory:read(Id),
     {reply, {ok, {T, array:to_list(Points)}}, State};
 handle_call({read, From0, Until0}, _From, State) when From0 > Until0 ->
     {reply, {error, temporal_inversion}, State};
