@@ -226,7 +226,7 @@ handle_cast({process, Timestamp, Value}, State) ->
 handle_cast(Msg, State) ->
     {stop, {unknown_cast, Msg}, State}.
 
-handle_info(timeout, #st{persisting={nil, []}, vacuuming={nil, []}}=State) ->
+handle_info(timeout, #st{persisting=nil, vacuuming=nil}=State) ->
     #st{
         resolution_id=Id,
         interval=Interval,
