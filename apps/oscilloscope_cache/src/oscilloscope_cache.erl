@@ -301,12 +301,17 @@ handle_info(timeout, State) ->
 handle_info({'EXIT', From, ok}, #st{persisting={From, Persisting}}=State) ->
     #st{
         resolution_id = ResId,
-        interval = Interval
+        interval = Interval,
+        persisted = Persisted
     } = State,
     {_T0, Points0} = oscilloscope_cache_memory:read(ResId),
     {T1, Points1} = trim_persisted_points(Persisting, Points0, Interval),
     oscilloscope_cache_memory:write(ResId, {T1, Points1}),
-    {noreply, State#st{persisting=nil}};
+    PersistRecords = lists:map(
+        fun({Timestamp, _, Size}) -> {Timestamp, Size} end,
+        Persisting
+    ),
+    {noreply, State#st{persisting=nil, persisted=Persisted ++ PersistRecords}};
 handle_info({'EXIT', From, Reason}, #st{persisting={From, Persisting}}=State) ->
     lager:error(
         "Persist attempt for ResolutionID ~p with points ~p failed with ~p",
