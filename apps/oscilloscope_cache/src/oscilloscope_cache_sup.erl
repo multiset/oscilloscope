@@ -50,6 +50,7 @@ init(_Args) ->
     folsom_metrics:new_counter({oscilloscope_cache, group_spawns}),
     folsom_metrics:new_counter({oscilloscope_cache, group_creations}),
     folsom_metrics:new_counter({oscilloscope_cache, group_terminations}),
+    folsom_metrics:new_counter({oscilloscope_cache, memory_cache, timeouts}),
 
     folsom_metrics:new_histogram(
         {oscilloscope_cache, points_per_chunk, sliding},

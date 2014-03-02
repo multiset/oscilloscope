@@ -26,6 +26,7 @@
     interval :: interval(),
     count :: count(),
     persisted :: persisted(),
+    buffered :: [{pos_integer(), any()}],
     aggregation_fun :: fun(),
     commutator,
     min_chunk_size :: pos_integer(),
@@ -48,7 +49,7 @@ process(UserID, Name, Host, Timestamp, Value) ->
         "Processing point: ~p ~p ~p ~p ~p",
         [UserID, Name, Host, Timestamp, Value]
     ),
-    multicast(UserID, Name, Host, {process, Timestamp, Value}).
+    multicast(UserID, Name, Host, {process, [{Timestamp, Value}]}).
 
 -spec read(userid(), service(), host(), timestamp(), timestamp()) ->
   {ok, [{atom, any()}]}.
@@ -201,28 +202,46 @@ handle_call({read, From0, Until0}, _From, State) ->
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
 
-handle_cast({process, Timestamp, Value}, State) ->
+handle_cast({process, IncomingPoints}, State0) ->
     #st{
-        resolution_id=ResolutionId,
+        resolution_id=Id,
         interval=Interval,
         count=Count,
         persisted=Persisted,
+        buffered=Buffered,
         min_persist_age=MinPersistAge
-    } = State,
-    {T0, Points0} = oscilloscope_cache_memory:read(ResolutionId),
-    {T1, Points1} = process(
-        Timestamp,
-        Value,
-        T0,
-        Points0,
-        Interval,
-        Persisted,
-        MinPersistAge
-    ),
-    {T2, Points2} = maybe_trim_points(T1, Points1, Interval, Count),
-    oscilloscope_cache_memory:write(ResolutionId, {T2, Points2}),
-    folsom_metrics:notify({oscilloscope_cache, points_processed}, {inc, 1}),
-    {noreply, State, 0};
+    } = State0,
+    ToProcess = Buffered ++ IncomingPoints,
+    State1 = case oscilloscope_cache_memory:read(Id) of
+                 timeout ->
+                     State0#st{buffered=ToProcess};
+                 {T0, Points0} ->
+                     {T1, Points1} = process(
+                         ToProcess,
+                         T0,
+                         Points0,
+                         Interval,
+                         Persisted,
+                         MinPersistAge
+                     ),
+                     {T2, Points2} = maybe_trim_points(
+                         T1,
+                         Points1,
+                         Interval,
+                         Count
+                     ),
+                     case oscilloscope_cache_memory:write(Id, {T2, Points2}) of
+                         timeout ->
+                             State0#st{buffered=ToProcess};
+                         ok ->
+                             folsom_metrics:notify(
+                                 {oscilloscope_cache, points_processed},
+                                 {inc, 1}
+                             ),
+                             State0#st{buffered=[]}
+                     end
+    end,
+    {noreply, State1, 0};
 handle_cast(Msg, State) ->
     {stop, {unknown_cast, Msg}, State}.
 
@@ -357,9 +376,12 @@ select_pid_for_query(Metadata, From) ->
             end
     end, Pid0, Ms).
 
-process(Timestamp, Value, T0, Points, Interval, Persisted, MinPersistAge) ->
+process([], T, Points, _Interval, _Persisted, _MinPersistAge) ->
+    {T, Points};
+process([P|Ps], T0, Points0, Interval, Persisted, MinPersistAge) ->
+    {Timestamp0, Value} = P,
     %% Timestamps are always floored to fit intervals exactly
-    Timestamp1 = Timestamp - (Timestamp rem Interval),
+    Timestamp1 = Timestamp0 - (Timestamp0 rem Interval),
     %% We claim a MinPersistAge maximum age
     %% but that's enforced by not persisting newer points.
     %% In practice we'll accept anything that's newer than the last persist.
@@ -370,28 +392,29 @@ process(Timestamp, Value, T0, Points, Interval, Persisted, MinPersistAge) ->
             {LastPersistTime, _LastPersistCount} = lists:last(Persisted),
             LastPersistTime
     end,
-    case Timestamp1 > LastPersist of
+    {T1, Points1} = case Timestamp1 > LastPersist of
         true ->
             case T0 of
                 undefined ->
-                    {Timestamp1, append_point(0, Value, Points)};
+                    {Timestamp1, append_point(0, Value, Points0)};
                 T when T =< Timestamp1 ->
                     Index = (Timestamp1 - T0) div Interval,
-                    {T0, append_point(Index, Value, Points)};
+                    {T0, append_point(Index, Value, Points0)};
                 T when T - MinPersistAge =< Timestamp1 ->
                     %% Need to slide the window backwards - this is a legal
                     %% point that's at a negative index in the current array.
                     %% N.B.: this is exploitable for metrics where no points
                     %% have been persisted.
                     IndexesToAdd = (T0 - Timestamp1) div Interval,
-                    {Timestamp1, prepend_point(IndexesToAdd, Value, Points)};
+                    {Timestamp1, prepend_point(IndexesToAdd, Value, Points0)};
                 _T ->
                     %% Illegal (too old) point, ignore
-                    {T0, Points}
+                    {T0, Points0}
             end;
         false ->
-            {T0, Points}
-    end.
+            {T0, Points0}
+    end,
+    process(Ps, T1, Points1, Interval, Persisted, MinPersistAge).
 
 maybe_trim_points(T, Points0, Interval, Count) ->
     LatestTime = T + (array:size(Points0) - 1) * Interval,
@@ -670,8 +693,7 @@ process_null_test() ->
     Value = 42,
     MinPersistAge = 300,
     {T, P} = process(
-        Timestamp,
-        Value,
+        [{Timestamp, Value}],
         T0,
         Points,
         Interval,
@@ -690,8 +712,7 @@ process_one_test() ->
     Value = 42,
     MinPersistAge = 300,
     {T, P} = process(
-        Timestamp,
-        Value,
+        [{Timestamp, Value}],
         T0,
         Points,
         Interval,
@@ -710,8 +731,7 @@ process_skip_test() ->
     Value = 42,
     MinPersistAge = 300,
     {T, P} = process(
-        Timestamp,
-        Value,
+        [{Timestamp, Value}],
         T0,
         Points,
         Interval,
@@ -730,8 +750,7 @@ process_negative_accept_test() ->
     Value = 40,
     MinPersistAge = 300,
     {T, P} = process(
-        Timestamp,
-        Value,
+        [{Timestamp, Value}],
         T0,
         Points,
         Interval,
@@ -751,8 +770,7 @@ process_negative_reject_test() ->
     Value = 40,
     MinPersistAge = 300,
     {T, P} = process(
-        Timestamp,
-        Value,
+        [{Timestamp, Value}],
         T0,
         Points,
         Interval,
