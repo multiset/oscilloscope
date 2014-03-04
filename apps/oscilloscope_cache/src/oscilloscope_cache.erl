@@ -317,20 +317,31 @@ handle_info(timeout, #st{persisting=nil, vacuuming=nil}=State) ->
 handle_info(timeout, State) ->
     %% Persist and/or vacuum pids are still outstanding
     {noreply, State};
-handle_info({'EXIT', From, ok}, #st{persisting={From, Persisting}}=State) ->
+handle_info({'EXIT', From, ok}, #st{persisting={From, Persisting}}=State0) ->
     #st{
         resolution_id = ResId,
         interval = Interval,
         persisted = Persisted
-    } = State,
-    {_T0, Points0} = oscilloscope_cache_memory:read(ResId),
-    {T1, Points1} = trim_persisted_points(Persisting, Points0, Interval),
-    oscilloscope_cache_memory:write(ResId, {T1, Points1}),
+    } = State0,
     PersistRecords = lists:map(
         fun({Timestamp, _, Size}) -> {Timestamp, Size} end,
         Persisting
     ),
-    {noreply, State#st{persisting=nil, persisted=Persisted ++ PersistRecords}};
+    State1 = case oscilloscope_cache_memory:read(ResId) of
+        timeout ->
+            Pid = spawn_link(fun() -> timer:sleep(100), exit(ok) end),
+            State0#st{persisting={Pid, Persisting}};
+        {_T0, Points0} ->
+            {T1, Points1} = trim_persisted_points(Persisting, Points0, Interval),
+            case oscilloscope_cache_memory:write(ResId, {T1, Points1}) of
+                timeout ->
+                    Pid = spawn_link(fun() -> timer:sleep(100), exit(ok) end),
+                    State0#st{persisting={Pid, Persisting}};
+                ok ->
+                    State0#st{persisting=nil, persisted=Persisted ++ PersistRecords}
+            end
+    end,
+    {noreply, State1};
 handle_info({'EXIT', From, Reason}, #st{persisting={From, Persisting}}=State) ->
     lager:error(
         "Persist attempt for ResolutionID ~p with points ~p failed with ~p",
