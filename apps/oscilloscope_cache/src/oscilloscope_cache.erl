@@ -260,9 +260,9 @@ handle_info(timeout, #st{persisting=nil, vacuuming=nil}=State) ->
     {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
     PersistIndex = erlang:trunc(array:size(Points) - MinPersistAge / Interval),
     {PersistCandidates, _} = divide_array(Points, PersistIndex),
+    AggregatedPersistCandidates = lists:map(AggFun, PersistCandidates),
     Chunks = chunkify(
-        PersistCandidates,
-        AggFun,
+        AggregatedPersistCandidates,
         MinChunkSize,
         MaxChunkSize
     ),
@@ -559,51 +559,66 @@ calculate_endtime(T, Ts) ->
             Time
     end.
 
--spec chunkify([[number()]], fun(), integer(), integer()) ->
+-spec chunkify([number()], integer(), integer()) ->
   [{integer(), binary(), integer()}].
-chunkify(Values, Aggregator, ChunkMin, ChunkMax) ->
-    {_TotalChunked, _Remainder, Chunks} = lists:foldl(
-        fun(Value, {Count, Pending, Chunks}) ->
-            Pending1 = [Value|Pending],
-            case byte_size(term_to_binary(Pending1)) > ChunkMin of
-                true ->
-                    %% TODO: lots of lists:reverse here!
-                    Encoded = ?VALENCODE(lists:reverse(Pending1)),
-                    case byte_size(Encoded) of
-                        Size when Size >= ChunkMin andalso Size =< ChunkMax ->
-                            PointsChunked = length(Pending1),
-                            catch folsom_metrics:notify(
-                                {oscilloscope_cache, points_per_chunk, sliding},
-                                PointsChunked
-                            ),
-                            catch folsom_metrics:notify(
-                                {oscilloscope_cache, points_per_chunk, uniform},
-                                PointsChunked
-                            ),
-                            catch folsom_metrics:notify(
-                                {oscilloscope_cache, bytes_per_chunk, sliding},
-                                Size
-                            ),
-                            catch folsom_metrics:notify(
-                                {oscilloscope_cache, bytes_per_chunk, uniform},
-                                Size
-                            ),
-                            {
-                                Count + PointsChunked,
-                                [],
-                                [{Count, Encoded, PointsChunked}|Chunks]
-                            };
-                        Size when Size < ChunkMin ->
-                            {Count, Pending1, Chunks}
-                    end;
-                false ->
-                    {Count, Pending1, Chunks}
-            end
-        end,
-        {0, [], []},
-        lists:map(Aggregator, Values)
-    ),
-    lists:reverse(Chunks).
+chunkify(Values, ChunkMin, ChunkMax) ->
+    chunkify(Values, [], ChunkMin, ChunkMax, 0, []).
+
+chunkify(Values, Excess, Min, Max, Count, Chunks) ->
+    %% N.B.: This will OOM your BEAM if Min < ?VALENCODE([]).
+    %% As of this comment, ?VALENCODE([]) == 11
+    Chunk = ?VALENCODE(Values),
+    case byte_size(Chunk) of
+        Size when Size > Max ->
+            {Left, Right} = bisect(Values),
+            chunkify(Left, Right ++ Excess, Min, Max, Count, Chunks);
+        Size when Size < Min ->
+            case Excess of
+                [] ->
+                    %% No more points to try - bail out with what we've chunked.
+                    lists:reverse(Chunks);
+                _ ->
+                    {Left, Right} = bisect(Excess),
+                    chunkify(
+                        Values ++ Left,
+                        Right,
+                        Min,
+                        Max,
+                        Count,
+                        Chunks
+                    )
+            end;
+        Size ->
+            PointsChunked = length(Values),
+            Chunks1 = [{Count, Chunk, PointsChunked}|Chunks],
+            catch folsom_metrics:notify(
+                {oscilloscope_cache, points_per_chunk, sliding},
+                PointsChunked
+            ),
+            catch folsom_metrics:notify(
+                {oscilloscope_cache, points_per_chunk, uniform},
+                PointsChunked
+            ),
+            catch folsom_metrics:notify(
+                {oscilloscope_cache, bytes_per_chunk, sliding},
+                Size
+            ),
+            catch folsom_metrics:notify(
+                {oscilloscope_cache, bytes_per_chunk, uniform},
+                Size
+            ),
+            chunkify(
+                Excess,
+                [],
+                Min,
+                Max,
+                Count + PointsChunked,
+                Chunks1
+            )
+    end.
+
+bisect(List) ->
+    lists:split(round(length(List) / 2), List).
 
 trim_persisted_points(Persisted, Points0, Interval) ->
     {Timestamp, _, Size} = lists:last(Persisted),
@@ -661,12 +676,11 @@ calculate_endtime_test() ->
 
 chunkify_test() ->
     %% No chunking
-    Input = [[1], [2], [3, 5]],
+    Input = [1.0, 2.0, 3.0],
     ?assertEqual(
         [],
         chunkify(
             Input,
-            fun oscilloscope_cache_aggregations:avg/1,
             1000000,
             1000000
         )
@@ -674,25 +688,22 @@ chunkify_test() ->
     %% Chunking each value
     Chunked = chunkify(
         Input,
-        fun oscilloscope_cache_aggregations:avg/1,
-        0,
+        11,
         1000000
     ),
     Decoded = lists:map(fun({I, V, _}) -> {I, ?VALDECODE(V)} end, Chunked),
-    ?assertEqual([{0, [1.0]}, {1, [2.0]}, {2, [4.0]}], Decoded),
+    ?assertEqual([{0, [1.0, 2.0, 3.0]}], Decoded),
     %% Chunking multiple values together
-    Input1 = [[float(I)] || I <- lists:seq(0, 21)],
+    Input1 = [float(I) || I <- lists:seq(0, 21)],
     Chunked1 = chunkify(
         Input1,
-        fun oscilloscope_cache_aggregations:avg/1,
         50,
         75
     ),
     Decoded1 = lists:map(fun({I, V, _}) -> {I, ?VALDECODE(V)} end, Chunked1),
     ?assertEqual([
-        {0, [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]},
-        {8, [8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0]},
-        {15, [15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0]}
+        {0, [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]},
+        {11, [11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0]}
     ], Decoded1).
 
 process_null_test() ->
