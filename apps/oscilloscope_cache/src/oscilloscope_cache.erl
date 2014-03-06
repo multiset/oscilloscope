@@ -213,33 +213,33 @@ handle_cast({process, IncomingPoints}, State0) ->
     } = State0,
     ToProcess = Buffered ++ IncomingPoints,
     State1 = case oscilloscope_cache_memory:read(Id) of
-                 timeout ->
-                     State0#st{buffered=ToProcess};
-                 {T0, Points0} ->
-                     {T1, Points1} = process(
-                         ToProcess,
-                         T0,
-                         Points0,
-                         Interval,
-                         Persisted,
-                         MinPersistAge
-                     ),
-                     {T2, Points2} = maybe_trim_points(
-                         T1,
-                         Points1,
-                         Interval,
-                         Count
-                     ),
-                     case oscilloscope_cache_memory:write(Id, {T2, Points2}) of
-                         timeout ->
-                             State0#st{buffered=ToProcess};
-                         ok ->
-                             folsom_metrics:notify(
-                                 {oscilloscope_cache, points_processed},
-                                 {inc, 1}
-                             ),
-                             State0#st{buffered=[]}
-                     end
+        timeout ->
+            State0#st{buffered=ToProcess};
+        {T0, Points0} ->
+            {T1, Points1} = process(
+                ToProcess,
+                T0,
+                Points0,
+                Interval,
+                Persisted,
+                MinPersistAge
+            ),
+            {T2, Points2} = maybe_trim_points(
+                T1,
+                Points1,
+                Interval,
+                Count
+            ),
+            case oscilloscope_cache_memory:write(Id, {T2, Points2}) of
+                timeout ->
+                    State0#st{buffered=ToProcess};
+                ok ->
+                    folsom_metrics:notify(
+                        {oscilloscope_cache, points_processed},
+                        {inc, 1}
+                    ),
+                    State0#st{buffered=[]}
+                end
     end,
     {noreply, State1, 0};
 handle_cast(Msg, State) ->
