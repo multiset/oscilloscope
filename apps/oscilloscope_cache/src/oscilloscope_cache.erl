@@ -93,6 +93,7 @@ init(Args) ->
         interval = Interval,
         count = Count,
         persisted = Persisted,
+        buffered = [],
         aggregation_fun = AggregationFun,
         commutator = Commutator,
         min_chunk_size = MinChunkSize,
