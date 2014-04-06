@@ -21,7 +21,8 @@ CREATE TABLE users (
     username bytea UNIQUE NOT NULL,
     port integer UNIQUE NOT NULL,
     email bytea NOT NULL,
-    password bytea NOT NULL
+    password bytea NOT NULL,
+    cert bytea
 );
 
 CREATE TABLE metrics (
