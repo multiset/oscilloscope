@@ -9,23 +9,22 @@
 start_link(Args) ->
     supervisor:start_link(?MODULE, Args).
 
-init({UserID, Name, Host}=Group) ->
+init({Name, Host}=Group) ->
     folsom_metrics:notify(
         {oscilloscope_cache, group_spawns},
         {inc, 1}
     ),
     {AF, Resolutions} = get_or_create_group_configuration(
-        UserID,
         Name,
         Host
     ),
     Specs = lists:map(fun(R) -> generate_spec(Group, AF, R) end, Resolutions),
     {ok, {{one_for_all, 10, 10}, Specs}}.
 
--spec get_or_create_group_configuration(userid(), service(), host()) ->
+-spec get_or_create_group_configuration(service(), host()) ->
     {atom(), [resolution()]}.
-get_or_create_group_configuration(UserID, Name, Host) ->
-    case oscilloscope_sql_metrics:get(UserID, Name, Host) of
+get_or_create_group_configuration(Name, Host) ->
+    case oscilloscope_sql_metrics:get(Name, Host) of
         {ok, Values} ->
             Values;
         not_found ->
@@ -34,12 +33,12 @@ get_or_create_group_configuration(UserID, Name, Host) ->
                 {inc, 1}
             ),
             {AggregationFun, Resolutions} = build_group_configuration(
-                UserID, Name, Host
+                Name, Host
             ),
             ok = oscilloscope_sql_metrics:create(
-                UserID, Name, Host, AggregationFun, Resolutions
+                Name, Host, AggregationFun, Resolutions
             ),
-            get_or_create_group_configuration(UserID, Name, Host)
+            get_or_create_group_configuration(Name, Host)
     end.
 
 -spec generate_spec(
@@ -90,13 +89,9 @@ generate_spec(Group, AggregationFun, {ResID, Interval, Count, Persisted}) ->
         permanent, 5000, worker, [oscilloscope_cache]
     }.
 
-build_group_configuration(UserID, Service, Host) ->
-    {ok, AggConfigs} = oscilloscope_sql_metrics:get_aggregation_configuration(
-        UserID
-    ),
-    {ok, ResConfigs} = oscilloscope_sql_metrics:get_resolution_configuration(
-        UserID
-    ),
+build_group_configuration(Service, Host) ->
+    {ok, AggConfigs} = oscilloscope_sql_metrics:get_aggregation_configuration(),
+    {ok, ResConfigs} = oscilloscope_sql_metrics:get_resolution_configuration(),
     AggregationFun = case find_config_match(Service, Host, AggConfigs) of
         nomatch -> get_default_aggregation_fun();
         AggMatch -> parse_aggregation_fun_match(AggMatch)

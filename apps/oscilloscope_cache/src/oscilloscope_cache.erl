@@ -3,8 +3,8 @@
 -export([
     start/0,
     stop/0,
-    process/5,
-    read/5
+    process/4,
+    read/4
 ]).
 
 -export([
@@ -43,22 +43,21 @@ start() ->
 stop() ->
     ok.
 
--spec process(userid(), service(), host(), timestamp(), float()) -> any().
-process(UserID, Name, Host, Timestamp, Value) ->
+-spec process(service(), host(), timestamp(), float()) -> any().
+process(Name, Host, Timestamp, Value) ->
     lager:debug(
-        "Processing point: ~p ~p ~p ~p ~p",
-        [UserID, Name, Host, Timestamp, Value]
+        "Processing point: ~p ~p ~p ~p",
+        [Name, Host, Timestamp, Value]
     ),
-    multicast(UserID, Name, Host, {process, [{Timestamp, Value}]}).
+    multicast(Name, Host, {process, [{Timestamp, Value}]}).
 
--spec read(userid(), service(), host(), timestamp(), timestamp()) ->
-  {ok, [{atom, any()}]}.
-read(UserID, Name, Host, From, Until) ->
+-spec read(service(), host(), timestamp(), timestamp()) -> {ok, [{_, _}]}.
+read(Name, Host, From, Until) ->
     lager:debug(
         "Processing read: ~p ~p ~p ~p ~p",
-        [UserID, Name, Host, From, Until]
+        [Name, Host, From, Until]
     ),
-    CacheMetadata = multicall(UserID, Name, Host, get_metadata),
+    CacheMetadata = multicall(Name, Host, get_metadata),
     Pid = select_pid_for_query(CacheMetadata, From),
     gen_server:call(Pid, {read, From, Until}).
 
@@ -633,16 +632,16 @@ trim_persisted_points(Persisted, Points0, Interval) ->
     Points1 = array:from_list(PointsList, null),
     {T, Points1}.
 
-multicast(UserID, Name, Host, Msg) ->
-    Pids = get_pids(UserID, Name, Host),
+multicast(Name, Host, Msg) ->
+    Pids = get_pids(Name, Host),
     lists:map(fun(P) -> gen_server:cast(P, Msg) end, Pids).
 
-multicall(UserID, Name, Host, Msg) ->
-    Pids = get_pids(UserID, Name, Host),
+multicall(Name, Host, Msg) ->
+    Pids = get_pids(Name, Host),
     lists:map(fun(P) -> {P, gen_server:call(P, Msg)} end, Pids).
 
-get_pids(UserID, Name, Host) ->
-    Group = {UserID, Name, Host},
+get_pids(Name, Host) ->
+    Group = {Name, Host},
     case oscilloscope_cache_sup:find_group(Group) of
         not_found ->
             oscilloscope_cache_sup:spawn_group(Group);
