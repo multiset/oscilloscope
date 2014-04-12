@@ -9,7 +9,7 @@
 start_link(Args) ->
     supervisor:start_link(?MODULE, Args).
 
-init({Name, Host}=Group) ->
+init({Name, Host}) ->
     folsom_metrics:notify(
         {oscilloscope_cache, group_spawns},
         {inc, 1}
@@ -18,7 +18,7 @@ init({Name, Host}=Group) ->
         Name,
         Host
     ),
-    Specs = lists:map(fun(R) -> generate_spec(Group, AF, R) end, Resolutions),
+    Specs = lists:map(fun(R) -> generate_spec(AF, R) end, Resolutions),
     {ok, {{one_for_all, 10, 10}, Specs}}.
 
 -spec get_or_create_group_configuration(service(), host()) ->
@@ -41,14 +41,9 @@ get_or_create_group_configuration(Name, Host) ->
             get_or_create_group_configuration(Name, Host)
     end.
 
--spec generate_spec(
-  group(),
-  aggregation(),
-  {resolution_id(), interval(), count(), persisted()}
-) -> child_spec().
-generate_spec(Group, AggregationFun, {ResID, Interval, Count, Persisted}) ->
+-spec generate_spec(aggregation(), {resolution_id(), interval(), count(), persisted()}) -> child_spec().
+generate_spec(AggregationFun, {ResID, Interval, Count, Persisted}) ->
     Args = {
-        Group,
         ResID,
         Interval,
         Count,

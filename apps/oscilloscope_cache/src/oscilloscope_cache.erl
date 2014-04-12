@@ -24,7 +24,6 @@
     time :: pos_integer() | undefined,
     points :: array(),
     resolution_id :: resolution_id(),
-    group :: group(),
     interval :: interval(),
     count :: count(),
     persisted :: persisted(),
@@ -62,7 +61,6 @@ start_link(Args) ->
 
 init(Args) ->
     {
-        Group,
         ResolutionId,
         Interval,
         Count,
@@ -71,8 +69,8 @@ init(Args) ->
     } = Args,
     process_flag(trap_exit, true),
     lager:info(
-        "Booting cache pid ~p for group ~p, interval ~p, count ~p",
-        [self(), Group, Interval, Count]
+        "Booting cache pid ~p for interval ~p, count ~p",
+        [self(), Interval, Count]
     ),
     folsom_metrics:notify({oscilloscope_cache, cache_inits}, {inc, 1}),
     AggregationFun = fun(Vals) ->
@@ -82,7 +80,6 @@ init(Args) ->
         time = undefined,
         points = array:new({default, null}),
         resolution_id = ResolutionId,
-        group = Group,
         interval = Interval,
         count = Count,
         persisted = Persisted,
