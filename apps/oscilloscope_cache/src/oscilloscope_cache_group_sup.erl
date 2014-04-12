@@ -47,41 +47,13 @@ get_or_create_group_configuration(Name, Host) ->
   {resolution_id(), interval(), count(), persisted()}
 ) -> child_spec().
 generate_spec(Group, AggregationFun, {ResID, Interval, Count, Persisted}) ->
-    {ok, Table} = application:get_env(oscilloscope_cache, dynamo_table),
-    {ok, Schema} = application:get_env(oscilloscope_cache, dynamo_schema),
-    {ok, Region} = application:get_env(oscilloscope_cache, dynamo_region),
-    {ok, AccessKey} = application:get_env(oscilloscope_cache, dynamo_accesskey),
-    {ok, SecretKey} = application:get_env(oscilloscope_cache, dynamo_secretkey),
-    {ok, Commutator} = commutator:init(
-        Table,
-        Schema,
-        Region,
-        AccessKey,
-        SecretKey
-    ),
-    {ok, MinChunkSize} = application:get_env(
-        oscilloscope_cache,
-        min_chunk_size
-    ),
-    {ok, MaxChunkSize} = application:get_env(
-        oscilloscope_cache,
-        max_chunk_size
-    ),
-    {ok, MinPersistAge} = application:get_env(
-        oscilloscope_cache,
-        min_persist_age
-    ),
     Args = {
         Group,
         ResID,
         Interval,
         Count,
         Persisted,
-        AggregationFun,
-        Commutator,
-        MinChunkSize,
-        MaxChunkSize,
-        MinPersistAge
+        AggregationFun
     },
     {
         ResID,

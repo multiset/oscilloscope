@@ -1,0 +1,11 @@
+{application, oscilloscope_persistence, [
+    {description, "Persistent store interactions for Oscilloscope"},
+    {vsn, git},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib
+    ]},
+    {mod, {oscilloscope_persistence_app, []}},
+    {env, []}
+]}.
