@@ -50,7 +50,6 @@ init(_Args) ->
     folsom_metrics:new_counter({oscilloscope_cache, group_spawns}),
     folsom_metrics:new_counter({oscilloscope_cache, group_creations}),
     folsom_metrics:new_counter({oscilloscope_cache, group_terminations}),
-    folsom_metrics:new_counter({oscilloscope_cache, memory_cache, timeouts}),
 
     folsom_metrics:new_histogram(
         {oscilloscope_cache, points_per_chunk, sliding},
@@ -67,22 +66,6 @@ init(_Args) ->
     ),
     folsom_metrics:new_histogram(
         {oscilloscope_cache, bytes_per_chunk, uniform}
-    ),
-    folsom_metrics:new_histogram(
-        {oscilloscope_cache, memory_cache, write, latency, sliding},
-        slide_uniform,
-        {60, 1028}
-    ),
-    folsom_metrics:new_histogram(
-        {oscilloscope_cache, memory_cache, write, latency, uniform}
-    ),
-    folsom_metrics:new_histogram(
-        {oscilloscope_cache, memory_cache, read, latency, sliding},
-        slide_uniform,
-        {60, 1028}
-    ),
-    folsom_metrics:new_histogram(
-        {oscilloscope_cache, memory_cache, read, latency, uniform}
     ),
     folsom_metrics:new_histogram(
         {oscilloscope_cache, persistent_store, read, latency, sliding},

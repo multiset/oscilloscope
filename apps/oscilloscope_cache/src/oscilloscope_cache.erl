@@ -21,12 +21,13 @@
 -include("oscilloscope_cache.hrl").
 
 -record(st, {
+    time :: pos_integer() | undefined,
+    points :: array(),
     resolution_id :: resolution_id(),
     group :: group(),
     interval :: interval(),
     count :: count(),
     persisted :: persisted(),
-    buffered :: [{pos_integer(), any()}],
     aggregation_fun :: fun(),
     commutator,
     min_chunk_size :: pos_integer(),
@@ -87,12 +88,13 @@ init(Args) ->
         erlang:apply(oscilloscope_cache_aggregations, AggregationAtom, [Vals])
     end,
     State = #st{
+        time = undefined,
+        points = array:new({default, null}),
         resolution_id = ResolutionId,
         group = Group,
         interval = Interval,
         count = Count,
         persisted = Persisted,
-        buffered = [],
         aggregation_fun = AggregationFun,
         commutator = Commutator,
         min_chunk_size = MinChunkSize,
@@ -102,27 +104,17 @@ init(Args) ->
         persisting = nil,
         vacuuming = nil
     },
-    case oscilloscope_cache_memory:read(State#st.resolution_id) of
-        not_found ->
-            %% TODO: get T0 (undefined here) from persistent store
-            folsom_metrics:notify({oscilloscope_cache, mem_inits}, {inc, 1}),
-            oscilloscope_cache_memory:write(
-                State#st.resolution_id,
-                {undefined, array:new({default, null})}
-            );
-        _ ->
-            ok
-    end,
     {ok, State}.
 
 handle_call(get_metadata, _From, State) ->
     #st{
+         time=T0,
+         points=Points,
          interval=Interval,
          count=Count,
          persisted=Persisted,
          last_touch=LastTouch
     } = State,
-    {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
     {EarliestCache, LatestCache} = case T0 of
         undefined ->
             {undefined, undefined};
@@ -151,13 +143,14 @@ handle_call(get_metadata, _From, State) ->
         {aggregation_fun, State#st.aggregation_fun}
     ],
     {reply, {ok, Metadata}, State};
-handle_call(get_cached, _From, #st{resolution_id=Id}=State) ->
-    {T, Points} = oscilloscope_cache_memory:read(Id),
+handle_call(get_cached, _From, #st{time=T, points=Points}=State) ->
     {reply, {ok, {T, array:to_list(Points)}}, State};
 handle_call({read, From0, Until0}, _From, State) when From0 > Until0 ->
     {reply, {error, temporal_inversion}, State};
 handle_call({read, From0, Until0}, _From, State) ->
     #st{
+        time=T0,
+        points=Points,
         resolution_id=Id,
         interval=Interval,
         persisted=Persisted,
@@ -165,7 +158,6 @@ handle_call({read, From0, Until0}, _From, State) ->
         commutator=Commutator
     } = State,
     folsom_metrics:notify({oscilloscope_cache, reads}, {inc, 1}),
-    {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
     {From, Until} = calculate_query_bounds(From0, Until0, Interval),
     Cached = cached_read(From, Until, Interval, AF, T0, Points),
     Data = case T0 > From of
@@ -202,51 +194,37 @@ handle_call({read, From0, Until0}, _From, State) ->
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
 
-handle_cast({process, IncomingPoints}, State0) ->
+handle_cast({process, IncomingPoints}, State) ->
     #st{
-        resolution_id=Id,
+        time=T0,
+        points=Points0,
         interval=Interval,
         count=Count,
         persisted=Persisted,
-        buffered=Buffered,
         min_persist_age=MinPersistAge
-    } = State0,
-    ToProcess = Buffered ++ IncomingPoints,
-    State1 = case oscilloscope_cache_memory:read(Id) of
-        timeout ->
-            State0#st{buffered=ToProcess};
-        {T0, Points0} ->
-            {T1, Points1} = process(
-                ToProcess,
-                T0,
-                Points0,
-                Interval,
-                Persisted,
-                MinPersistAge
-            ),
-            {T2, Points2} = maybe_trim_points(
-                T1,
-                Points1,
-                Interval,
-                Count
-            ),
-            case oscilloscope_cache_memory:write(Id, {T2, Points2}) of
-                timeout ->
-                    State0#st{buffered=ToProcess};
-                ok ->
-                    folsom_metrics:notify(
-                        {oscilloscope_cache, points_processed},
-                        {inc, 1}
-                    ),
-                    State0#st{buffered=[]}
-                end
-    end,
-    {noreply, State1, 0};
+    } = State,
+    {T1, Points1} = process(
+        IncomingPoints,
+        T0,
+        Points0,
+        Interval,
+        Persisted,
+        MinPersistAge
+    ),
+    {T2, Points2} = maybe_trim_points(
+        T1,
+        Points1,
+        Interval,
+        Count
+    ),
+    {noreply, State#st{time=T2, points=Points2}, 0};
 handle_cast(Msg, State) ->
     {stop, {unknown_cast, Msg}, State}.
 
 handle_info(timeout, #st{persisting=nil, vacuuming=nil}=State) ->
     #st{
+        time=T0,
+        points=Points,
         resolution_id=Id,
         interval=Interval,
         count=Count,
@@ -257,7 +235,6 @@ handle_info(timeout, #st{persisting=nil, vacuuming=nil}=State) ->
         max_chunk_size=MaxChunkSize,
         min_persist_age=MinPersistAge
     } = State,
-    {T0, Points} = oscilloscope_cache_memory:read(State#st.resolution_id),
     PersistIndex = erlang:trunc(array:size(Points) - MinPersistAge / Interval),
     {PersistCandidates, _} = divide_array(Points, PersistIndex),
     AggregatedPersistCandidates = lists:map(AggFun, PersistCandidates),
@@ -319,7 +296,7 @@ handle_info(timeout, State) ->
     {noreply, State};
 handle_info({'EXIT', From, ok}, #st{persisting={From, Persisting}}=State0) ->
     #st{
-        resolution_id = ResId,
+        points=Points0,
         interval = Interval,
         persisted = Persisted
     } = State0,
@@ -327,20 +304,13 @@ handle_info({'EXIT', From, ok}, #st{persisting={From, Persisting}}=State0) ->
         fun({Timestamp, _, Size}) -> {Timestamp, Size} end,
         Persisting
     ),
-    State1 = case oscilloscope_cache_memory:read(ResId) of
-        timeout ->
-            Pid = spawn_link(fun() -> timer:sleep(100), exit(ok) end),
-            State0#st{persisting={Pid, Persisting}};
-        {_T0, Points0} ->
-            {T1, Points1} = trim_persisted_points(Persisting, Points0, Interval),
-            case oscilloscope_cache_memory:write(ResId, {T1, Points1}) of
-                timeout ->
-                    Pid = spawn_link(fun() -> timer:sleep(100), exit(ok) end),
-                    State0#st{persisting={Pid, Persisting}};
-                ok ->
-                    State0#st{persisting=nil, persisted=Persisted ++ PersistRecords}
-            end
-    end,
+    {T1, Points1} = trim_persisted_points(Persisting, Points0, Interval),
+    State1 = State0#st{
+        time=T1,
+        points=Points1,
+        persisting=nil,
+        persisted=Persisted ++ PersistRecords
+    },
     {noreply, State1};
 handle_info({'EXIT', From, Reason}, #st{persisting={From, Persisting}}=State) ->
     lager:error(
