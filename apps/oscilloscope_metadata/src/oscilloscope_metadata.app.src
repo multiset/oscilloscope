@@ -1,0 +1,10 @@
+{application, oscilloscope_metadata, [
+    {description, "App for handling metric-related metadata"},
+    {vsn, git},
+    {registered, [oscilloscope_metadata_sup]},
+    {applications, [
+        kernel,
+        stdlib
+    ]},
+    {mod, {oscilloscope_metadata_app, []}}
+]}.

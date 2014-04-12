@@ -1,5 +1,6 @@
 -type host() :: binary().
 -type service() :: binary().
+-type metric_key() :: {host(), service()}.
 -type group() :: {service(), host()}.
 
 -type aggregation() :: atom().
