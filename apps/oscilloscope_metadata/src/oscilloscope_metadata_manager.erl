@@ -106,29 +106,13 @@ handle_call({get, MetricKey}, _From, _State) ->
     {ok, Reply};
 
 handle_call({get_metric_aggregation, MetricKey}, _From, _State) ->
-    Match = #metric{key=MetricKey, aggregation='$1'},
-    Reply = case ets:match_object(metrics, Match) of
-        [Aggregation] ->
-            {ok, Aggregation};
-
-        [] ->
-            not_found
-    end,
-    {ok, Reply};
+    {ok, get_metric_aggregation(MetricKey)};
 
 handle_call({get_metric_resolutions, MetricKey}, _From, _State) ->
-    Match = #resolution{key=MetricKey, interval='$1', count='$2'},
-    Reply = case ets:match_object(resolutions, Match) of
-        [] ->
-            not_found;
-        Resolutions ->
-            {ok, Resolutions}
-    end,
-    {ok, Reply};
+    {ok, get_metric_resolutions(MetricKey)};
 
 handle_call({get_metric_persists, ResolutionID}, _From, _State) ->
-    Match = #persist{key=ResolutionID, timestamp='$1', count='$2'},
-    {ok, ets:match_object(persists, Match)};
+    {ok, get_metric_persists(ResolutionID)};
 
 handle_call({insert_persisted, Id, PersistTime, Count}, _From, _State) ->
     Persist = #persist{key=Id, timestamp=PersistTime, count=Count},
@@ -159,3 +143,29 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+
+get_metric_aggregation(MetricKey) ->
+    Match = #metric{key=MetricKey, aggregation='$1'},
+    case ets:match_object(metrics, Match) of
+        [Aggregation] ->
+            {ok, Aggregation};
+
+        [] ->
+            not_found
+    end.
+
+
+get_metric_resolutions(MetricKey) ->
+    Match = #resolution{key=MetricKey, interval='$1', count='$2'},
+    case ets:match_object(resolutions, Match) of
+        [] ->
+            not_found;
+        Resolutions ->
+            {ok, Resolutions}
+    end.
+
+
+get_metric_persists(ResolutionID) ->
+    Match = #persist{key=ResolutionID, timestamp='$1', count='$2'},
+    ets:match_object(persists, Match).
