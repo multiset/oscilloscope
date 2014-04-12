@@ -36,11 +36,9 @@ init([]) ->
     ResoDb = eleveldb:open(ResoDbPath, [{create_if_missing, true}]),
     PersistDb = eleveldb:open(PersistDbPath, [{create_if_missing, true}]),
     eleveldb:fold(MetricsDb, fun(Key, Value, _Acc) ->
-        {AggFun, Agg} = binary_to_term(Value),
         Metric = #metric{
             key=binary_to_term(Key),
-            aggregation_fun=AggFun,
-            aggregation=Agg
+            aggregation=binary_to_term(Value)
         },
         ets:insert(metrics, Metric)
     end, ok, []),
@@ -71,19 +69,25 @@ init([]) ->
 
 
 handle_call({create, MetricKey, AggregationFun, Resolutions}, _From, State) ->
+    AggFunBin = term_to_binary(AggregationFun),
+    #state{metric_db=MetricDb, resolution_db=ResoDb} = State,
     Metric = #metric{
         key=MetricKey,
-        aggregation_fun=term_to_binary(AggregationFun)
+        aggregation=AggFunBin
     },
     ok = ets:insert(metrics, Metric),
+    MetricKeyBin = term_to_binary(MetricKey),
+    ok = eleveldb:put(MetricDb, MetricKeyBin, AggFunBin, []),
     Reply = lists:foreach(
         fun({Interval, Count}) ->
             Resolution = #resolution{
-                key=MetricKey,
+                key=MetricKeyBin,
                 interval=Interval,
                 count=Count
             },
-            ok = ets:insert(resolutions, Resolution)
+            ResoBin = term_to_binary({Interval, Count}),
+            ok = ets:insert(resolutions, Resolution),
+            ok = eleveldb:put(ResoDb, MetricKeyBin, ResoBin, [])
         end,
         Resolutions
     ),
@@ -114,12 +118,17 @@ handle_call({get_metric_resolutions, MetricKey}, _From, _State) ->
 handle_call({get_metric_persists, ResolutionID}, _From, _State) ->
     {ok, get_metric_persists(ResolutionID)};
 
-handle_call({insert_persisted, Id, PersistTime, Count}, _From, _State) ->
+handle_call({insert_persisted, Id, PersistTime, Count}, _From, State) ->
     Persist = #persist{key=Id, timestamp=PersistTime, count=Count},
+    IdBin = term_to_binary({Id, PersistTime}),
+    ValBin = term_to_binary(Count),
+    eleveldb:put(State#state.persist_db, IdBin, ValBin, []),
     {ok, ets:insert(persists, Persist)};
 
-handle_call({delete_persisted, Id, PersistTime}, _From, _State) ->
-    ets:delet_object(persists, #persist{key=Id, timestamp=PersistTime}),
+handle_call({delete_persisted, Id, PersistTime}, _From, State) ->
+    #state{persist_db=PersistDb} = State,
+    ok = eleveldb:delete(PersistDb, term_to_binary({Id, PersistTime}), []),
+    ets:delete_object(persists, #persist{key=Id, timestamp=PersistTime}),
     {ok, ok};
 
 handle_call({get_aggregation_configuration}, _From, _State) ->
