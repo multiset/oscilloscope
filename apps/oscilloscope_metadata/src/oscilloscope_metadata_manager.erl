@@ -26,7 +26,48 @@ start_link() ->
 
 
 init([]) ->
-    {ok, #state{}}.
+    ets:new(metrics, [{keypos, #metric.key}, named_table]),
+    ets:new(resolutions, [{keypos, #resolution.key, named_table, bag}]),
+    ets:new(persists, [{keypos, #persist.key}, named_table, bag]),
+    MetricsDbPath = application:get_env(oscilloscope_metadata, metrics_db),
+    ResoDbPath = application:get_env(oscilloscope_metadata, resolutions_db),
+    PersistDbPath = application:get_env(oscilloscope_metadata, persists_db),
+    MetricsDb = eleveldb:open(MetricsDbPath, [{create_if_missing, true}]),
+    ResoDb = eleveldb:open(ResoDbPath, [{create_if_missing, true}]),
+    PersistDb = eleveldb:open(PersistDbPath, [{create_if_missing, true}]),
+    eleveldb:fold(MetricsDb, fun(Key, Value, _Acc) ->
+        {AggFun, Agg} = binary_to_term(Value),
+        Metric = #metric{
+            key=binary_to_term(Key),
+            aggregation_fun=AggFun,
+            aggregation=Agg
+        },
+        ets:insert(metrics, Metric)
+    end, ok, []),
+    eleveldb:fold(ResoDb, fun(Key, Value, _Acc) ->
+        {Interval, Count} = binary_to_term(Value),
+        Reso = #resolution{
+            key=binary_to_term(Key),
+            interval=Interval,
+            count=Count
+        },
+        ets:insert(resolutions, Reso)
+    end, ok, []),
+    eleveldb:fold(PersistDb, fun(Key, Value, _Acc) ->
+        {Timestamp, Count} = binary_to_term(Value),
+        Persist = #persist{
+            key=binary_to_term(Key),
+            timestamp=Timestamp,
+            count=Count
+        },
+        ets:insert(persists, Persist)
+    end, ok, []),
+    State = #state{
+        metric_db=MetricsDb,
+        resolution_db=ResoDb,
+        persist_db=PersistDb
+    },
+    {ok, State}.
 
 
 handle_call({create, MetricKey, AggregationFun, Resolutions}, _From, State) ->
