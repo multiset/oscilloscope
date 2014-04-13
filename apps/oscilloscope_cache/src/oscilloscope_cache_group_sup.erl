@@ -24,7 +24,7 @@ init({Name, Host}) ->
 -spec get_or_create_group_configuration(service(), host()) ->
     {atom(), [resolution()]}.
 get_or_create_group_configuration(Name, Host) ->
-    case oscilloscope_sql_metrics:get(Name, Host) of
+    case oscilloscope_metadata_metrics:get(Name, Host) of
         {ok, Values} ->
             Values;
         not_found ->
@@ -35,7 +35,7 @@ get_or_create_group_configuration(Name, Host) ->
             {AggregationFun, Resolutions} = build_group_configuration(
                 Name, Host
             ),
-            ok = oscilloscope_sql_metrics:create(
+            ok = oscilloscope_metadata_metrics:create(
                 Name, Host, AggregationFun, Resolutions
             ),
             get_or_create_group_configuration(Name, Host)
@@ -57,8 +57,8 @@ generate_spec(AggregationFun, {ResID, Interval, Count, Persisted}) ->
     }.
 
 build_group_configuration(Service, Host) ->
-    {ok, AggConfigs} = oscilloscope_sql_metrics:get_aggregation_configuration(),
-    {ok, ResConfigs} = oscilloscope_sql_metrics:get_resolution_configuration(),
+    {ok, AggConfigs} = oscilloscope_metadata_metrics:get_aggregation_configuration(),
+    {ok, ResConfigs} = oscilloscope_metadata_metrics:get_resolution_configuration(),
     AggregationFun = case find_config_match(Service, Host, AggConfigs) of
         nomatch -> get_default_aggregation_fun();
         AggMatch -> parse_aggregation_fun_match(AggMatch)

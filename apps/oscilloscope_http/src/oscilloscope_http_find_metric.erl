@@ -34,5 +34,5 @@ allowed_methods(Req, State) ->
     {['GET'], Req, State}.
 
 to_json(Req, #st{query=Query}=State) ->
-    {ok, Metrics} = oscilloscope_sql_util:find_metrics(Query),
-    {jiffy:encode(Metrics), Req, State}.
+    % TODO: Add metric-finding capability
+    {jiffy:encode({[]}), Req, State}.
