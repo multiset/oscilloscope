@@ -1,4 +1,4 @@
--module(oscilloscope_sql_metrics).
+-module(oscilloscope_metadata_metrics).
 
 -export([
     create/3,
