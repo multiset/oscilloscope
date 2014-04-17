@@ -5,8 +5,8 @@
     get/1,
     insert_persisted/3,
     delete_persisted/2,
-    get_aggregation_configuration/1,
-    get_resolution_configuration/1
+    get_aggregation_configuration/0,
+    get_resolution_configuration/0
 ]).
 
 -include("oscilloscope_metadata.hrl").
