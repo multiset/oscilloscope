@@ -197,11 +197,15 @@ handle_cast(Msg, State) ->
 handle_info(timeout, #st{persisting=nil, vacuuming=nil}=State) ->
     #st{
         time=T,
-        points=Points
+        points=Points,
+        persisted=Persisted,
+        interval=Interval,
+        count=Count
     } = State,
     %% TODO: deal with aggregation_fun
     %% TODO: handle async return values maybe_persist
-    {Persisting, Vacuuming} = oscilloscope_persistence:maybe_persist(T, Points),
+    Persisting = oscilloscope_persistence:maybe_persist(T, Points),
+    Vacuuming = oscilloscope_persistence:maybe_vacuum(T, Persisted, Interval, Count),
     {noreply, State#st{persisting=Persisting, vacuuming=Vacuuming}};
 handle_info(timeout, State) ->
     %% Persists and/or vacuums are still outstanding
