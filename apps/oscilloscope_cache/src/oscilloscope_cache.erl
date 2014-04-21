@@ -206,15 +206,29 @@ handle_info(timeout, #st{persisting=nil, vacuuming=nil}=State) ->
     %% TODO: deal with aggregation_fun
     %% TODO: handle async return values maybe_persist
     PointsList = points_to_list(T, Points, Interval),
-    Persisting = oscilloscope_persistence:maybe_persist(Id, PointsList),
+    PersistPid = spawn_link(
+        fun() ->
+            exit(oscilloscope_persistence:maybe_persist(Id, PointsList))
+        end
+    ),
     TNow = timestamp_from_index(T, array:size(Points), Interval),
     TExpired = TNow - Interval * Count,
     VacuumCandidates = [Time || {Time, _} <- Persisted, Time < TExpired],
-    Vacuuming = oscilloscope_persistence:maybe_vacuum(Id, VacuumCandidates),
-    {noreply, State#st{persisting=Persisting, vacuuming=Vacuuming}};
+    VacuumPid = spawn_link(
+        fun() ->
+            exit(oscilloscope_persistence:maybe_vacuum(Id, VacuumCandidates))
+        end
+    ),
+    {noreply, State#st{persisting=PersistPid, vacuuming=VacuumPid}};
 handle_info(timeout, State) ->
     %% Persists and/or vacuums are still outstanding
     {noreply, State};
+handle_info({'EXIT', From, Response}, #st{persisting=From}=State) ->
+    %% TODO
+    {noreply, State#st{persisting=nil}};
+handle_info({'EXIT', From, Response}, #st{vacuuming=From}=State) ->
+    %% TODO
+    {noreply, State#st{vacuuming=nil}};
 handle_info(Msg, State) ->
     {stop, {unknown_info, Msg}, State}.
 
