@@ -43,10 +43,15 @@ get_or_create_group_configuration(Name, Host) ->
 
 -spec generate_spec(aggregation(), {resolution_id(), interval(), count(), persisted()}) -> child_spec().
 generate_spec(AggregationFun, {ResID, Interval, Count, Persisted}) ->
+    {ok, MinPersistAge} = application:get_env(
+        oscilloscope_cache,
+        min_persist_age
+    ),
     Args = {
         ResID,
         Interval,
         Count,
+        MinPersistAge,
         Persisted,
         AggregationFun
     },

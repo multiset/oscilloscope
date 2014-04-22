@@ -17,6 +17,7 @@
             {60, 1000},
             {3600, 1000}
         ]},
-        {default_aggregation_fun, avg}
+        {default_aggregation_fun, avg},
+        {min_persist_age, 300}
     ]}
 ]}.

@@ -26,6 +26,7 @@
     resolution_id :: resolution_id(),
     interval :: interval(),
     count :: count(),
+    min_persist_age :: pos_integer(),
     persisted :: persisted(),
     aggregation_fun :: fun(),
     persisting :: {pid(), list()} | nil,
@@ -64,6 +65,7 @@ init(Args) ->
         ResolutionId,
         Interval,
         Count,
+        MinPersistAge,
         Persisted,
         AggregationAtom
     } = Args,
@@ -82,6 +84,7 @@ init(Args) ->
         resolution_id = ResolutionId,
         interval = Interval,
         count = Count,
+        min_persist_age = MinPersistAge,
         persisted = Persisted,
         aggregation_fun = AggregationFun,
         persisting = nil,
@@ -200,13 +203,26 @@ handle_info(timeout, #st{persisting=nil, vacuuming=nil}=State) ->
         time=T,
         points=Points,
         persisted=Persisted,
-        aggregation_fun=AggFun,
+        aggregation_fun=AF,
         interval=Interval,
-        count=Count
+        count=Count,
+        min_persist_age=MinPersistAge
     } = State,
+    PersistIndex = erlang:trunc(array:size(Points) - MinPersistAge / Interval),
+    {PersistCandidates, _} = divide_array(Points, PersistIndex),
+    {_, AggregatedPersistCandidates} = lists:foldr(
+        fun(Values, {N, Acc}) ->
+            {N + 1, [{timestamp_from_index(T, N, Interval), AF(Values)}|Acc]}
+        end,
+        {0, []},
+        PersistCandidates
+    ),
     PersistPid = spawn_link(
         fun() ->
-            exit(oscilloscope_persistence:persist(Id, T, Points, AggFun))
+            exit(oscilloscope_persistence:persist(
+                Id,
+                AggregatedPersistCandidates
+            ))
         end
     ),
     TNow = timestamp_from_index(T, array:size(Points), Interval),
