@@ -10,11 +10,17 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init([]) ->
-    {ok, Table} = application:get_env(oscilloscope_cache, dynamo_table),
-    {ok, Schema} = application:get_env(oscilloscope_cache, dynamo_schema),
-    {ok, Region} = application:get_env(oscilloscope_cache, dynamo_region),
-    {ok, AccessKey} = application:get_env(oscilloscope_cache, dynamo_accesskey),
-    {ok, SecretKey} = application:get_env(oscilloscope_cache, dynamo_secretkey),
+    {ok, Table} = application:get_env(oscilloscope_persistence, dynamo_table),
+    {ok, Schema} = application:get_env(oscilloscope_persistence, dynamo_schema),
+    {ok, Region} = application:get_env(oscilloscope_persistence, dynamo_region),
+    {ok, AccessKey} = application:get_env(
+        oscilloscope_persistence,
+        dynamo_access_key
+    ),
+    {ok, SecretKey} = application:get_env(
+        oscilloscope_persistence,
+        dynamo_secret_key
+    ),
     {ok, Commutator} = commutator:init(
         Table,
         Schema,
@@ -23,21 +29,17 @@ init([]) ->
         SecretKey
     ),
     {ok, MinChunkSize} = application:get_env(
-        oscilloscope_cache,
+        oscilloscope_persistence,
         min_chunk_size
     ),
     {ok, MaxChunkSize} = application:get_env(
-        oscilloscope_cache,
+        oscilloscope_persistence,
         max_chunk_size
     ),
-    {ok, MinPersistAge} = application:get_env(
-        oscilloscope_cache,
-        min_persist_age
     Args = {
         Commutator,
         MinChunkSize,
         MaxChunkSize,
-        MinPersistAge
     },
     Children = [{
         oscilloscope_persistence_server,

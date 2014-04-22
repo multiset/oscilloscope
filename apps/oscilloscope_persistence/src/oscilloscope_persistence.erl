@@ -2,14 +2,14 @@
 
 -export([
     persist/2,
-    vacuum/4,
+    vacuum/2,
     read/3
 ]).
 
 -include_lib("oscilloscope/include/oscilloscope_types.hrl").
 
--spec persist(resolution_id(), timestamp(), array(), fun()) -> nil | any().
-persist(CacheId, StartTime, Points, AggFun) ->
+-spec persist(resolution_id(), [{timestamp(), number()}]) -> nil | any().
+persist(CacheId, Points) ->
     gen_server:call(
         oscilloscope_persistence_server,
         {persist, CacheId, StartTime, Points, AggFun}

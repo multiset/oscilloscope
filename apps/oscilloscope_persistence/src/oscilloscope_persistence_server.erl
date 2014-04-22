@@ -22,15 +22,14 @@
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
-init({Commutator, MinChunkSize, MaxChunkSize, MinPersistAge}) ->
+init({Commutator, MinChunkSize, MaxChunkSize}) ->
     {ok, #st{
         commutator=Commutator,
         min_chunk_size=MinChunkSize,
-        max_chunk_size=MaxChunkSize,
-        min_persist_age=MinPersistAge
+        max_chunk_size=MaxChunkSize
     }}.
 
-handle_call({persist, CacheId, T0, Points, AggFun}, _From, State) ->
+handle_call({persist, CacheId, Points}, _From, State) ->
     {reply, {ok, []}, State};
 handle_call({vacuum, CacheId, Timestamps}, _From, State) ->
     {reply, {ok, []}, State};
