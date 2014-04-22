@@ -204,8 +204,6 @@ handle_info(timeout, #st{persisting=nil, vacuuming=nil}=State) ->
         interval=Interval,
         count=Count
     } = State,
-    %% TODO: deal with aggregation_fun
-    %% TODO: handle async return values maybe_persist
     PersistPid = spawn_link(
         fun() ->
             exit(oscilloscope_persistence:persist(Id, T, Points, AggFun))
