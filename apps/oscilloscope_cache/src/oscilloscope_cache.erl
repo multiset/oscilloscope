@@ -205,10 +205,9 @@ handle_info(timeout, #st{persisting=nil, vacuuming=nil}=State) ->
     } = State,
     %% TODO: deal with aggregation_fun
     %% TODO: handle async return values maybe_persist
-    PointsList = points_to_list(T, Points, Interval),
     PersistPid = spawn_link(
         fun() ->
-            exit(oscilloscope_persistence:maybe_persist(Id, PointsList))
+            exit(oscilloscope_persistence:maybe_persist(Id, T, Points))
         end
     ),
     TNow = timestamp_from_index(T, array:size(Points), Interval),
@@ -297,17 +296,6 @@ maybe_trim_points(T, Points0, Interval, Count) ->
             {_, Points1} = divide_array(Points0, SplitIndex),
             {EarliestTime, array:from_list(Points1, null)}
     end.
-
--spec points_to_list(timestamp(), array(), interval()) ->
-  [{timestamp(), number()}].
-points_to_list(T, Points, Interval) ->
-    array:foldr(
-        fun(Index, Value, Acc) ->
-            [{timestamp_from_index(T, Index, Interval), Value}|Acc]
-        end,
-        [],
-        Points
-    ).
 
 calculate_query_bounds(From0, Until0, Interval) ->
     %% Floor the query's From to the preceding interval bound
@@ -637,14 +625,6 @@ maybe_trim_points_test() ->
     ?assertEqual(
         {120, array:from_list([c, d], null)},
         maybe_trim_points(100, array:from_list([a, b, c, d], null), 10, 2)
-    ).
-
-points_to_list_test() ->
-    ?assertEqual([], points_to_list(0, array:new({default, null}), 10)),
-    ?assertEqual([{0, 10.0}], points_to_list(0, array:from_list([10.0]), 10)),
-    ?assertEqual(
-        [{0, 10.0}, {10, 20.0}],
-        points_to_list(0, array:from_list([10.0, 20.0]), 10)
     ).
 
 trim_persisted_points_test() ->

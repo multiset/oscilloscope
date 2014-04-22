@@ -8,8 +8,8 @@
 
 -include_lib("oscilloscope/include/oscilloscope_types.hrl").
 
--spec maybe_persist(resolution_id(), [{timestamp(), number()}]) -> nil | any().
-maybe_persist(Id, Points) ->
+-spec maybe_persist(resolution_id(), timestamp(), array()) -> nil | any().
+maybe_persist(Id, StartTime, Points) ->
     %% TODO
     nil.
 
