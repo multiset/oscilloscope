@@ -1,20 +1,20 @@
 -module(oscilloscope_persistence).
 
 -export([
-    maybe_persist/2,
-    maybe_vacuum/4,
+    persist/2,
+    vacuum/4,
     read/3
 ]).
 
 -include_lib("oscilloscope/include/oscilloscope_types.hrl").
 
--spec maybe_persist(resolution_id(), timestamp(), array()) -> nil | any().
-maybe_persist(Id, StartTime, Points) ->
+-spec persist(resolution_id(), timestamp(), array()) -> nil | any().
+persist(Id, StartTime, Points) ->
     %% TODO
     nil.
 
--spec maybe_vacuum(resolution_id(), [timestamp()]) -> nil | any().
-maybe_vacuum(Id, Timestamps) ->
+-spec vacuum(resolution_id(), [timestamp()]) -> nil | any().
+vacuum(Id, Timestamps) ->
     %% TODO
     nil.
 

@@ -207,7 +207,7 @@ handle_info(timeout, #st{persisting=nil, vacuuming=nil}=State) ->
     %% TODO: handle async return values maybe_persist
     PersistPid = spawn_link(
         fun() ->
-            exit(oscilloscope_persistence:maybe_persist(Id, T, Points))
+            exit(oscilloscope_persistence:persist(Id, T, Points))
         end
     ),
     TNow = timestamp_from_index(T, array:size(Points), Interval),
@@ -215,7 +215,7 @@ handle_info(timeout, #st{persisting=nil, vacuuming=nil}=State) ->
     VacuumCandidates = [Time || {Time, _} <- Persisted, Time < TExpired],
     VacuumPid = spawn_link(
         fun() ->
-            exit(oscilloscope_persistence:maybe_vacuum(Id, VacuumCandidates))
+            exit(oscilloscope_persistence:vacuum(Id, VacuumCandidates))
         end
     ),
     {noreply, State#st{persisting=PersistPid, vacuuming=VacuumPid}};
