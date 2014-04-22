@@ -12,7 +12,7 @@
 persist(CacheId, Points) ->
     gen_server:call(
         oscilloscope_persistence_server,
-        {persist, CacheId, StartTime, Points, AggFun}
+        {persist, CacheId, Points}
     ).
 
 -spec vacuum(resolution_id(), [timestamp()]) -> nil | any().

@@ -39,7 +39,7 @@ init([]) ->
     Args = {
         Commutator,
         MinChunkSize,
-        MaxChunkSize,
+        MaxChunkSize
     },
     Children = [{
         oscilloscope_persistence_server,
