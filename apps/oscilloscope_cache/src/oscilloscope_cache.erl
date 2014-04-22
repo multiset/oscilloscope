@@ -200,6 +200,7 @@ handle_info(timeout, #st{persisting=nil, vacuuming=nil}=State) ->
         time=T,
         points=Points,
         persisted=Persisted,
+        aggregation_fun=AggFun,
         interval=Interval,
         count=Count
     } = State,
@@ -207,7 +208,7 @@ handle_info(timeout, #st{persisting=nil, vacuuming=nil}=State) ->
     %% TODO: handle async return values maybe_persist
     PersistPid = spawn_link(
         fun() ->
-            exit(oscilloscope_persistence:persist(Id, T, Points))
+            exit(oscilloscope_persistence:persist(Id, T, Points, AggFun))
         end
     ),
     TNow = timestamp_from_index(T, array:size(Points), Interval),

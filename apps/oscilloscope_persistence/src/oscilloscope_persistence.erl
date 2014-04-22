@@ -8,11 +8,11 @@
 
 -include_lib("oscilloscope/include/oscilloscope_types.hrl").
 
--spec persist(resolution_id(), timestamp(), array()) -> nil | any().
-persist(CacheId, StartTime, Points) ->
+-spec persist(resolution_id(), timestamp(), array(), fun()) -> nil | any().
+persist(CacheId, StartTime, Points, AggFun) ->
     gen_server:call(
         oscilloscope_persistence_server,
-        {persist, CacheId, StartTime, Points}
+        {persist, CacheId, StartTime, Points, AggFun}
     ).
 
 -spec vacuum(resolution_id(), [timestamp()]) -> nil | any().

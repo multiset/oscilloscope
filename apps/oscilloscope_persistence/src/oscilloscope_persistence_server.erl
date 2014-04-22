@@ -30,7 +30,7 @@ init({Commutator, MinChunkSize, MaxChunkSize, MinPersistAge}) ->
         min_persist_age=MinPersistAge
     }}.
 
-handle_call({persist, CacheId, T0, Points}, _From, State) ->
+handle_call({persist, CacheId, T0, Points, AggFun}, _From, State) ->
     {reply, {ok, []}, State};
 handle_call({vacuum, CacheId, Timestamps}, _From, State) ->
     {reply, {ok, []}, State};
