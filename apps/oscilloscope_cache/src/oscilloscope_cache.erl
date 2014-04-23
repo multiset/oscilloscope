@@ -94,11 +94,11 @@ init(Args) ->
 
 handle_call(get_metadata, _From, State) ->
     #st{
-         time=T0,
-         points=Points,
-         interval=Interval,
-         count=Count,
-         persisted=Persisted
+        time=T0,
+        points=Points,
+        interval=Interval,
+        count=Count,
+        persisted=Persisted
     } = State,
     {EarliestCache, LatestCache} = case T0 of
         undefined ->
@@ -282,7 +282,10 @@ select_pid_for_query(Metadata, From) ->
                 true -> P;
                 false -> Acc
             end
-    end, Pid0, Ms).
+        end,
+        Pid0,
+        Ms
+    ).
 
 process([], T, Points, _Interval, _Persisted) ->
     {T, Points};
@@ -361,7 +364,9 @@ range_from_array(Start, End, AF, Acc0, Points) ->
                [AF(Vs)|Acc];
            (_I, _Vs, Acc) ->
                Acc
-        end, Acc0, Points
+        end,
+        Acc0,
+        Points
     )).
 
 prepend_point(Index, Value, Points) ->
