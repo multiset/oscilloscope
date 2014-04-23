@@ -238,8 +238,23 @@ handle_info(timeout, State) ->
     %% Persists and/or vacuums are still outstanding
     {noreply, State};
 handle_info({'EXIT', From, Response}, #st{persisting=From}=State) ->
-    %% TODO
-    {noreply, State#st{persisting=nil}};
+    #st{
+        resolution_id = Id,
+        time = T0,
+        points = Points0,
+        interval = Interval
+    } = State,
+    {T1, Points1} = case Response of
+        {ok, Persisted} ->
+            trim_persisted_points(Persisted, Points0, Interval);
+        Error ->
+            lager:error(
+                "Persist attempt for cache id ~p failed: ~p",
+                [Id, Error]
+            ),
+            {T0, Points0}
+    end,
+    {noreply, State#st{time=T1, points=Points1, persisting=nil}};
 handle_info({'EXIT', From, Response}, #st{vacuuming=From}=State) ->
     %% TODO
     {noreply, State#st{vacuuming=nil}};
@@ -406,10 +421,10 @@ calculate_endtime(T, Ts) ->
     end.
 
 trim_persisted_points(Persisted, Points0, Interval) ->
-    {Timestamp, _, Size} = lists:last(Persisted),
+    {Timestamp, Size} = lists:last(Persisted),
     T = Timestamp + (Interval * Size),
     TotalPersisted = lists:foldl(
-        fun({_, _, S}, Acc) -> S + Acc end,
+        fun({_, S}, Acc) -> S + Acc end,
         0,
         Persisted
     ),
@@ -644,7 +659,7 @@ maybe_trim_points_test() ->
 
 trim_persisted_points_test() ->
     Points = array:from_list([[20.0] || _ <- lists:seq(1, 10)], null),
-    Persisted = [{10, foo, 1}, {20, bar, 1}, {30, baz, 1}],
+    Persisted = [{10, 1}, {20, 1}, {30, 1}],
     Interval = 10,
     Output = {40, array:from_list([[20.0] || _ <- lists:seq(1, 7)], null)},
     ?assertEqual(Output, trim_persisted_points(Persisted, Points, Interval)).
