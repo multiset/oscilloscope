@@ -256,8 +256,24 @@ handle_info({'EXIT', From, Response}, #st{persisting=From}=State) ->
     end,
     {noreply, State#st{time=T1, points=Points1, persisting=nil}};
 handle_info({'EXIT', From, Response}, #st{vacuuming=From}=State) ->
-    %% TODO
-    {noreply, State#st{vacuuming=nil}};
+    #st{
+        resolution_id = Id,
+        persisted = Persisted0
+    } = State,
+    Persisted1 = case Response of
+        {ok, Vacuumed} ->
+            lists:filter(
+                fun({Time, _}) -> lists:member(Time, Vacuumed) =:= false end,
+                Persisted0
+            );
+        Error ->
+            lager:error(
+                "Vacuum attempt for cache id ~p failed: ~p",
+                [Id, Error]
+            ),
+            Persisted0
+    end,
+    {noreply, State#st{persisted=Persisted1, vacuuming=nil}};
 handle_info(Msg, State) ->
     {stop, {unknown_info, Msg}, State}.
 
