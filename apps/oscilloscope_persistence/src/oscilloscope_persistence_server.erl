@@ -53,7 +53,22 @@ handle_call({persist, CacheId, Points}, _From, State) ->
     ),
     {reply, {ok, Persisted}, State};
 handle_call({vacuum, CacheId, Timestamps}, _From, State) ->
-    {reply, {ok, []}, State};
+    #st{
+        commutator = Commutator
+    } = State,
+    Persists = lists:map(
+        fun(T) ->
+            {T, commutator:delete_item(Commutator, [CacheId, T])}
+        end,
+        Timestamps
+    ),
+    Successes = lists:filtermap(
+        fun({T, Res}) ->
+            Res =:= {ok, true} andalso T
+        end,
+        Persists
+    ),
+    {reply, {ok, Successes}, State};
 handle_call({read, CacheId, StartTime, EndTime}, _From, State) ->
     {reply, {ok, []}, State};
 handle_call(Msg, _From, State) ->
