@@ -70,7 +70,17 @@ handle_call({vacuum, CacheId, Timestamps}, _From, State) ->
     ),
     {reply, {ok, Successes}, State};
 handle_call({read, CacheId, StartTime, EndTime}, _From, State) ->
-    {reply, {ok, []}, State};
+    #st{
+        commutator = Commutator
+    } = State,
+    {ok, Rows} = commutator:query(
+        Commutator,
+        [{<<"id">>, equals, [CacheId]}, {<<"t">>, between, [StartTime, EndTime]}]
+    ),
+    Points = lists:flatten(
+        [?VALDECODE(proplists:get_value(<<"v">>, I)) || I <- Rows]
+    ),
+    {reply, {ok, Points}, State};
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
 
