@@ -30,7 +30,8 @@
     persisted :: persisted(),
     aggregation_fun :: fun(),
     persisting :: {pid(), list()} | nil,
-    vacuuming :: {pid(), list()} | nil
+    vacuuming :: {pid(), list()} | nil,
+    readers :: [pid()]
 }).
 
 start() ->
@@ -88,7 +89,8 @@ init(Args) ->
         persisted = Persisted,
         aggregation_fun = AggregationFun,
         persisting = nil,
-        vacuuming = nil
+        vacuuming = nil,
+        readers = []
     },
     {ok, State}.
 
@@ -131,44 +133,9 @@ handle_call(get_cached, _From, #st{time=T, points=Points}=State) ->
     {reply, {ok, {T, array:to_list(Points)}}, State};
 handle_call({read, From0, Until0}, _From, State) when From0 > Until0 ->
     {reply, {error, temporal_inversion}, State};
-handle_call({read, From0, Until0}, _From, State) ->
-    #st{
-        time=T0,
-        points=Points,
-        resolution_id=Id,
-        interval=Interval,
-        persisted=Persisted,
-        aggregation_fun=AF
-    } = State,
-    folsom_metrics:notify({oscilloscope_cache, reads}, {inc, 1}),
-    {From, Until} = calculate_query_bounds(From0, Until0, Interval),
-    Cached = cached_read(From, Until, Interval, AF, T0, Points),
-    Data = case T0 > From of
-        false ->
-            Cached;
-        true ->
-            Disk = persistent_read(
-                Id,
-                From,
-                Until,
-                Interval,
-                Persisted
-            ),
-            DiskCount = length(Disk),
-            CachedNonNull = length(Cached) - DiskCount,
-            Disk ++ lists:sublist(Cached, DiskCount + 1, CachedNonNull)
-    end,
-    folsom_metrics:notify(
-        {oscilloscope_cache, points_read},
-        {inc, length(Data)}
-    ),
-    Reply = [
-        {from, From},
-        {until, Until},
-        {interval, Interval},
-        {datapoints, Data}
-    ],
-    {reply, {ok, Reply}, State};
+handle_call({read, From, Until}, Client, #st{readers=Readers}=State) ->
+    ReaderPid = spawn_link(fun() -> async_read(From, Until, Client, State) end),
+    {noreply, State#st{readers=[ReaderPid|Readers]}};
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
 
@@ -274,6 +241,21 @@ handle_info({'EXIT', From, Response}, #st{vacuuming=From}=State) ->
             Persisted0
     end,
     {noreply, State#st{persisted=Persisted1, vacuuming=nil}};
+handle_info({'EXIT', From, Response}, State) ->
+    #st{
+        resolution_id = Id,
+        readers = Readers
+    } = State,
+    Readers1 = case lists:delete(From, Readers) of
+        Readers ->
+            lager:error(
+                "Cache ~p received EXIT from unknown linked pid", [Id]
+            ),
+            Readers;
+        Else ->
+            Else
+    end,
+    {noreply, State#st{readers=Readers1}};
 handle_info(Msg, State) ->
     {stop, {unknown_info, Msg}, State}.
 
@@ -282,6 +264,45 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+async_read(From0, Until0, Client, #st{}=State) ->
+    #st{
+        time=T0,
+        points=Points,
+        resolution_id=Id,
+        interval=Interval,
+        persisted=Persisted,
+        aggregation_fun=AF
+    } = State,
+    folsom_metrics:notify({oscilloscope_cache, reads}, {inc, 1}),
+    {From, Until} = calculate_query_bounds(From0, Until0, Interval),
+    Cached = cached_read(From, Until, Interval, AF, T0, Points),
+    Data = case T0 > From of
+        false ->
+            Cached;
+        true ->
+            Disk = persistent_read(
+                Id,
+                From,
+                Until,
+                Interval,
+                Persisted
+            ),
+            DiskCount = length(Disk),
+            CachedNonNull = length(Cached) - DiskCount,
+            Disk ++ lists:sublist(Cached, DiskCount + 1, CachedNonNull)
+    end,
+    folsom_metrics:notify(
+        {oscilloscope_cache, points_read},
+        {inc, length(Data)}
+    ),
+    Reply = [
+        {from, From},
+        {until, Until},
+        {interval, Interval},
+        {datapoints, Data}
+    ],
+    gen_server:reply(Client, {ok, Reply}).
 
 select_pid_for_query(Metadata, From) ->
     [{Pid0, _}|Ms] = lists:sort(
