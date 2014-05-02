@@ -27,6 +27,7 @@ dialyze:
 
 release: deps compile
 	@./rebar generate
+	@cd rel; tar -cvzf oscilloscope.tar.gz oscilloscope
 
 fuck-it-all:
 	@echo -n "Killing all the postgres... "
