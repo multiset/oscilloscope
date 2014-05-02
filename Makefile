@@ -27,7 +27,6 @@ dialyze:
 
 release: deps compile
 	@./rebar generate
-	@erl -pa deps/*/ebin -pa apps/*/ebin -s oscilloscope_sql -s oscilloscope_cache -s oscilloscope_net -s inets -s crypto -s mochiweb -s webmachine -s oscilloscope_http -s erp
 
 fuck-it-all:
 	@echo -n "Killing all the postgres... "
