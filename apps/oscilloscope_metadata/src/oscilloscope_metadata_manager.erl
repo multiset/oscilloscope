@@ -24,12 +24,12 @@ init([]) ->
 
 
 handle_call({create, MetricKey, AggregationFun, Resolutions}, _From, _State) ->
-    {ok, 1} = oscilloscope_sql:named(
+    {ok, 1} = oscilloscope_metadata:named(
         insert_metric, [MetricKey, term_to_binary(AggregationFun)]
     ),
     lists:foreach(
         fun({Interval, Count}) ->
-            {ok, 1} = oscilloscope_sql:named(
+            {ok, 1} = oscilloscope_metadata:named(
                 insert_resolution,
                 [MetricKey, Interval, Count]
             )
@@ -64,13 +64,13 @@ handle_call({get_metric_persists, ResolutionID}, _From, _State) ->
     {ok, get_metric_persists(ResolutionID)};
 
 handle_call({insert_persisted, Id, PersistTime, Count}, _From, _State) ->
-    {ok, _Count} = oscilloscope_sql:named(
+    {ok, _Count} = oscilloscope_metadata:named(
         insert_persist, [Id, PersistTime, Count]
     ),
     ok;
 
 handle_call({delete_persisted, Id, PersistTime}, _From, _State) ->
-    {ok, _Count} = oscilloscope_sql:named(
+    {ok, _Count} = oscilloscope_metadata:named(
         delete_persist, [Id, PersistTime]
     ),
     ok;
@@ -99,7 +99,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 get_metric_aggregation(MetricKey) ->
-    {ok, _AggSchema, AggRows} = oscilloscope_sql:named(
+    {ok, _AggSchema, AggRows} = oscilloscope_metadata:named(
         select_metric_aggregation, [MetricKey]
     ),
     case AggRows of
@@ -110,14 +110,14 @@ get_metric_aggregation(MetricKey) ->
     end.
 
 get_metric_resolutions(MetricKey) ->
-    {ok, _Schema, Resolutions} = oscilloscope_sql:named(
+    {ok, _Schema, Resolutions} = oscilloscope_metadata:named(
         select_metric_resolutions, [MetricKey]
     ),
     {ok, Resolutions}.
 
 
 get_metric_persists(ResolutionID) ->
-    {ok, _Schema, Persists} = oscilloscope_sql:named(
+    {ok, _Schema, Persists} = oscilloscope_metadata:named(
         select_metric_persists, [ResolutionID]
     ),
     {ok, Persists}.
