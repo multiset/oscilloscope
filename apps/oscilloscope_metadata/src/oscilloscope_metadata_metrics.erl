@@ -5,6 +5,9 @@
     get/1,
     insert_persisted/3,
     delete_persisted/2,
+    get_metric_aggregation/1,
+    get_metric_resolutions/1,
+    get_metric_persists/1,
     get_aggregation_configuration/0,
     get_resolution_configuration/0
 ]).
@@ -56,6 +59,7 @@ insert_persisted(Id, PersistTime, Count) ->
         [{insert_persisted, Id, PersistTime, Count}]
     ).
 
+-spec delete_persisted(resolution_id(), timestamp()) -> ok.
 delete_persisted(Id, PersistTime) ->
     gen_server:call(
         oscilloscope_metadata_manager,

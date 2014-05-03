@@ -5,11 +5,19 @@
 
 -export([init/1]).
 
--define(CHILD_SPEC(Mod), [{Mod, {Mod, start_link, []},
-                           permanent, brutal_kill, worker, [Mod]}]).
-
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init([]) ->
-    {ok, {{one_for_one, 5, 10}, ?CHILD_SPEC(oscilloscope_metadata_manager)}}.
+    folsom_metrics:new_counter({oscilloscope_sql, worker_inits}),
+    folsom_metrics:new_counter({oscilloscope_sql, adhoc_queries}),
+    folsom_metrics:new_counter({oscilloscope_sql, named_queries}),
+    {ok, Pools} = application:get_env(oscilloscope_sql, pools),
+    PoolSpecs = lists:map(fun({Name, SizeArgs, WorkerArgs}) ->
+        PoolArgs = [
+            {name, {local, Name}},
+            {worker_module, oscilloscope_sql_worker}
+        ] ++ SizeArgs,
+        poolboy:child_spec(Name, PoolArgs, WorkerArgs)
+    end, Pools),
+    {ok, {{one_for_one, 5, 10}, PoolSpecs}}.
