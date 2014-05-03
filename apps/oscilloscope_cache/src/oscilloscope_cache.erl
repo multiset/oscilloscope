@@ -29,8 +29,8 @@
     min_persist_age :: pos_integer(),
     persisted :: persisted(),
     aggregation_fun :: fun(),
-    persisting :: {pid(), list()} | nil,
-    vacuuming :: {pid(), list()} | nil,
+    persisting :: pid() | nil,
+    vacuuming :: pid() | nil,
     readers :: [pid()]
 }).
 

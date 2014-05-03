@@ -7,8 +7,7 @@
     {registered, [oscilloscope_cache_sup]},
     {applications, [
         kernel,
-        stdlib,
-        erp
+        stdlib
     ]},
     {mod, {oscilloscope_cache_app, []}},
     {env, [
