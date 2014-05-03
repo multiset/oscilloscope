@@ -18,58 +18,83 @@
 
 -spec create(metric_key(), aggregation(), [resolution()]) -> ok.
 create(MetricKey, AggregationFun, Resolutions) ->
-    gen_server:call(
-        oscilloscope_metadata_manager,
-        [{create, MetricKey, AggregationFun, Resolutions}]
+    {ok, 1} = oscilloscope_metadata:named(
+        insert_metric, [MetricKey, term_to_binary(AggregationFun)]
+    ),
+    lists:foreach(
+        fun({Interval, Count}) ->
+            {ok, 1} = oscilloscope_metadata:named(
+                insert_resolution,
+                [MetricKey, Interval, Count]
+            )
+        end,
+        Resolutions
     ).
 
 -spec get(metric_key()) ->
   {ok, {aggregation(), [resolution()]}} | not_found.
 get(MetricKey) ->
-    gen_server:call(oscilloscope_metadata_manager, [{get, MetricKey}]).
+    case get_metric_aggregation(MetricKey) of
+        not_found ->
+            not_found;
+        {ok, Aggregation} ->
+            {ok, Resolutions} = get_metric_resolutions(MetricKey),
+            Resolutions1 = lists:map(
+                fun({ResID, Interval, Count}) ->
+                    {ok, Persisted} = get_metric_persists(ResID),
+                    {ResID, Interval, Count, Persisted} end,
+                Resolutions
+            ),
+            {ok, {Aggregation, Resolutions1}}
+    end.
 
 -spec get_metric_aggregation(metric_key()) ->
   {ok, aggregation()} | not_found.
 get_metric_aggregation(MetricKey) ->
-    gen_server:call(
-        oscilloscope_metadata_manager,
-        [{get_metric_aggregation, MetricKey}]
-    ).
+    {ok, _AggSchema, AggRows} = oscilloscope_metadata:named(
+        select_metric_aggregation, [MetricKey]
+    ),
+    case AggRows of
+        [{AggBin}] ->
+            {ok, binary_to_term(AggBin)};
+        [] ->
+            not_found
+    end.
 
 -spec get_metric_resolutions(metric_key()) ->
   {ok, [resolution()]}.
 get_metric_resolutions(MetricKey) ->
-    gen_server:call(
-        oscilloscope_metadata_manager,
-        [{get_metric_resolutions, MetricKey}]
-    ).
+    {ok, _Schema, Resolutions} = oscilloscope_metadata:named(
+        select_metric_resolutions, [MetricKey]
+    ),
+    {ok, Resolutions}.
 
 -spec get_metric_persists(resolution_id()) ->
   {ok, [{timestamp(), pos_integer()}]}.
 get_metric_persists(ResolutionID) ->
-    gen_server:call(
-        oscilloscope_metadata_manager,
-        [{get_metric_persists, ResolutionID}]
-    ).
+    {ok, _Schema, Persists} = oscilloscope_metadata:named(
+        select_metric_persists, [ResolutionID]
+    ),
+    {ok, Persists}.
 
 -spec insert_persisted(resolution_id(), timestamp(), pos_integer()) -> ok.
 insert_persisted(Id, PersistTime, Count) ->
-    gen_server:call(
-        oscilloscope_metadata_manager,
-        [{insert_persisted, Id, PersistTime, Count}]
-    ).
+    {ok, _Count} = oscilloscope_metadata:named(
+        insert_persist, [Id, PersistTime, Count]
+    ),
+    ok.
 
 -spec delete_persisted(resolution_id(), timestamp()) -> ok.
 delete_persisted(Id, PersistTime) ->
-    gen_server:call(
-        oscilloscope_metadata_manager,
-        [{delete_persisted, Id, PersistTime}]
-    ).
+    {ok, _Count} = oscilloscope_metadata:named(
+        delete_persist, [Id, PersistTime]
+    ),
+    ok.
 
 -spec get_aggregation_configuration() -> {ok, [resolution()]}.
 get_aggregation_configuration() ->
-    gen_server:call(oscilloscope_metadata_manager, []).
+    {ok, []}.
 
 -spec get_resolution_configuration() -> {ok, [resolution()]}.
 get_resolution_configuration() ->
-    gen_server:call(oscilloscope_metadata_manager, []).
+    {ok, []}.
