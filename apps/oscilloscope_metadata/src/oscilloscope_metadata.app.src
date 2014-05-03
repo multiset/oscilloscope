@@ -6,5 +6,16 @@
         kernel,
         stdlib
     ]},
-    {mod, {oscilloscope_metadata_app, []}}
+    {mod, {oscilloscope_metadata_app, []}},
+    {env, [
+        {pools, [
+            {pgsql, [{size, 10}, {max_overflow, 20}], []}
+        ]},
+        {hostname, {127, 0, 0, 1}},
+        {port, 5432},
+        {database, "oscilloscope"},
+        {username, "oscilloscope"},
+        {password, ""},
+        {statements, "statements.config"}
+    ]}
 ]}.
