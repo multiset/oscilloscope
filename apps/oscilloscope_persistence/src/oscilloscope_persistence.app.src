@@ -11,7 +11,7 @@
     ]},
     {mod, {oscilloscope_persistence_app, []}},
     {env, [
-        {dynamo_table, <<"oscilloscope-test-2">>},
+        {dynamo_table, <<"oscilloscope-test-4">>},
         {dynamo_schema, [
             {<<"id">>, number},
             {<<"t">>, number},
