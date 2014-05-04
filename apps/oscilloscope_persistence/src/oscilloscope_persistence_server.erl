@@ -16,6 +16,7 @@
 
 -define(VALENCODE(V), zlib:compress(term_to_binary(V))).
 -define(VALDECODE(V), binary_to_term(zlib:uncompress(V))).
+-define(GUESS, 150).
 
 -record(st, {
     commutator,
@@ -100,23 +101,59 @@ code_change(_OldVsn, State, _Extra) ->
   [{timestamp(), binary(), integer()}].
 chunkify(Points, ChunkMin, ChunkMax) ->
     {Timestamps, Values} = lists:unzip(Points),
-    chunkify(Timestamps, Values, [], ChunkMin, ChunkMax, 0, []).
+    chunkify(Timestamps, Values, [], ChunkMin, ChunkMax, 0, [], length(Values)).
 
-chunkify(Timestamps, Values, Excess, Min, Max, Count, Chunks) ->
+chunkify(Timestamps, Values, Excess, Min, Max, Count, Chunks, Guess) ->
     %% N.B.: This will OOM your BEAM if Min < ?VALENCODE([]).
     %% As of this comment, ?VALENCODE([]) == 11
+    lager:error("Chunking ~p, ~p with guess ~p", [Values, Excess, Guess]),
     Chunk = ?VALENCODE(Values),
+    PointsChunked = length(Values),
     case byte_size(Chunk) of
         Size when Size > Max ->
-            {Left, Right} = bisect(Values),
-            chunkify(Timestamps, Left, Right ++ Excess, Min, Max, Count, Chunks);
+            %% The chunk was too big. Generate a new guess based on the
+            %% average compressed point size, shrink Values as appropriate, and
+            %% try again.
+            BytesPerPoint = Size / PointsChunked,
+            ChunkGuess = Max / BytesPerPoint,
+            %% Always decrement the guess by at least one
+            NewGuess = min(
+                Guess - 1,
+                round(Guess - (Guess - ChunkGuess) / 2)
+            ),
+            %% Never try to split past the end of the list
+            {Left, Right} = lists:split(min(NewGuess, PointsChunked), Values),
+            chunkify(
+                Timestamps,
+                Left,
+                Right ++ Excess,
+                Min,
+                Max,
+                Count,
+                Chunks,
+                NewGuess
+            );
         Size when Size < Min ->
             case Excess of
                 [] ->
                     %% No more points to try - bail out with what we've chunked.
                     lists:reverse(Chunks);
                 _ ->
-                    {Left, Right} = bisect(Excess),
+                    %% The chunk was too small. Generate a new guess based on
+                    %% new data, pull points from the front of Excess, and try
+                    %% again.
+                    BytesPerPoint = Size / PointsChunked,
+                    ChunkGuess = Min / BytesPerPoint,
+                    %% Always increment the Guess by at least one
+                    NewGuess = max(
+                        Guess + 1,
+                        round(Guess + (ChunkGuess - Guess) / 2)
+                    ),
+                    %% Never try to split past the end of the list
+                    {Left, Right} = lists:split(
+                        min((NewGuess + 1) - PointsChunked, length(Excess)),
+                        Excess
+                    ),
                     chunkify(
                         Timestamps,
                         Values ++ Left,
@@ -124,27 +161,26 @@ chunkify(Timestamps, Values, Excess, Min, Max, Count, Chunks) ->
                         Min,
                         Max,
                         Count,
-                        Chunks
+                        Chunks,
+                        NewGuess
                     )
             end;
         Size ->
-            PointsChunked = length(Values),
             {_, Timestamps1} = lists:split(PointsChunked, Timestamps),
             Chunks1 = [{hd(Timestamps), Chunk, PointsChunked}|Chunks],
+            %% Never try to split past the end of the list
+            {Left, Right} = lists:split(min(Guess, length(Excess)), Excess),
             chunkify(
                 Timestamps1,
-                Excess,
-                [],
+                Left,
+                Right,
                 Min,
                 Max,
                 Count + PointsChunked,
-                Chunks1
+                Chunks1,
+                Guess
             )
     end.
-
-bisect(List) ->
-    lists:split(round(length(List) / 2), List).
-
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -172,13 +208,13 @@ chunkify_test() ->
     Input1 = [{I * 10, float(I)} || I <- lists:seq(0, 21)],
     Chunked1 = chunkify(
         Input1,
-        50,
-        75
+        30,
+        65
     ),
     Decoded1 = lists:map(fun({I, V, _}) -> {I, ?VALDECODE(V)} end, Chunked1),
     ?assertEqual([
-        {0, [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]},
-        {110, [11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0]}
+        {0, [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0]},
+        {120, [12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0]}
     ], Decoded1).
 
 -endif.
