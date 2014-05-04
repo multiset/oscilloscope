@@ -1,12 +1,20 @@
 -module(oscilloscope_persistence).
 
 -export([
+    start/0,
+    stop/0,
     persist/2,
     vacuum/2,
     read/3
 ]).
 
 -include_lib("oscilloscope/include/oscilloscope_types.hrl").
+
+start() ->
+    application:start(oscilloscope_persistence).
+
+stop() ->
+    application:stop(oscilloscope_persistence).
 
 -spec persist(resolution_id(), [{timestamp(), number()}]) -> nil | any().
 persist(CacheId, Points) ->
