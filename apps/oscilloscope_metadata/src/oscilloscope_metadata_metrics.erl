@@ -5,9 +5,6 @@
     get/1,
     insert_persisted/3,
     delete_persisted/2,
-    get_metric_aggregation/1,
-    get_metric_resolutions/1,
-    get_metric_persists/1,
     get_aggregation_configuration/0,
     get_resolution_configuration/0
 ]).
@@ -16,66 +13,44 @@
 
 -include_lib("oscilloscope/include/oscilloscope_types.hrl").
 
--spec create(metric_key(), aggregation(), [resolution()]) -> ok.
-create(MetricKey, AggregationFun, Resolutions) ->
+-spec create(metric(), aggregation(), [{interval(), count()}]) -> ok.
+create({OwnerId, [{<<"graphite">>, Name}]}, AggregationFun, Resolutions) ->
+    %% TODO: Transaction this
     {ok, 1} = oscilloscope_metadata:named(
-        insert_metric, [MetricKey, term_to_binary(AggregationFun)]
+        insert_metric, [OwnerId, Name, term_to_binary(AggregationFun)]
     ),
     lists:foreach(
         fun({Interval, Count}) ->
             {ok, 1} = oscilloscope_metadata:named(
                 insert_resolution,
-                [MetricKey, Interval, Count]
+                [OwnerId, Name, Interval, Count]
             )
         end,
         Resolutions
     ).
 
--spec get(metric_key()) ->
-  {ok, {aggregation(), [resolution()]}} | not_found.
-get(MetricKey) ->
-    case get_metric_aggregation(MetricKey) of
-        not_found ->
-            not_found;
-        {ok, Aggregation} ->
-            {ok, Resolutions} = get_metric_resolutions(MetricKey),
-            Resolutions1 = lists:map(
-                fun({ResID, Interval, Count}) ->
-                    {ok, Persisted} = get_metric_persists(ResID),
-                    {ResID, Interval, Count, Persisted} end,
-                Resolutions
-            ),
-            {ok, {Aggregation, Resolutions1}}
-    end.
-
--spec get_metric_aggregation(metric_key()) ->
-  {ok, aggregation()} | not_found.
-get_metric_aggregation(MetricKey) ->
-    {ok, _AggSchema, AggRows} = oscilloscope_metadata:named(
-        select_metric_aggregation, [MetricKey]
+-spec get(metric()) ->
+  {ok, {metric_id(), aggregation(), [resolution()]}} | not_found.
+get({OwnerId, [{<<"graphite">>, Name}]}) ->
+    {ok, _, Rows} = oscilloscope_metadata:named(
+        select_metric, [OwnerId, Name]
     ),
-    case AggRows of
-        [{AggBin}] ->
-            {ok, binary_to_term(AggBin)};
+    case Rows of
         [] ->
-            not_found
+            not_found;
+        [{MetricId, AggBin, _, _, _}|_] ->
+            Resolutions = lists:foldl(
+                fun({_, _, ResolutionId, Interval, Count}, Acc) ->
+                    {ok, _, Persists} = oscilloscope_metadata:named(
+                        select_resolution_persists, [ResolutionId]
+                    ),
+                    [{ResolutionId, Interval, Count, Persists}|Acc]
+                end,
+                [],
+                Rows
+            ),
+            {ok, {MetricId, binary_to_term(AggBin), Resolutions}}
     end.
-
--spec get_metric_resolutions(metric_key()) ->
-  {ok, [resolution()]}.
-get_metric_resolutions(MetricKey) ->
-    {ok, _Schema, Resolutions} = oscilloscope_metadata:named(
-        select_metric_resolutions, [MetricKey]
-    ),
-    {ok, Resolutions}.
-
--spec get_metric_persists(resolution_id()) ->
-  {ok, [{timestamp(), pos_integer()}]}.
-get_metric_persists(ResolutionID) ->
-    {ok, _Schema, Persists} = oscilloscope_metadata:named(
-        select_metric_persists, [ResolutionID]
-    ),
-    {ok, Persists}.
 
 -spec insert_persisted(resolution_id(), timestamp(), pos_integer()) -> ok.
 insert_persisted(Id, PersistTime, Count) ->

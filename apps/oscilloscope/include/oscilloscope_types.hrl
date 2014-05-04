@@ -1,7 +1,6 @@
--type host() :: binary().
--type service() :: binary().
--type metric_key() :: {host(), service()}.
--type group() :: {service(), host()}.
+-type owner_id() :: pos_integer().
+-type metric() :: {owner_id(), [{binary(), binary()}]}.
+-type metric_id() :: pos_integer().
 
 -type aggregation() :: atom().
 
@@ -10,7 +9,7 @@
 -type count() :: pos_integer().
 -type timestamp() :: pos_integer().
 -type persisted() :: [{timestamp(), pos_integer()}].
--type resolution() :: {resolution_id(), interval(), count()}.
+-type resolution() :: {resolution_id(), interval(), count(), persisted()}.
 
 %% TODO: import proper type from supervisor
 -type child_spec() :: any().

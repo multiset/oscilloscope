@@ -3,8 +3,8 @@
 -export([
     start/0,
     stop/0,
-    process/4,
-    read/4
+    process/3,
+    read/3
 ]).
 
 -export([
@@ -23,6 +23,7 @@
 -record(st, {
     time :: pos_integer() | undefined,
     points :: array(),
+    metric_id :: metric_id(),
     resolution_id :: resolution_id(),
     interval :: interval(),
     count :: count(),
@@ -40,21 +41,21 @@ start() ->
 stop() ->
     ok.
 
--spec process(service(), host(), timestamp(), float()) -> any().
-process(Name, Host, Timestamp, Value) ->
+-spec process(metric(), timestamp(), float()) -> any().
+process(Metric, Timestamp, Value) ->
     lager:debug(
-        "Processing point: ~p ~p ~p ~p",
-        [Name, Host, Timestamp, Value]
+        "Processing point: ~p ~p ~p",
+        [Metric, Timestamp, Value]
     ),
-    multicast(Name, Host, {process, [{Timestamp, Value}]}).
+    multicast(Metric, {process, [{Timestamp, Value}]}).
 
--spec read(service(), host(), timestamp(), timestamp()) -> {ok, [{_, _}]}.
-read(Name, Host, From, Until) ->
+-spec read(metric(), timestamp(), timestamp()) -> {ok, [{_, _}]}.
+read(Metric, From, Until) ->
     lager:debug(
-        "Processing read: ~p ~p ~p ~p ~p",
-        [Name, Host, From, Until]
+        "Processing read: ~p ~p ~p",
+        [Metric, From, Until]
     ),
-    CacheMetadata = multicall(Name, Host, get_metadata),
+    CacheMetadata = multicall(Metric, get_metadata),
     Pid = select_pid_for_query(CacheMetadata, From),
     gen_server:call(Pid, {read, From, Until}).
 
@@ -63,6 +64,7 @@ start_link(Args) ->
 
 init(Args) ->
     {
+        MetricId,
         ResolutionId,
         Interval,
         Count,
@@ -82,6 +84,7 @@ init(Args) ->
     State = #st{
         time = undefined,
         points = array:new({default, null}),
+        metric_id = MetricId,
         resolution_id = ResolutionId,
         interval = Interval,
         count = Count,
@@ -474,19 +477,18 @@ trim_persisted_points(Persisted, Points0, Interval) ->
     Points1 = array:from_list(PointsList, null),
     {T, Points1}.
 
-multicast(Name, Host, Msg) ->
-    Pids = get_pids(Name, Host),
+multicast(Metric, Msg) ->
+    Pids = get_pids(Metric),
     lists:map(fun(P) -> gen_server:cast(P, Msg) end, Pids).
 
-multicall(Name, Host, Msg) ->
-    Pids = get_pids(Name, Host),
+multicall(Metric, Msg) ->
+    Pids = get_pids(Metric),
     lists:map(fun(P) -> {P, gen_server:call(P, Msg)} end, Pids).
 
-get_pids(Name, Host) ->
-    Group = {Name, Host},
-    case oscilloscope_cache_sup:find_group(Group) of
+get_pids(Metric) ->
+    case oscilloscope_cache_sup:find_group(Metric) of
         not_found ->
-            oscilloscope_cache_sup:spawn_group(Group);
+            oscilloscope_cache_sup:spawn_group(Metric);
         Pids ->
             Pids
     end.

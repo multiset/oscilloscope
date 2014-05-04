@@ -9,19 +9,19 @@
 start_link(Args) ->
     supervisor:start_link(?MODULE, Args).
 
-init(Key) ->
+init(Metric) ->
     folsom_metrics:notify(
         {oscilloscope_cache, group_spawns},
         {inc, 1}
     ),
-    {AF, Resolutions} = get_or_create_group_configuration(Key),
-    Specs = lists:map(fun(R) -> generate_spec(AF, R) end, Resolutions),
+    {Id, AF, Resolutions} = get_or_create_group_configuration(Metric),
+    Specs = lists:map(fun(R) -> generate_spec(Id, AF, R) end, Resolutions),
     {ok, {{one_for_all, 10, 10}, Specs}}.
 
 -spec get_or_create_group_configuration(any()) ->
     {atom(), [resolution()]}.
-get_or_create_group_configuration(Key) ->
-    case oscilloscope_metadata_metrics:get(Key) of
+get_or_create_group_configuration(Metric) ->
+    case oscilloscope_metadata_metrics:get(Metric) of
         {ok, Values} ->
             Values;
         not_found ->
@@ -30,22 +30,23 @@ get_or_create_group_configuration(Key) ->
                 {inc, 1}
             ),
             {AggregationFun, Resolutions} = build_group_configuration(
-                Key
+                Metric
             ),
             ok = oscilloscope_metadata_metrics:create(
-                Key, AggregationFun, Resolutions
+                Metric, AggregationFun, Resolutions
             ),
-            get_or_create_group_configuration(Key)
+            get_or_create_group_configuration(Metric)
     end.
 
--spec generate_spec(aggregation(), {resolution_id(), interval(), count(), persisted()}) -> child_spec().
-generate_spec(AggregationFun, {ResID, Interval, Count, Persisted}) ->
+-spec generate_spec(metric_id(), aggregation(), {resolution_id(), interval(), count(), persisted()}) -> child_spec().
+generate_spec(MetricId, AggregationFun, {ResId, Interval, Count, Persisted}) ->
     {ok, MinPersistAge} = application:get_env(
         oscilloscope_cache,
         min_persist_age
     ),
     Args = {
-        ResID,
+        MetricId,
+        ResId,
         Interval,
         Count,
         MinPersistAge,
@@ -53,23 +54,23 @@ generate_spec(AggregationFun, {ResID, Interval, Count, Persisted}) ->
         AggregationFun
     },
     {
-        ResID,
+        {MetricId, ResId},
         {oscilloscope_cache, start_link, [Args]},
         permanent, 5000, worker, [oscilloscope_cache]
     }.
 
-build_group_configuration(Key) ->
+build_group_configuration(Metric) ->
     {ok, AggConfigs} = oscilloscope_metadata_metrics:get_aggregation_configuration(),
     {ok, ResConfigs} = oscilloscope_metadata_metrics:get_resolution_configuration(),
-    AggregationFun = case find_config_match(Key, AggConfigs) of
+    AggregationFun = case find_config_match(Metric, AggConfigs) of
         nomatch -> get_default_aggregation_fun()
     end,
-    Resolutions = case find_config_match(Key, ResConfigs) of
+    Resolutions = case find_config_match(Metric, ResConfigs) of
         nomatch -> get_default_resolutions()
     end,
     {AggregationFun, Resolutions}.
 
-find_config_match(_Key, _Configs) ->
+find_config_match(_Metric, _Configs) ->
     %% TODO
     nomatch.
 

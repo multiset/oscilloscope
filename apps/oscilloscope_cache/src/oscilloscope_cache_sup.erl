@@ -5,29 +5,29 @@
 -export([spawn_group/1, terminate_group/1, find_group/1, list_groups/0]).
 -export([start_link/0, init/1]).
 
-spawn_group(Group) ->
-    GroupSpec = {
-        Group,
-        {oscilloscope_cache_group_sup, start_link, [Group]},
+spawn_group(Metric) ->
+    MetricSpec = {
+        Metric,
+        {oscilloscope_cache_group_sup, start_link, [Metric]},
         temporary, 5000, supervisor, [oscilloscope_cache_group_sup]
     },
-    {ok, Pid} = supervisor:start_child(?MODULE, GroupSpec),
-    GroupChildren = supervisor:which_children(Pid),
-    lists:map(fun({_, P, _, _}) -> P end, GroupChildren).
+    {ok, Pid} = supervisor:start_child(?MODULE, MetricSpec),
+    MetricChildren = supervisor:which_children(Pid),
+    lists:map(fun({_, P, _, _}) -> P end, MetricChildren).
 
-terminate_group(Group) ->
+terminate_group(Metric) ->
     folsom_metrics:notify({oscilloscope_cache, group_terminations}, {inc, 1}),
-    supervisor:terminate_child(oscilloscope_cache_sup, Group).
+    supervisor:terminate_child(oscilloscope_cache_sup, Metric).
 
-find_group(Group) ->
+find_group(Metric) ->
     Children = supervisor:which_children(?MODULE),
-    Match = lists:filter(fun({Id, _, _, _}) -> Id =:= Group end, Children),
+    Match = lists:filter(fun({Id, _, _, _}) -> Id =:= Metric end, Children),
     case Match of
         [] ->
             not_found;
-        [{Group, Pid, _, _}] ->
-            GroupChildren = supervisor:which_children(Pid),
-            lists:map(fun({_, P, _, _}) -> P end, GroupChildren)
+        [{Metric, Pid, _, _}] ->
+            MetricChildren = supervisor:which_children(Pid),
+            lists:map(fun({_, P, _, _}) -> P end, MetricChildren)
     end.
 
 list_groups() ->
