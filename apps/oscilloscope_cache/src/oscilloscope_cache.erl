@@ -187,22 +187,32 @@ handle_info(timeout, #st{persisting=nil, vacuuming=nil}=State) ->
         {0, []},
         PersistCandidates
     ),
-    PersistPid = spawn_link(
-        fun() ->
-            exit(oscilloscope_persistence:persist(
-                Id,
-                AggregatedPersistCandidates
-            ))
-        end
-    ),
+    PersistPid = case AggregatedPersistCandidates of
+        [] ->
+            nil;
+        _ ->
+            spawn_link(
+                fun() ->
+                    exit(oscilloscope_persistence:persist(
+                        Id,
+                        AggregatedPersistCandidates
+                    ))
+                end
+            )
+    end,
     TNow = timestamp_from_index(T, array:size(Points), Interval),
     TExpired = TNow - Interval * Count,
     VacuumCandidates = [Time || {Time, _} <- Persisted, Time < TExpired],
-    VacuumPid = spawn_link(
-        fun() ->
-            exit(oscilloscope_persistence:vacuum(Id, VacuumCandidates))
-        end
-    ),
+    VacuumPid = case VacuumCandidates of
+        [] ->
+            nil;
+        _ ->
+            spawn_link(
+                fun() ->
+                    exit(oscilloscope_persistence:vacuum(Id, VacuumCandidates))
+                end
+            )
+    end,
     {noreply, State#st{persisting=PersistPid, vacuuming=VacuumPid}};
 handle_info(timeout, State) ->
     %% Persists and/or vacuums are still outstanding
@@ -215,6 +225,8 @@ handle_info({'EXIT', From, Response}, #st{persisting=From}=State) ->
         interval = Interval
     } = State,
     {T1, Points1} = case Response of
+        {ok, []} ->
+            {T0, Points0};
         {ok, Persisted} ->
             trim_persisted_points(Persisted, Points0, Interval);
         Error ->
