@@ -337,10 +337,10 @@ process([P|Ps], T0, Points0, Interval, Persisted) ->
     %% we'll never try to overwrite a previously-persisted index.
     LastPersist = case Persisted of
         [] ->
-            0;
+            -1;
         Persisted ->
-            {LastPersistTime, _LastPersistCount} = lists:last(Persisted),
-            LastPersistTime
+            {LastPersistTime, LastPersistCount} = lists:last(Persisted),
+            LastPersistTime + Interval * LastPersistCount
     end,
     {T1, Points1} = case {Timestamp1 > LastPersist, T0} of
         {false, _} ->
@@ -358,6 +358,8 @@ process([P|Ps], T0, Points0, Interval, Persisted) ->
     end,
     process(Ps, T1, Points1, Interval, Persisted).
 
+maybe_trim_points(undefined, Points, _Interval, _Count) ->
+    {undefined, Points};
 maybe_trim_points(T, Points0, Interval, Count) ->
     LatestTime = T + (array:size(Points0) - 1) * Interval,
     EarliestTime = LatestTime - Interval * (Count - 1), % Inclusive
