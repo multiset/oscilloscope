@@ -270,7 +270,8 @@ handle_info({'EXIT', From, Response}, State) ->
     Readers1 = case lists:delete(From, Readers) of
         Readers ->
             lager:error(
-                "Cache ~p received EXIT from unknown linked pid", [Id]
+                "Cache ~p received EXIT: ~p from unknown linked pid",
+                [Id, Response]
             ),
             Readers;
         Else ->
