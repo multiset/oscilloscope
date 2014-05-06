@@ -20,19 +20,22 @@ stop() ->
 persist(CacheId, Points) ->
     gen_server:call(
         oscilloscope_persistence_server,
-        {persist, CacheId, Points}
+        {persist, CacheId, Points},
+        60000
     ).
 
 -spec vacuum(resolution_id(), [timestamp()]) -> nil | any().
 vacuum(CacheId, Timestamps) ->
     gen_server:call(
         oscilloscope_persistence_server,
-        {vacuum, CacheId, Timestamps}
+        {vacuum, CacheId, Timestamps},
+        60000
     ).
 
 -spec read(resolution_id(), pos_integer(), pos_integer()) -> {ok, list()}.
 read(CacheId, StartTime, EndTime) ->
     gen_server:call(
         oscilloscope_persistence_server,
-        {read, CacheId, StartTime, EndTime}
+        {read, CacheId, StartTime, EndTime},
+        10000
     ).
