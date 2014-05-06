@@ -416,7 +416,7 @@ cached_read(From, Until, Interval, AF, T, Points) when T =< Until ->
 cached_read(From, Until, Interval, _AF, _T, _Points) ->
     %% There's either no data in the cache, or the full dataset is in the
     %% persistent store
-    PointCount = erlang:trunc((Until - From) / Interval),
+    PointCount = ((Until - From) div Interval) + 1,
     lists:duplicate(PointCount, null).
 
 range_from_array(Start, End, AF, Acc0, Points) ->
@@ -463,8 +463,8 @@ persistent_read(Id, From, Until, Interval, Persisted) ->
     EndTime = calculate_endtime(Until, Persisted),
     {ok, Points} = oscilloscope_persistence:read(Id, StartTime, EndTime),
     StartIndex = (From - StartTime) div Interval,
-    EndIndex = (Until - EndTime) div Interval,
-    lists:sublist(Points, StartIndex, EndIndex - StartIndex + 1).
+    Count = ((Until - From) div Interval) + 1,
+    lists:sublist(Points, StartIndex + 1, Count).
 
 calculate_starttime(T, Ts) ->
     {Earlier, Later} = lists:partition(fun({T1, _C}) -> T1 =< T end, Ts),
