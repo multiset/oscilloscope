@@ -217,26 +217,32 @@ handle_info(timeout, #st{persisting=nil, vacuuming=nil}=State) ->
 handle_info(timeout, State) ->
     %% Persists and/or vacuums are still outstanding
     {noreply, State};
-handle_info({'EXIT', From, Response}, #st{persisting=From}=State) ->
+handle_info({'EXIT', From, Response}, #st{persisting=From}=State0) ->
     #st{
         resolution_id = Id,
         time = T0,
         points = Points0,
+        persisted = Persisted0,
         interval = Interval
-    } = State,
-    {T1, Points1} = case Response of
+    } = State0,
+    {T1, Points1, Persisted1} = case Response of
         {ok, []} ->
-            {T0, Points0};
-        {ok, Persisted} ->
-            trim_persisted_points(Persisted, Points0, Interval);
+            {T0, Points0, Persisted0};
+        {ok, Success} ->
+            insert_persist_records(Id, Success),
+            {T, P} = trim_persisted_points(Success, Points0, Interval),
+            {T, P, Persisted0 ++ Success};
         Error ->
             lager:error(
                 "Persist attempt for cache id ~p failed: ~p",
                 [Id, Error]
             ),
-            {T0, Points0}
+            {T0, Points0, Persisted0}
     end,
-    {noreply, State#st{time=T1, points=Points1, persisting=nil}};
+    State1 = State0#st{
+        time=T1, points=Points1, persisted=Persisted1, persisting=nil
+    },
+    {noreply, State1};
 handle_info({'EXIT', From, Response}, #st{vacuuming=From}=State) ->
     #st{
         resolution_id = Id,
@@ -478,6 +484,16 @@ calculate_endtime(T, Ts) ->
             {Time, _Count} = hd(Later),
             Time
     end.
+
+insert_persist_records(_ResolutionId, []) ->
+    ok;
+insert_persist_records(ResolutionId, [{Timestamp, Size}|Persisted]) ->
+    ok = oscilloscope_metadata_metrics:insert_persisted(
+        ResolutionId,
+        Timestamp,
+        Size
+    ),
+    insert_persist_records(ResolutionId, Persisted).
 
 trim_persisted_points(Persisted, Points0, Interval) ->
     {Timestamp, Size} = lists:last(Persisted),
