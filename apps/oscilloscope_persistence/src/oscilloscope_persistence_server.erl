@@ -42,12 +42,17 @@ handle_call({persist, CacheId, Points}, _From, State) ->
         max_chunk_size = MaxChunkSize
     } = State,
     Chunks = chunkify(Points, MinChunkSize, MaxChunkSize),
+    lager:debug(
+        "Got chunks ~p for cache ~p, attempting to persist",
+        [Chunks, CacheId]
+    ),
     Persisted = lists:map(
         fun({Timestamp, Value, Size}) ->
             {ok, true} = commutator:put_item(
                 Commutator,
                 [CacheId, Timestamp, Value]
             ),
+            lager:debug("Persist attempt successful for cache ~p", [CacheId]),
             {Timestamp, Size}
         end,
         Chunks
