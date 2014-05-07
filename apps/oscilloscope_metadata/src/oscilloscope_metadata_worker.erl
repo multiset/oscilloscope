@@ -1,4 +1,4 @@
--module(oscilloscope_sql_worker).
+-module(oscilloscope_metadata_worker).
 -behaviour(gen_server).
 -behaviour(poolboy_worker).
 
@@ -21,21 +21,21 @@ start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
 
 init(_) ->
-    folsom_metrics:notify({oscilloscope_sql, worker_inits}, {inc, 1}),
-    {ok, Hostname} = application:get_env(oscilloscope_sql, hostname),
-    {ok, Port} = application:get_env(oscilloscope_sql, port),
-    {ok, Database} = application:get_env(oscilloscope_sql, database),
-    {ok, Username} = application:get_env(oscilloscope_sql, username),
-    {ok, Password} = application:get_env(oscilloscope_sql, password),
+    folsom_metrics:notify({oscilloscope_metadata, worker_inits}, {inc, 1}),
+    {ok, Hostname} = application:get_env(oscilloscope_metadata, hostname),
+    {ok, Port} = application:get_env(oscilloscope_metadata, port),
+    {ok, Database} = application:get_env(oscilloscope_metadata, database),
+    {ok, Username} = application:get_env(oscilloscope_metadata, username),
+    {ok, Password} = application:get_env(oscilloscope_metadata, password),
     {ok, C} = pgsql:connect(
         Hostname,
         Username,
         Password,
         [{port, Port}, {database, Database}]
     ),
-    {ok, StatementFile} = application:get_env(oscilloscope_sql, statements),
+    {ok, StatementFile} = application:get_env(oscilloscope_metadata, statements),
     StatementPath = filename:join([
-        code:lib_dir(oscilloscope_sql),
+        code:lib_dir(oscilloscope_metadata),
         "priv",
         StatementFile
     ]),

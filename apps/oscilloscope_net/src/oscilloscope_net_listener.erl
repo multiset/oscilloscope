@@ -1,10 +1,10 @@
--module(oscilloscope_net_user).
+-module(oscilloscope_net_listener).
 
 -export([start/2]).
 
-start(UserID, Port) ->
+start(OwnerId, Port) ->
     {ok, Pid} = ranch:start_listener(
-        UserID,
+        OwnerId,
         10,
         ranch_tcp,
         [{port, Port}],

@@ -15,6 +15,9 @@ SET default_with_oids = false;
 
 CREATE TYPE metric_perms AS ENUM ('r', 'w', 'rw');
 
+CREATE TABLE owners (
+    id serial PRIMARY KEY
+);
 
 CREATE TABLE users (
     id serial PRIMARY KEY,
@@ -27,11 +30,10 @@ CREATE TABLE users (
 
 CREATE TABLE metrics (
     id serial PRIMARY KEY,
-    user_id integer NOT NULL REFERENCES users(id),
+    owner_id integer NOT NULL REFERENCES owners(id),
     name bytea NOT NULL,
-    host bytea NOT NULL,
     aggregation bytea NOT NULL,
-    UNIQUE(user_id, name, host, aggregation)
+    UNIQUE(owner_id, name, aggregation)
 );
 
 CREATE TABLE resolutions (

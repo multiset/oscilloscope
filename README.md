@@ -104,10 +104,9 @@ can read data, retrieve metadata, and configure their usage.
 `oscilloscope_net` provides the interfaces through which data is inserted to
 Oscilloscope. These interfaces are implemented as Cowboy workers.
 
-### oscilloscope_sql
+### oscilloscope_metadata
 
-`oscilloscope_sql` manages metric metadata persistence in PostgreSQL. The DB
-schema and common queries are both in `priv/`.
+`oscilloscope_metadata` manages metric metadata persistence in LevelDB.
 
 ### oscilloscope_cache
 

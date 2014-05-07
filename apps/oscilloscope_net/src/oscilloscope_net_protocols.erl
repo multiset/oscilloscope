@@ -15,7 +15,7 @@ graphite_int(Bin, Acc) ->
                 Value = binary_to_number(ValueBin),
                 % Timestamp can't be a float!
                 Timestamp = list_to_integer(binary_to_list(TimestampBin)),
-                [{Metric, Value, Timestamp}|Acc]
+                [{[{<<"graphite">>, Metric}], Timestamp, Value}|Acc]
             catch error:badarg -> Acc
             end,
             graphite_int(Rest, Acc1)

@@ -1,12 +1,12 @@
-{application, oscilloscope_sql, [
-    {description, "Oscilloscope SQL persistence"},
+{application, oscilloscope_metadata, [
+    {description, "App for handling metric-related metadata"},
     {vsn, git},
-    {registered, [oscilloscope_sql_sup]},
+    {registered, [oscilloscope_metadata_sup]},
     {applications, [
         kernel,
         stdlib
     ]},
-    {mod, {oscilloscope_sql_app, []}},
+    {mod, {oscilloscope_metadata_app, []}},
     {env, [
         {pools, [
             {pgsql, [{size, 10}, {max_overflow, 20}], []}
