@@ -75,18 +75,29 @@ handle_call({vacuum, CacheId, Timestamps}, _From, State) ->
         Persists
     ),
     {reply, {ok, Successes}, State};
-handle_call({read, CacheId, StartTime, EndTime}, _From, State) ->
+handle_call({read, Resolution, From0, Until0}, _From, State) ->
     #st{
         commutator = Commutator
     } = State,
-    {ok, Rows} = commutator:query(
-        Commutator,
-        [{<<"id">>, equals, [CacheId]}, {<<"t">>, between, [StartTime, EndTime]}]
-    ),
-    Points = lists:flatten(
-        [?VALDECODE(proplists:get_value(<<"v">>, I)) || I <- Rows]
-    ),
-    {reply, {ok, Points}, State};
+    {ID, Interval, _Count, Persisted} = Resolution,
+    {From, Until, Points} = case calculate_starttime(From0, Persisted) of
+        not_found ->
+            {From0, From0, []};
+        From1 ->
+            Until1 = calculate_endtime(Until0, Persisted),
+            {ok, Rows} = commutator:query(
+                Commutator,
+                [
+                    {<<"id">>, equals, [ID]},
+                    {<<"t">>, between, [From1, Until1]}
+                ]
+            ),
+            Read = lists:flatten(
+                [?VALDECODE(proplists:get_value(<<"v">>, I)) || I <- Rows]
+            ),
+            {From1, From1 + (Interval * length(Read)), Read}
+    end,
+    {reply, {ok, {From, Until, Resolution, Points}}, State};
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
 
@@ -170,7 +181,7 @@ chunkify(Timestamps, Values, Excess, Min, Max, Count, Chunks, Guess) ->
                         NewGuess
                     )
             end;
-        Size ->
+        _Size ->
             {_, Timestamps1} = lists:split(PointsChunked, Timestamps),
             Chunks1 = [{hd(Timestamps), Chunk, PointsChunked}|Chunks],
             %% Never try to split past the end of the list
@@ -185,6 +196,24 @@ chunkify(Timestamps, Values, Excess, Min, Max, Count, Chunks, Guess) ->
                 Chunks1,
                 Guess
             )
+    end.
+
+calculate_starttime(T, Ts) ->
+    case lists:partition(fun({T1, _C}) -> T1 =< T end, Ts) of
+        {[], []} ->
+            not_found;
+        {[], [{Time, _Count}|_]} ->
+            Time;
+        {Earlier, _} ->
+            {Time, _Count} = lists:last(Earlier),
+            Time
+    end.
+
+calculate_endtime(T, Ts) ->
+    case lists:partition(fun({T1, _C}) -> T1 >= T end, Ts) of
+        {[], _} -> T;
+        {[{Time, _Count}|_], _} ->
+            Time
     end.
 
 -ifdef(TEST).
@@ -222,4 +251,13 @@ chunkify_test() ->
         {120, [12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0]}
     ], Decoded1).
 
+calculate_starttime_test() ->
+    ?assertEqual(2, calculate_starttime(3, [{2, 2}, {4, 2}, {6, 2}, {8, 2}])),
+    ?assertEqual(2, calculate_starttime(1, [{2, 2}, {4, 2}, {6, 2}, {8, 2}])).
+
+calculate_endtime_test() ->
+    ?assertEqual(4, calculate_endtime(3, [{2, 2}, {4, 2}, {6, 2}, {8, 2}])),
+    ?assertEqual(9, calculate_endtime(9, [{2, 2}, {4, 2}, {6, 2}, {8, 2}])).
+
 -endif.
+

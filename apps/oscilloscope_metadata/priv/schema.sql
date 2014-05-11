@@ -31,9 +31,9 @@ CREATE TABLE users (
 CREATE TABLE metrics (
     id serial PRIMARY KEY,
     owner_id integer NOT NULL REFERENCES owners(id),
-    name bytea NOT NULL,
+    props bytea NOT NULL,
     aggregation bytea NOT NULL,
-    UNIQUE(owner_id, name, aggregation)
+    UNIQUE(owner_id, props, aggregation)
 );
 
 CREATE TABLE resolutions (

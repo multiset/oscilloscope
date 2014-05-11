@@ -1,4 +1,4 @@
--module(oscilloscope_cache_util).
+-module(oscilloscope_util).
 -export([parse_resolution/1]).
 
 parse_resolution(ResolutionString) ->

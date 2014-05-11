@@ -8,6 +8,21 @@ deps:
 compile:
 	@./rebar compile
 
+rel: deps compile
+	./rebar generate
+
+devrel: dev1 dev2 dev3
+
+dev1 dev2 dev3:
+	mkdir -p dev
+	(cd rel && ../rebar generate target_dir=../dev/$@ overlay_vars=vars/$@.config)
+
+devclean:
+	rm -rf dev
+
+relclean:
+	rm -rf rel/oscilloscope
+
 run:
 	@erl -smp enable -pa deps/*/ebin -pa apps/*/ebin -s folsom -s lager -s oscilloscope_net -s oscilloscope_metadata -s inets -s crypto -s mochiweb -s webmachine -s oscilloscope_cache -s ibrowse -s oscilloscope_http -s oscilloscope_net -s oscilloscope_persistence
 

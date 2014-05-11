@@ -1,12 +1,14 @@
-{application, oscilloscope,
- [
-  {description, ""},
-  {vsn, "1"},
-  {registered, []},
-  {applications, [
-                  kernel,
-                  stdlib
-                 ]},
-  {mod, { oscilloscope_app, []}},
-  {env, []}
- ]}.
+{application, oscilloscope, [
+    {description, "A distributed time-series data store"},
+    {vsn, git},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib,
+        riak_core
+    ]},
+    {mod, {oscilloscope_app, []}},
+    {env, [
+        {min_persist_age, 300}
+    ]}
+]}.
