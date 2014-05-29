@@ -9,9 +9,7 @@
     create/1,
     find/1,
     aggregation/1,
-    resolutions/1,
-    insert_persisted/3,
-    delete_persisted/2
+    resolutions/1
 ]).
 
 -export_type([meta/0]).
@@ -85,22 +83,6 @@ find({OwnerID, Props}) ->
             ],
             {ok, Meta}
     end.
-
-%% TODO: move to _resolution.erl
-insert_persisted(Resolution, Timestamp, Count) ->
-    {ID, _, _, _} = Resolution,
-    {ok, _Count} = oscilloscope_metadata_sql:named(
-        insert_persist, [ID, Timestamp, Count]
-    ),
-    ok.
-
-%% TODO: move to _resolution.erl
-delete_persisted(Resolution, Timestamp) ->
-    {ID, _, _, _} = Resolution,
-    {ok, _Count} = oscilloscope_metadata_sql:named(
-        delete_persist, [ID, Timestamp]
-    ),
-    ok.
 
 aggregation(Meta) ->
     proplists:get_value(aggregation, Meta).

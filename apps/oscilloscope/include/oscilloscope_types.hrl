@@ -9,9 +9,13 @@
 -type count() :: pos_integer().
 -type timestamp() :: pos_integer().
 -type persisted() :: [{timestamp(), pos_integer()}].
--type resolution() :: {resolution_id(), interval(), count(), persisted()}.
 
--type read() :: {timestamp(), timestamp(), resolution(), [number()]}.
+-type read() :: {
+    timestamp(),
+    timestamp(),
+    oscilloscope_metadata_resolution:resolution(),
+    [number()]
+}.
 
 %% TODO: import proper type from supervisor
 -type child_spec() :: any().

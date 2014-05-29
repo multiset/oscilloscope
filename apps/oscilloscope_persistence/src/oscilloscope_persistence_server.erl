@@ -41,7 +41,7 @@ handle_call({persist, Resolution, Points}, _From, State) ->
         min_chunk_size = MinChunkSize,
         max_chunk_size = MaxChunkSize
     } = State,
-    {ResolutionID, _, _, _} = Resolution,
+    ResolutionID = oscilloscope_metadata_resolution:id(Resolution),
     Chunks = chunkify(Points, MinChunkSize, MaxChunkSize),
     lager:debug(
         "Got chunks ~p for cache ~p, attempting to persist",
@@ -53,7 +53,7 @@ handle_call({persist, Resolution, Points}, _From, State) ->
                 Commutator,
                 [ResolutionID, Timestamp, Value]
             ),
-            ok = oscilloscope_metadata:insert_persisted(
+            ok = oscilloscope_metadata_resolution:insert_persist(
                 Resolution,
                 Timestamp,
                 Size
@@ -71,11 +71,11 @@ handle_call({vacuum, Resolution, Timestamps}, _From, State) ->
     #st{
         commutator = Commutator
     } = State,
-    {ResolutionID, _, _, _} = Resolution,
+    ResolutionID = oscilloscope_metadata_resolution:id(Resolution),
     Vacuums = lists:map(
         fun(T) ->
             {ok, true} = commutator:delete_item(Commutator, [ResolutionID, T]),
-            ok = oscilloscope_metadata:delete_persisted(ResolutionID, T),
+            ok = oscilloscope_metadata_resolution:delete_persist(Resolution, T),
             T
         end,
         Timestamps

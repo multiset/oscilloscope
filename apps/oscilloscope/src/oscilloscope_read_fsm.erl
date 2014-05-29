@@ -36,7 +36,7 @@
     replies :: [read() | not_found],
     reply :: any(),
     req_id :: integer(),
-    resolution :: resolution(),
+    resolution :: oscilloscope_metadata_resolution:resolution(),
     sender :: pid(),
     until :: timestamp()
 }).
@@ -141,10 +141,11 @@ merge_reads(timeout, State) ->
         meta=Meta,
         cache_read=CRead,
         persistent_read=PRead,
-        resolution={_ID, Interval, _Count, _Persisted}=Resolution
+        resolution=Resolution
     } = State,
     {CFrom, CUntil, Resolution, CData} = CRead,
     {PFrom, PUntil, Resolution, PData} = PRead,
+    Interval = oscilloscope_metadata_resolution:interval(Resolution),
     Gap = lists:duplicate((CFrom - PUntil) div Interval, null),
     Reply = [
         {meta, Meta},
