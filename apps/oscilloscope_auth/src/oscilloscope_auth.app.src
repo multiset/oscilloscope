@@ -1,0 +1,11 @@
+{application, oscilloscope_auth, [
+    {description, ""},
+    {vsn, git},
+    {registered, [oscilloscope_auth_sup]},
+    {applications, [
+        kernel,
+        stdlib
+    ]},
+    {mod, {oscilloscope_auth_app, []}},
+    {env, []}
+]}.

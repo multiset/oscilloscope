@@ -12,28 +12,61 @@ SET default_tablespace = '';
 
 SET default_with_oids = false;
 
-
-CREATE TYPE metric_perms AS ENUM ('r', 'w', 'rw');
-
 CREATE TABLE owners (
     id serial PRIMARY KEY
 );
 
 CREATE TABLE users (
     id serial PRIMARY KEY,
-    username bytea UNIQUE NOT NULL,
-    port integer UNIQUE NOT NULL,
+    owner_id integer NOT NULL REFERENCES owners(id),
     email bytea NOT NULL,
-    password bytea NOT NULL,
-    cert bytea
+    password bytea NOT NULL
+);
+
+CREATE TABLE orgs (
+    id serial PRIMARY KEY,
+    name bytea UNIQUE NOT NULL
+);
+
+CREATE TABLE org_members (
+    org_id integer NOT NULL REFERENCES orgs(id),
+    user_id integer NOT NULL REFERENCES users(id)
+);
+
+CREATE TABLE teams (
+    id serial PRIMARY KEY,
+    name bytea NOT NULL,
+    org_id integer NOT NULL REFERENCES orgs(id)
+);
+
+CREATE TABLE team_members (
+    team_id integer NOT NULL REFERENCES teams(id),
+    user_id integer NOT NULL REFERENCES users(id)
 );
 
 CREATE TABLE metrics (
     id serial PRIMARY KEY,
     owner_id integer NOT NULL REFERENCES owners(id),
-    props bytea NOT NULL,
-    aggregation bytea NOT NULL,
-    UNIQUE(owner_id, props, aggregation)
+    aggregation bytea NOT NULL
+);
+
+CREATE TABLE tags (
+    owner_id integer NOT NULL REFERENCES owners(id),
+    name bytea NOT NULL,
+    value bytea NOT NULL,
+    metric_id integer NOT NULL REFERENCES metrics(id)
+);
+
+CREATE TABLE certs (
+    id serial PRIMARY KEY,
+    cert bytea NOT NULL,
+    active boolean NOT NULL
+);
+
+CREATE TABLE ports (
+    owner_id integer PRIMARY KEY REFERENCES owners(id),
+    port serial UNIQUE NOT NULL,
+    cert_id integer NOT NULL REFERENCES certs(id)
 );
 
 CREATE TABLE resolutions (
@@ -52,19 +85,19 @@ CREATE TABLE persists (
     UNIQUE(resolution_id, "timestamp")
 );
 
-CREATE TABLE shared_metrics (
-    metric_id serial REFERENCES metrics(id),
-    user_id serial REFERENCES users(id),
-    perms metric_perms
-);
-
-
-CREATE INDEX sm_metric_id_idx ON shared_metrics (metric_id);
-
-CREATE INDEX sm_user_id_idx ON shared_metrics (user_id);
-
 
 ALTER TABLE public.metrics OWNER TO oscilloscope;
 ALTER TABLE public.resolutions OWNER TO oscilloscope;
 ALTER TABLE public.users OWNER TO oscilloscope;
-ALTER TABLE public.shared_metrics OWNER TO oscilloscope;
+ALTER TABLE public.owners OWNER TO oscilloscope;
+ALTER TABLE public.users OWNER TO oscilloscope;
+ALTER TABLE public.orgs OWNER TO oscilloscope;
+ALTER TABLE public.org_members OWNER TO oscilloscope;
+ALTER TABLE public.teams OWNER TO oscilloscope;
+ALTER TABLE public.team_members OWNER TO oscilloscope;
+ALTER TABLE public.metrics OWNER TO oscilloscope;
+ALTER TABLE public.tags OWNER TO oscilloscope;
+ALTER TABLE public.certs OWNER TO oscilloscope;
+ALTER TABLE public.ports OWNER TO oscilloscope;
+ALTER TABLE public.resolutions OWNER TO oscilloscope;
+ALTER TABLE public.persists OWNER TO oscilloscope;
