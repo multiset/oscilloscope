@@ -3,6 +3,7 @@
 -export([
     id/1,
     interval/1,
+    count/1,
     persisted/1,
     insert_persist/3,
     delete_persist/2
@@ -19,6 +20,9 @@ id({ID, _, _, _}) ->
 
 interval({_, Interval, _, _}) ->
     Interval.
+
+count({_, _, Count, _}) ->
+    Count.
 
 persisted({_, _, _, Persisted}) ->
     Persisted.
