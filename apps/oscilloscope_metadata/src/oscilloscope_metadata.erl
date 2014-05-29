@@ -86,17 +86,19 @@ find({OwnerID, Props}) ->
             {ok, Meta}
     end.
 
-insert_persisted(Meta, PersistTime, Count) ->
-    %% TODO
+%% TODO: move to _resolution.erl
+insert_persisted(Resolution, Timestamp, Count) ->
+    {ID, _, _, _} = Resolution,
     {ok, _Count} = oscilloscope_metadata_sql:named(
-        insert_persist, [Meta, PersistTime, Count]
+        insert_persist, [ID, Timestamp, Count]
     ),
     ok.
 
-delete_persisted(Meta, PersistTime) ->
-    %% TODO
+%% TODO: move to _resolution.erl
+delete_persisted(Resolution, Timestamp) ->
+    {ID, _, _, _} = Resolution,
     {ok, _Count} = oscilloscope_metadata_sql:named(
-        delete_persist, [Meta, PersistTime]
+        delete_persist, [ID, Timestamp]
     ),
     ok.
 

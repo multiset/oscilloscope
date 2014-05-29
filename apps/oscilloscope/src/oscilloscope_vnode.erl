@@ -4,7 +4,10 @@
 
 -export([
     read/5,
-    update/4
+    update/4,
+    fold/4,
+    lock/3,
+    refresh/3
 ]).
 
 -export([
@@ -25,12 +28,13 @@
 ]).
 
 -record(st, {
-    metrics :: dict()
+    metrics :: dict(),
+    locks :: dict()
 }).
 
 -record(metric, {
-    meta,
-    cache
+    cache,
+    lock
 }).
 
 read(Preflist, ReqID, Metric, From, Until) ->
@@ -45,6 +49,30 @@ update(Preflist, ReqID, Metric, Points) ->
     riak_core_vnode_master:command(
         Preflist,
         {update, ReqID, Metric, Points},
+        {fsm, undefined, self()},
+        oscilloscope_vnode_master
+    ).
+
+fold(Preflist, ReqID, Fun, Acc) ->
+    riak_core_vnode_master:command(
+        Preflist,
+        {fold, ReqID, Fun, Acc},
+        {fsm, undefined, self()},
+        oscilloscope_vnode_master
+    ).
+
+lock(Preflist, ReqID, Metric) ->
+    riak_core_vnode_master:command(
+        Preflist,
+        {lock, ReqID, Metric},
+        {fsm, undefined, self()},
+        oscilloscope_vnode_master
+    ).
+
+refresh(Preflist, ReqID, Metric) ->
+    riak_core_vnode_master:command(
+        Preflist,
+        {refresh, ReqID, Metric},
         {fsm, undefined, self()},
         oscilloscope_vnode_master
     ).
@@ -79,14 +107,55 @@ handle_command({update, ReqID, Metric, Points}, _From, State) ->
             end,
             Cache = oscilloscope_cache:update(
                 Points,
-                oscilloscope_cache:new(
-                    oscilloscope_metadata:aggregation(Meta),
-                    oscilloscope_metadata:resolutions(Meta)
-                )
+                oscilloscope_cache:new(Meta)
             ),
-            dict:store(Metric, #metric{meta=Meta, cache=Cache}, Metrics0)
+            dict:store(Metric, #metric{cache=Cache}, Metrics0)
     end,
     {reply, {ok, ReqID, ok}, State#st{metrics=Metrics1}};
+handle_command({fold, ReqID, Fun, Acc0}, _From, #st{metrics=Metrics}=State) ->
+    Acc1 = dict:fold(
+        fun(Metric, #metric{cache=Cache}, A0) ->
+            Fun(Metric, Cache, A0)
+        end,
+        Acc0,
+        Metrics
+    ),
+    {reply, {ok, ReqID, {ok, Acc1}}, State};
+handle_command({lock, ReqID, Metric}, From, State0) ->
+    #st{metrics=Metrics0, locks=Locks0} = State0,
+    {Reply, State1} = case dict:find(Metric, Metrics0) of
+        {ok, #metric{lock=undefined}=Stored} ->
+            erlang:link(From),
+            {
+                {ok, locked},
+                State0#st{
+                    locks=dict:store(From, Metric, Locks0),
+                    metrics=dict:store(
+                        Metric,
+                        Stored#metric{lock=From},
+                        Metrics0
+                    )
+                }
+            };
+        {ok, #metric{lock=Lock}} ->
+            {{error, already_locked, Lock}, State0};
+        error ->
+            {{error, unknown_metric}, State0}
+    end,
+    {reply, {ok, ReqID, Reply}, State1};
+handle_command({refresh, ReqID, Metric}, _From, #st{metrics=Metrics0}=State) ->
+    {Reply, Metrics1} = case dict:find(Metric, Metrics0) of
+        {ok, #metric{cache=Cache0}=Stored} ->
+            Cache1 = oscilloscope_cache:refresh(Cache0),
+            {ok, dict:store(Metric, Stored#metric{cache=Cache1}, Metrics0)};
+        error ->
+            lager:error(
+                "Attempt to refresh unknown metric ~p",
+                [Metric]
+            ),
+            {{error, unknown_metric}, Metrics0}
+    end,
+    {reply, {ok, ReqID, Reply}, State#st{metrics=Metrics1}};
 handle_command(Cmd, _From, State) ->
     {stop, {unknown_command, Cmd}, State}.
 
@@ -105,8 +174,23 @@ handoff_finished(_TargetNode, State) ->
 handle_handoff_command(_Cmd, _From, State) ->
     {stop, not_implemented, State}.
 
-handle_exit(_Pid, _Reason, State) ->
-    {noreply, State}.
+handle_exit(Pid, _Reason, #st{locks=Locks, metrics=Metrics}=State0) ->
+    State1 = case dict:find(Pid, Locks) of
+        {ok, Metric} ->
+            {ok, #metric{lock=Pid}=Stored} = dict:find(Metric, Metrics),
+            State0#st{
+                locks=dict:erase(Pid, Locks),
+                metrics=dict:store(
+                    Metric,
+                    Stored#metric{lock=undefined},
+                    Metrics
+                )
+            };
+        error ->
+            lager:error("Vnode received exit for unknown pid: ~p", [Pid]),
+            State0
+    end,
+    {noreply, State1}.
 
 handle_handoff_data(_Data, State) ->
     {reply, ok, State}.

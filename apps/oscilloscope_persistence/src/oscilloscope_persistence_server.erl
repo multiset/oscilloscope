@@ -35,46 +35,52 @@ init({Commutator, MinChunkSize, MaxChunkSize}) ->
         max_chunk_size=MaxChunkSize
     }}.
 
-handle_call({persist, CacheId, Points}, _From, State) ->
+handle_call({persist, Resolution, Points}, _From, State) ->
     #st{
         commutator = Commutator,
         min_chunk_size = MinChunkSize,
         max_chunk_size = MaxChunkSize
     } = State,
+    {ResolutionID, _, _, _} = Resolution,
     Chunks = chunkify(Points, MinChunkSize, MaxChunkSize),
     lager:debug(
         "Got chunks ~p for cache ~p, attempting to persist",
-        [Chunks, CacheId]
+        [Chunks, ResolutionID]
     ),
     Persisted = lists:map(
         fun({Timestamp, Value, Size}) ->
             {ok, true} = commutator:put_item(
                 Commutator,
-                [CacheId, Timestamp, Value]
+                [ResolutionID, Timestamp, Value]
             ),
-            lager:debug("Persist attempt successful for cache ~p", [CacheId]),
+            ok = oscilloscope_metadata:insert_persisted(
+                Resolution,
+                Timestamp,
+                Size
+            ),
+            lager:debug(
+                "Persist attempt successful for resolution ~p",
+                [ResolutionID]
+            ),
             {Timestamp, Size}
         end,
         Chunks
     ),
     {reply, {ok, Persisted}, State};
-handle_call({vacuum, CacheId, Timestamps}, _From, State) ->
+handle_call({vacuum, Resolution, Timestamps}, _From, State) ->
     #st{
         commutator = Commutator
     } = State,
-    Persists = lists:map(
+    {ResolutionID, _, _, _} = Resolution,
+    Vacuums = lists:map(
         fun(T) ->
-            {T, commutator:delete_item(Commutator, [CacheId, T])}
+            {ok, true} = commutator:delete_item(Commutator, [ResolutionID, T]),
+            ok = oscilloscope_metadata:delete_persisted(ResolutionID, T),
+            T
         end,
         Timestamps
     ),
-    Successes = lists:filtermap(
-        fun({T, Res}) ->
-            Res =:= {ok, true} andalso T
-        end,
-        Persists
-    ),
-    {reply, {ok, Successes}, State};
+    {reply, {ok, Vacuums}, State};
 handle_call({read, Resolution, From0, Until0}, _From, State) ->
     #st{
         commutator = Commutator
