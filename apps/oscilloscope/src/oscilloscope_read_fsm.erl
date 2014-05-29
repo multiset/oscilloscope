@@ -45,6 +45,7 @@
 -include_lib("oscilloscope/include/oscilloscope_types.hrl").
 
 read(Metric, From, Until, Opts) ->
+    %% TODO: consider using a ref here
     ReqID = erlang:phash2(erlang:now()),
     lager:debug(
         "Processing read: ~p ~p ~p",

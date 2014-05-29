@@ -35,6 +35,7 @@
 -include("oscilloscope.hrl").
 
 update(Metric, Points, Opts) ->
+    %% TODO: consider using a ref here
     ReqID = erlang:phash2(erlang:now()),
     lager:debug(
         "Processing update: ~p ~p",
