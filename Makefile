@@ -24,10 +24,10 @@ relclean:
 	rm -rf rel/oscilloscope
 
 run:
-	@erl -smp enable -pa deps/*/ebin -pa apps/*/ebin -s folsom -s lager -s oscilloscope_net -s oscilloscope_metadata -s inets -s crypto -s mochiweb -s webmachine -s oscilloscope_cache -s ibrowse -s oscilloscope_http -s oscilloscope_net -s oscilloscope_persistence
+	@erl -smp enable -pa deps/*/ebin -pa apps/*/ebin -s folsom -s lager -s oscilloscope_net -s oscilloscope_metadata -s inets -s crypto -s mochiweb -s webmachine -s oscilloscope_cache -s ibrowse -s oscilloscope_http -s oscilloscope_net
 
 noshell:
-	@erl -name oscilloscope@`hostname -f` -noshell -setcookie monster -smp enable -pa deps/*/ebin -pa apps/*/ebin -s folsom -s lager -s oscilloscope_net -s oscilloscope_metadata -s inets -s crypto -s mochiweb -s webmachine -s oscilloscope_cache -s ibrowse -s oscilloscope_http -s oscilloscope_net -s oscilloscope_persistence
+	@erl -name oscilloscope@`hostname -f` -noshell -setcookie monster -smp enable -pa deps/*/ebin -pa apps/*/ebin -s folsom -s lager -s oscilloscope_net -s oscilloscope_metadata -s inets -s crypto -s mochiweb -s webmachine -s oscilloscope_cache -s ibrowse -s oscilloscope_http -s oscilloscope_net
 
 clean:
 	@./rebar clean

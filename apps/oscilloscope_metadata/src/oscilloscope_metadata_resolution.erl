@@ -3,6 +3,7 @@
 -export([
     id/1,
     interval/1,
+    persisted/1,
     insert_persist/3,
     delete_persist/2
 ]).
@@ -18,6 +19,9 @@ id({ID, _, _, _}) ->
 
 interval({_, Interval, _, _}) ->
     Interval.
+
+persisted({_, _, _, Persisted}) ->
+    Persisted.
 
 insert_persist(Resolution, Timestamp, Count) ->
     {ID, _, _, _} = Resolution,
