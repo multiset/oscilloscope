@@ -5,6 +5,8 @@
     interval/1,
     count/1,
     persisted/1,
+    earliest_persist_time/1,
+    latest_persist_time/1,
     insert_persist/3,
     delete_persist/2
 ]).
@@ -26,6 +28,17 @@ count({_, _, Count, _}) ->
 
 persisted({_, _, _, Persisted}) ->
     Persisted.
+
+earliest_persist_time({_, _, _, []}) ->
+    undefined;
+earliest_persist_time({_, _, _, [{Timestamp, _}|_]}) ->
+    Timestamp.
+
+latest_persist_time({_, _, _, []}) ->
+    undefined;
+latest_persist_time({_, Interval, _, Persisted}) ->
+    {Timestamp, Count} = lists:last(Persisted),
+    Timestamp + (Count * Interval).
 
 insert_persist(Resolution, Timestamp, Count) ->
     {ID, _, _, _} = Resolution,

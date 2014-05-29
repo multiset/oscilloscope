@@ -10,6 +10,8 @@
 -include_lib("oscilloscope/include/oscilloscope_types.hrl").
 
 -record(cache, {
+    metric,
+    meta,
     aggregation,
     resolutions
 }).
@@ -20,7 +22,14 @@
     points
 }).
 
-new(Meta) ->
+new(Metric) ->
+    Meta = case oscilloscope_metadata:find(Metric) of
+        {ok, M} ->
+            M;
+        {error, not_found} ->
+            {ok, M} = oscilloscope_metadata:create(Metric),
+            M
+    end,
     AggregationAtom = oscilloscope_metadata:aggregation(Meta),
     AggregationFun = fun(Vals) ->
         erlang:apply(oscilloscope_aggregations, AggregationAtom, [Vals])
@@ -35,10 +44,38 @@ new(Meta) ->
         end,
         oscilloscope_metadata:resolutions(Meta)
     ),
-    #cache{aggregation=AggregationFun, resolutions=Resolutions}.
+    #cache{
+        metric=Metric,
+        meta=Meta,
+        aggregation=AggregationFun,
+        resolutions=Resolutions
+    }.
 
 refresh(Cache) ->
-    Cache.
+    #cache{
+        metric=Metric,
+        meta=Meta0,
+        aggregation=AF0,
+        resolutions=Resolutions0
+    } = Cache,
+    {ok, Meta1} = oscilloscope_metadata:find(Metric),
+    Aggregation0 = oscilloscope_metadata:aggregation(Meta0),
+    Aggregation1 = oscilloscope_metadata:aggregation(Meta1),
+    AF1 = case Aggregation0 == Aggregation1 of
+        true ->
+            AF0;
+        false ->
+            fun(Vals) ->
+                erlang:apply(oscilloscope_aggregations, Aggregation1, [Vals])
+            end
+    end,
+    NewResolutions = oscilloscope_metadata:resolutions(Meta1),
+    %% TODO: Handle addition or removal of resolutions
+    Resolutions1 = lists:map(
+        fun(R) -> refresh_resolution(R, NewResolutions) end,
+        Resolutions0
+    ),
+    Cache#cache{aggregation=AF1, resolutions=Resolutions1}.
 
 update(Points, #cache{resolutions=Resolutions0}=Cache) ->
     Resolutions1 = lists:map(
@@ -55,6 +92,28 @@ read(From, Until, #cache{resolutions=Resolutions, aggregation=Aggregation}) ->
     Interval = oscilloscope_metadata_resolution:interval(Meta),
     Points = read_int(From, Until, Interval, Aggregation, T, Points),
     {From, Until, Resolution, Points}.
+
+refresh_resolution(#resolution{meta=Meta0, t=T0, points=Points0}, Metas) ->
+    %% TODO: This only handles persistence updates
+    ID = oscilloscope_metadata_resolution:id(Meta0),
+    Interval = oscilloscope_metadata_resolution:interval(Meta0),
+    [Meta1] = lists:filter(
+        fun(R) -> oscilloscope_metadata_resolution:id(R) == ID end,
+        Metas
+    ),
+    LatestPersist = oscilloscope_metadata_resolution:latest_persist_time(Meta1),
+    {T1, Points1} = case LatestPersist of
+        undefined ->
+            {T0, Points0};
+        T0 ->
+            {T0, Points0};
+        Else ->
+            %% TODO: probably an off-by-one here
+            Index = (Else - T0) div Interval,
+            {_, PointsList} = divide_array(Points0, Index),
+            {Else + Interval, array:from_list(PointsList, null)}
+    end,
+    #resolution{meta=Meta1, t=T1, points=Points1}.
 
 update_int(Points, #resolution{meta=Meta, t=T0, points=Points0}=Resolution) ->
     Interval = oscilloscope_metadata_resolution:interval(Meta),
@@ -145,7 +204,7 @@ select_resolution(From, Resolutions) ->
     ),
     lists:foldl(
         fun(Resolution, Selected) ->
-            case oldest_timestamp(Resolution) =< From of
+            case earliest_timestamp(Resolution) =< From of
                 true -> Resolution;
                 false -> Selected
             end
@@ -154,12 +213,10 @@ select_resolution(From, Resolutions) ->
         Rs
     ).
 
-oldest_timestamp(#resolution{meta=Meta, t=T}) ->
-    case oscilloscope_metadata_resolution:persisted(Meta) of
-        [] ->
-            T;
-        [{Timestamp, _Count}|_] ->
-            Timestamp
+earliest_timestamp(#resolution{meta=Meta, t=T}) ->
+    case oscilloscope_metadata_resolution:earliest_persist_time(Meta) of
+        undefined -> T;
+        Timestamp -> Timestamp
     end.
 
 read_int(From0, Until0, Interval, Aggregation, T, Points) ->

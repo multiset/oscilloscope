@@ -98,16 +98,9 @@ handle_command({update, ReqID, Metric, Points}, _From, State) ->
             Cache1 = oscilloscope_cache:update(Points, Cache0),
             dict:store(Metric, Stored#metric{cache=Cache1}, Metrics0);
         error ->
-            Meta = case oscilloscope_metadata:find(Metric) of
-                {ok, M} ->
-                    M;
-                {error, not_found} ->
-                    {ok, M} = oscilloscope_metadata:create(Metric),
-                    M
-            end,
             Cache = oscilloscope_cache:update(
                 Points,
-                oscilloscope_cache:new(Meta)
+                oscilloscope_cache:new(Metric)
             ),
             dict:store(Metric, #metric{cache=Cache}, Metrics0)
     end,
