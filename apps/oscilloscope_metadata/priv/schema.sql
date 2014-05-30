@@ -47,7 +47,9 @@ CREATE TABLE team_members (
 CREATE TABLE metrics (
     id serial PRIMARY KEY,
     owner_id integer NOT NULL REFERENCES owners(id),
-    aggregation bytea NOT NULL
+    hash bytea NOT NULL,
+    aggregation bytea NOT NULL,
+    UNIQUE(owner_id, hash, aggregation)
 );
 
 CREATE TABLE tags (
