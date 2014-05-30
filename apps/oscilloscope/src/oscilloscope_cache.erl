@@ -77,14 +77,16 @@ refresh(Cache) ->
     ),
     Cache#cache{aggregation=AF1, resolutions=Resolutions1}.
 
-update(Points, #cache{resolutions=Resolutions0}=Cache) ->
+update(Points, Cache) ->
+    #cache{resolutions=Resolutions0} = Cache,
     Resolutions1 = lists:map(
         fun(Resolution) -> update_int(Points, Resolution) end,
         Resolutions0
     ),
     Cache#cache{resolutions=Resolutions1}.
 
-read(From0, Until0, #cache{resolutions=Resolutions, aggregation=Aggregation}) ->
+read(From0, Until0, Cache) ->
+    #cache{resolutions=Resolutions, aggregation=Aggregation} = Cache,
     #resolution{meta=Meta, t=T, points=Points}=Resolution = select_resolution(
         From0,
         Resolutions
@@ -100,8 +102,9 @@ read(From0, Until0, #cache{resolutions=Resolutions, aggregation=Aggregation}) ->
     ),
     {From1, Until1, Resolution, Read}.
 
-refresh_resolution(#resolution{meta=Meta0, t=T0, points=Points0}, Metas) ->
+refresh_resolution(Resolution, Metas) ->
     %% TODO: This only handles persistence updates
+    #resolution{meta=Meta0, t=T0, points=Points0} = Resolution,
     ID = oscilloscope_metadata_resolution:id(Meta0),
     Interval = oscilloscope_metadata_resolution:interval(Meta0),
     [Meta1] = lists:filter(
@@ -122,7 +125,8 @@ refresh_resolution(#resolution{meta=Meta0, t=T0, points=Points0}, Metas) ->
     end,
     #resolution{meta=Meta1, t=T1, points=Points1}.
 
-update_int(Points, #resolution{meta=Meta, t=T0, points=Points0}=Resolution) ->
+update_int(Points, Resolution) ->
+    #resolution{meta=Meta, t=T0, points=Points0} = Resolution,
     Interval = oscilloscope_metadata_resolution:interval(Meta),
     Count = oscilloscope_metadata_resolution:count(Meta),
     Persisted = oscilloscope_metadata_resolution:persisted(Meta),
@@ -220,7 +224,8 @@ select_resolution(From, Resolutions) ->
         Rs
     ).
 
-earliest_timestamp(#resolution{meta=Meta, t=T}) ->
+earliest_timestamp(Resolution) ->
+    #resolution{meta=Meta, t=T} = Resolution,
     case oscilloscope_metadata_resolution:earliest_persist_time(Meta) of
         undefined -> T;
         Timestamp -> Timestamp
