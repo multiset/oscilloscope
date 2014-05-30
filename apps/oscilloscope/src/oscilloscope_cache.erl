@@ -17,9 +17,9 @@
 }).
 
 -record(resolution, {
-    meta,
-    t,
-    points
+    meta :: oscilloscope_metadata_resolution:resolution(),
+    t :: timestamp(), %% Earliest point in array
+    points :: array() %% Array of points
 }).
 
 new(Metric) ->
