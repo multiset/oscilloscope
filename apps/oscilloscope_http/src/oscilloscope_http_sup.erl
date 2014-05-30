@@ -11,12 +11,15 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init([]) ->
-    {ok, App} = application:get_application(),
-    {ok, Dispatch} = file:consult(code:priv_dir(App) ++ "/dispatch.conf"),
+    {ok, Apps} = application:get_env(oscilloscope_http, dispatch_apps),
+    {ok, CompleteDispatch} = lists:flatmap(fun(App) ->
+        {ok, Dispatch} = file:consult(code:priv_dir(App) ++ "/dispatch.conf"),
+        Dispatch
+    end, Apps),
     WebConfig = [
         {ip, "0.0.0.0"},
         {port, 22222},
-        {dispatch, Dispatch}
+        {dispatch, CompleteDispatch}
     ],
     Web = {
         webmachine_mochiweb,
