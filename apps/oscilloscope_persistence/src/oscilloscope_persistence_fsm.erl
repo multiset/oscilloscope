@@ -72,7 +72,7 @@ fold_vnode(timeout, #st{req_id=ReqID, r=R, bucket=Bucket}=State) ->
     oscilloscope_vnode:fold(
         Preflist,
         ReqID,
-        fun vnode_fold/4,
+        fun vnode_fold/3,
         nil
     ),
     {next_state, wait_for_fold, State#st{preflist=Preflist}}.
@@ -84,7 +84,7 @@ wait_for_fold({ok, _ReqID, {ok, Metric}=Reply}, State0) ->
     case length(Replies1) >= R of
         true ->
             case lists:usort(Replies1) of
-                [{ok, {Metric, Cache, Resolution, ToPersist, ToVacuum}}] ->
+                [{ok, {Metric, Cache, Resolution, ToPersist, ToVacuum, _Score}}] ->
                     State2 = State1#st{
                         metric=Metric,
                         cache=Cache,
@@ -93,7 +93,7 @@ wait_for_fold({ok, _ReqID, {ok, Metric}=Reply}, State0) ->
                         to_vacuum=ToVacuum
                     },
                     {next_state, execute_lock, State2, 0};
-                [{ok, {Metric, Cache, Resolution, ToPersist, ToVacuum}}|_] ->
+                [{ok, {Metric, Cache, Resolution, ToPersist, ToVacuum, _Score}}|_] ->
                     %% TODO: Read repair
                     State2 = State1#st{
                         metric=Metric,
@@ -204,6 +204,38 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 terminate(_Reason, _SN, _SD) ->
     ok.
 
-vnode_fold(_Meta, _Cache, _Points, Acc) ->
-    %% TODO
-    Acc.
+vnode_fold(Metric, Cache, Acc) ->
+    oscilloscope_cache:fold(
+        fun(C, Resolution, A) ->
+            cache_fold(Metric, C, Resolution, A)
+        end,
+        Acc,
+        Cache
+    ).
+
+cache_fold(Metric, Cache, Resolution, Acc) ->
+    {Points, Meta} = oscilloscope_cache:cached(Cache, Resolution),
+    Interval = oscilloscope_metadata_resolution:interval(Meta),
+    Count = oscilloscope_metadata_resolution:count(Meta),
+    Persisted = oscilloscope_metadata_resolution:persisted(Meta),
+    {ok, MinPersistAge} = application:get_env(
+        oscilloscope_persistence,
+        min_persist_age
+    ),
+    {TNow, _} = lists:last(Points),
+    PersistBoundary = TNow - MinPersistAge,
+    ToPersist = lists:filter(
+        fun({T, _V}) -> T < PersistBoundary end,
+        Points
+    ),
+    TExpired = TNow - Interval * Count,
+    ToVacuum = [Time || {Time, _} <- Persisted, Time < TExpired],
+    %% N.B.: The cache will be persisted which has the most Dynamo operations
+    %% to perform. This is, of course, not optimal, but it'll do for now.
+    ThisScore = length(ToPersist) + length(ToVacuum),
+    case Acc of
+        {_M, _C, _R, _TP, _TV, Score} when Score > ThisScore ->
+            Acc;
+        _ ->
+            {Metric, Cache, Resolution, ToPersist, ToVacuum, ThisScore}
+    end.

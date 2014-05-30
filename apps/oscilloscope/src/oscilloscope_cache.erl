@@ -4,7 +4,9 @@
     new/1,
     refresh/1,
     update/2,
-    read/3
+    read/3,
+    cached/2,
+    fold/3
 ]).
 
 -include_lib("oscilloscope/include/oscilloscope_types.hrl").
@@ -101,6 +103,28 @@ read(From0, Until0, Cache) ->
         Points
     ),
     {From1, Until1, Resolution, Read}.
+
+-spec cached(Cache, Resolution) -> {Points, Meta} when
+    Cache :: #cache{},
+    Resolution :: #resolution{},
+    Points :: [{timestamp(), number()}],
+    Meta :: oscilloscope_metadata_resolution:resolution().
+
+cached(Cache, Resolution) ->
+    #cache{aggregation=AF} = Cache,
+    #resolution{meta=Meta, t=T, points=PointsArray} = Resolution,
+    Interval = oscilloscope_metadata_resolution:interval(Meta),
+    Points = array:foldr(
+        %% TODO: Aggregate Value
+        fun(Idx, Values, Acc) -> [{T + (Idx * Interval), AF(Values)}|Acc] end,
+        [],
+        PointsArray
+    ),
+    {Points, Meta}.
+
+fold(Fun, Acc, Cache) ->
+    #cache{resolutions=Resolutions} = Cache,
+    lists:foldl(fun(R) -> Fun(Cache, R, Acc) end, Acc, Resolutions).
 
 refresh_resolution(Resolution, Metas) ->
     %% TODO: This only handles persistence updates
