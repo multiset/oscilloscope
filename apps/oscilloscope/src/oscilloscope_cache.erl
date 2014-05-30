@@ -84,14 +84,21 @@ update(Points, #cache{resolutions=Resolutions0}=Cache) ->
     ),
     Cache#cache{resolutions=Resolutions1}.
 
-read(From, Until, #cache{resolutions=Resolutions, aggregation=Aggregation}) ->
+read(From0, Until0, #cache{resolutions=Resolutions, aggregation=Aggregation}) ->
     #resolution{meta=Meta, t=T, points=Points}=Resolution = select_resolution(
-        From,
+        From0,
         Resolutions
     ),
     Interval = oscilloscope_metadata_resolution:interval(Meta),
-    Points = read_int(From, Until, Interval, Aggregation, T, Points),
-    {From, Until, Resolution, Points}.
+    {From1, Until1, Read} = read_int(
+        From0,
+        Until0,
+        Interval,
+        Aggregation,
+        T,
+        Points
+    ),
+    {From1, Until1, Resolution, Read}.
 
 refresh_resolution(#resolution{meta=Meta0, t=T0, points=Points0}, Metas) ->
     %% TODO: This only handles persistence updates
@@ -221,7 +228,7 @@ earliest_timestamp(#resolution{meta=Meta, t=T}) ->
 
 read_int(From0, Until0, Interval, Aggregation, T, Points) ->
     {From, Until} = calculate_query_bounds(From0, Until0, Interval),
-    case T =< Until of
+    Read = case T =< Until of
         true ->
             %% At least some of the query is in the cache
             Acc0 = case (T - From) div Interval of
@@ -243,7 +250,8 @@ read_int(From0, Until0, Interval, Aggregation, T, Points) ->
         false ->
             PointCount = ((Until - From) div Interval),
             lists:duplicate(PointCount, null)
-    end.
+    end,
+    {From, Until, Read}.
 
 calculate_query_bounds(From0, Until0, Interval) ->
     %% Floor the query's From to the preceding interval bound
