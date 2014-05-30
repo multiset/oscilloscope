@@ -419,7 +419,7 @@ read_int_null_test() ->
         undefined,
         array:new({default, null})
     ),
-    ?assertEqual(lists:duplicate(5, null), Result).
+    ?assertEqual({100, 200, lists:duplicate(5, null)}, Result).
 
 read_int_some_end_test() ->
     Points = [[20.0] || _ <- lists:seq(1, 10)],
@@ -431,7 +431,7 @@ read_int_some_end_test() ->
         140,
         array:from_list(Points, null)
     ),
-    Expected = [null, null, 20.0, 20.0, 20.0, 20.0],
+    Expected = {100, 200, [null, null, 20.0, 20.0, 20.0, 20.0]},
     ?assertEqual(Expected, Result).
 
 read_int_some_start_test() ->
@@ -444,7 +444,7 @@ read_int_some_start_test() ->
         100,
         array:from_list(Points, null)
     ),
-    Expected = [20.0, 20.0, 20.0, null, null, null],
+    Expected = {100, 200, [20.0, 20.0, 20.0, null, null, null]},
     ?assertEqual(Expected, Result).
 
 read_int_middle_test() ->
@@ -457,7 +457,7 @@ read_int_middle_test() ->
         12340,
         array:from_list(Points, null)
     ),
-    Expected = [null, 20.0, 20.0, null],
+    Expected = {12330, 12360, [null, 20.0, 20.0, null]},
     ?assertEqual(Expected, Result).
 
 read_int_all_test() ->
@@ -470,7 +470,7 @@ read_int_all_test() ->
         80,
         array:from_list(Points, null)
     ),
-    Expected = [20.0, 20.0, 20.0, 20.0, 20.0, 20.0],
+    Expected = {100, 200, [20.0, 20.0, 20.0, 20.0, 20.0, 20.0]},
     ?assertEqual(Expected, Result).
 
 calculate_query_bounds_test() ->
