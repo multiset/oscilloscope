@@ -2,6 +2,11 @@
 -behavior(gen_fsm).
 
 -export([
+    persist/0,
+    persist/1
+]).
+
+-export([
     fold_vnode/2,
     wait_for_fold/2,
     lock_metric/2,
@@ -41,6 +46,13 @@
 
 -include_lib("oscilloscope/include/oscilloscope.hrl").
 -include_lib("oscilloscope/include/oscilloscope_types.hrl").
+
+persist() ->
+    persist([]).
+persist(Opts) ->
+    ReqID = erlang:phash2(erlang:now()),
+    {ok, Pid} = oscilloscope_persistence_fsm_sup:spawn([ReqID, self(), Opts]),
+    {ok, ReqID, Pid}.
 
 start_link(ReqID, Sender, Opts) ->
     gen_fsm:start_link(?MODULE, [ReqID, Sender, Opts]).
@@ -193,4 +205,5 @@ terminate(_Reason, _SN, _SD) ->
     ok.
 
 vnode_fold(_Meta, _Cache, _Points, Acc) ->
+    %% TODO
     Acc.
