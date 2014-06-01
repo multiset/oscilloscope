@@ -2,6 +2,12 @@
 -behavior(gen_fsm).
 
 -compile([{parse_transform, lager_transform}]).
+
+-export([
+    set_rate/1,
+    set_target/1
+]).
+
 -export([
     make_request/2,
     waiting/2
@@ -22,6 +28,12 @@
     target :: non_neg_integer(), %% Target number of requests outstanding
     rate :: non_neg_integer() %% How long (ms) to wait between making requests
 }).
+
+set_rate(Rate) when is_integer(Rate) ->
+    gen_fsm:sync_send_all_state_event(?MODULE, {set_rate, Rate}).
+
+set_target(Target) when is_integer(Target) ->
+    gen_fsm:sync_send_all_state_event(?MODULE, {set_target, Target}).
 
 start_link() ->
     gen_fsm:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -59,6 +71,10 @@ handle_info(Msg, _StateName, StateData) ->
 handle_event(Event, _StateName, StateData) ->
     {stop, {unknown_event, Event}, StateData}.
 
+handle_sync_event({set_rate, Rate}, _From, _StateName, State) ->
+    {reply, {ok, Rate}, make_request, State#st{rate=Rate}, 0};
+handle_sync_event({set_target, Target}, _From, _StateName, State) ->
+    {reply, {ok, Target}, make_request, State#st{target=Target}, 0};
 handle_sync_event(Event, _From, _StateName, StateData) ->
     {stop, {unknown_sync_event, Event}, StateData}.
 
