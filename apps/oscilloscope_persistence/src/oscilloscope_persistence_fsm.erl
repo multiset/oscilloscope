@@ -1,6 +1,8 @@
 -module(oscilloscope_persistence_fsm).
 -behavior(gen_fsm).
 
+-compile([{parse_transform, lager_transform}]).
+
 -export([
     persist/0,
     persist/1

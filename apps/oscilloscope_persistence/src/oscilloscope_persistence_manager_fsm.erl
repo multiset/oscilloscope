@@ -1,6 +1,7 @@
 -module(oscilloscope_persistence_manager_fsm).
 -behavior(gen_fsm).
 
+-compile([{parse_transform, lager_transform}]).
 -export([
     make_request/2,
     waiting/2
