@@ -92,7 +92,7 @@ fold_vnode(timeout, #st{req_id=ReqID, preflist=Preflist}=State) ->
     ),
     {next_state, wait_for_fold, State#st{preflist=Preflist}}.
 
-wait_for_fold({ok, _ReqID, {ok, Metric}=Reply}, State0) ->
+wait_for_fold({ok, _ReqID, {ok, _}=Reply}, State0) ->
     #st{r=R, fold_replies=Replies0} = State0,
     Replies1 = [Reply|Replies0],
     State1 = State0#st{fold_replies=Replies1},
@@ -107,7 +107,7 @@ wait_for_fold({ok, _ReqID, {ok, Metric}=Reply}, State0) ->
                         to_persist=ToPersist,
                         to_vacuum=ToVacuum
                     },
-                    {next_state, execute_lock, State2, 0};
+                    {next_state, lock_metric, State2, 0};
                 [{ok, {Metric, Cache, Resolution, ToPersist, ToVacuum, _Score}}|_] ->
                     %% TODO: Read repair
                     State2 = State1#st{

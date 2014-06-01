@@ -68,6 +68,7 @@ handle_info({'DOWN', Ref, process, _Pid, Reason}, _StateName, State) ->
     #st{pending=P0, rate=Rate} = State,
     case Reason of
         normal -> ok;
+        noproc -> ok; % Pid died before we monitored
         _ -> lager:warning("Persistence fsm crashed: ~p", [Reason])
     end,
     P1 = lists:keydelete(Ref, 1, P0),

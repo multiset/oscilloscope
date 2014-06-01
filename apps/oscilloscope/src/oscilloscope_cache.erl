@@ -132,7 +132,7 @@ cached(Cache, Resolution) ->
 
 fold(Fun, Acc, Cache) ->
     #cache{resolutions=Resolutions} = Cache,
-    lists:foldl(fun(R) -> Fun(Cache, R, Acc) end, Acc, Resolutions).
+    lists:foldl(fun(R, A) -> Fun(Cache, R, A) end, Acc, Resolutions).
 
 refresh_resolution(Resolution, Metas) ->
     %% TODO: This only handles persistence updates
