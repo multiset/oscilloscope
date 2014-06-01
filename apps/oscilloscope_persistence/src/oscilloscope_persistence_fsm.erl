@@ -55,7 +55,7 @@ persist(Opts) ->
     {ok, ReqID, Pid}.
 
 start_link(ReqID, Sender, Opts) ->
-    gen_fsm:start_link(?MODULE, [ReqID, Sender, Opts]).
+    gen_fsm:start_link(?MODULE, [ReqID, Sender, Opts], []).
 
 init([ReqID, Sender, Opts]) ->
     State = #st{
