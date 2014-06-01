@@ -23,7 +23,7 @@
 }).
 
 start_link() ->
-    gen_fsm:start_link({local, ?MODULE}, ?MODULE, []).
+    gen_fsm:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init([]) ->
     {ok, make_request, #st{pending=0, target=3, rate=100}, 0}.
