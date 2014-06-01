@@ -53,24 +53,37 @@ persist() ->
     persist([]).
 persist(Opts) ->
     ReqID = erlang:phash2(erlang:now()),
-    {ok, Pid} = oscilloscope_persistence_fsm_sup:spawn([ReqID, self(), Opts]),
-    {ok, ReqID, Pid}.
+    case oscilloscope_persistence_fsm_sup:spawn([ReqID, self(), Opts]) of
+        {ok, Pid} ->
+            {ok, ReqID, Pid};
+        Else ->
+            Else
+    end.
 
 start_link(ReqID, Sender, Opts) ->
     gen_fsm:start_link(?MODULE, [ReqID, Sender, Opts], []).
 
 init([ReqID, Sender, Opts]) ->
-    State = #st{
-        r = proplists:get_value(r, Opts, ?DEFAULT_R),
-        req_id = ReqID,
-        sender = Sender,
-        bucket = proplists:get_value(bucket, Opts, ?DEFAULT_BUCKET)
-    },
-    {ok, fold_vnode, State, 0}.
-
-fold_vnode(timeout, #st{req_id=ReqID, r=R, bucket=Bucket}=State) ->
+    Bucket = proplists:get_value(bucket, Opts, ?DEFAULT_BUCKET),
+    R = proplists:get_value(r, Opts, ?DEFAULT_R),
     Key = riak_core_util:chash_key({Bucket, term_to_binary(now())}),
     Preflist = riak_core_apl:get_apl(Key, R, oscilloscope),
+    case Preflist of
+        [] ->
+            {stop, no_vnodes};
+        _ ->
+            State = #st{
+                r = R,
+                req_id = ReqID,
+                sender = Sender,
+                bucket = Bucket,
+                preflist = Preflist
+            },
+            {ok, fold_vnode, State, 0}
+    end.
+
+
+fold_vnode(timeout, #st{req_id=ReqID, preflist=Preflist}=State) ->
     oscilloscope_vnode:fold(
         Preflist,
         ReqID,
@@ -106,7 +119,7 @@ wait_for_fold({ok, _ReqID, {ok, Metric}=Reply}, State0) ->
                     },
                     {next_state, lock_metric, State2, 0};
                 [{ok, nil}] ->
-                    {stop, no_suitable_metrics, State1}
+                    {stop, normal, State1}
             end;
         false ->
             {next_state, wait_for_fold, State1}

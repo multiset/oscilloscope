@@ -39,34 +39,45 @@ start_link() ->
     gen_fsm:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init([]) ->
-    {ok, make_request, #st{pending=[], target=3, rate=100}, 0}.
+    {ok, make_request, #st{pending=[], target=1, rate=1000}, 1000}.
 
 make_request(timeout, #st{pending=P0, target=T}=State) when length(P0) < T ->
-    {ok, ReqID, Pid} = oscilloscope_persistence_fsm:persist(),
-    Ref = erlang:monitor(process, Pid),
-    P1 = [{Ref, ReqID, Pid}|P0],
+    P1 = case oscilloscope_persistence_fsm:persist() of
+        {ok, ReqID, Pid} ->
+            Ref = erlang:monitor(process, Pid),
+            [{Ref, ReqID, Pid}|P0];
+        {error, Reason} ->
+            lager:warning(
+                "Failed to start persistence_fsm because ~p",
+                [Reason]
+            ),
+            P0
+    end,
     {next_state, make_request, State#st{pending=P1}, State#st.rate};
 make_request(timeout, State) ->
     {next_state, waiting, State}.
 
 waiting(Msg, State) ->
     lager:error(
-        "Received a send_event/1 message in ~p: ~p~n. This shouldn't happen",
+        "Received a send_event/1 message ~p~n. This shouldn't happen",
         [Msg]
     ),
     {next_state, waiting, State}.
 
-handle_info({'DOWN', Ref, process, _Pid, Reason}, waiting, State) ->
+handle_info({'DOWN', Ref, process, _Pid, Reason}, _StateName, State) ->
     #st{pending=P0, rate=Rate} = State,
-    lager:warning("Persistence fsm crashed: ~p", Reason),
+    case Reason of
+        normal -> ok;
+        _ -> lager:warning("Persistence fsm crashed: ~p", [Reason])
+    end,
     P1 = lists:keydelete(Ref, 1, P0),
     {next_state, make_request, State#st{pending=P1}, Rate};
-handle_info({ReqID, _Response}, waiting, State) ->
+handle_info({ReqID, _Response}, _StateName, State) ->
     #st{pending=P0, rate=Rate} = State,
     P1 = lists:keydelete(ReqID, 2, P0),
     {next_state, make_request, State#st{pending=P1}, Rate};
-handle_info(Msg, _StateName, StateData) ->
-    {stop, {unknown_info, Msg}, StateData}.
+handle_info(Msg, StateName, StateData) ->
+    {stop, {unknown_info, {Msg, StateName}}, StateData}.
 
 handle_event(Event, _StateName, StateData) ->
     {stop, {unknown_event, Event}, StateData}.
