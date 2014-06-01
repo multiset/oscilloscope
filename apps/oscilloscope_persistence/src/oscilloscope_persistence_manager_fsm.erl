@@ -17,7 +17,7 @@
 ]).
 
 -record(st, {
-    pending :: non_neg_integer(), %% Number of requests currently outstanding
+    pending :: list(), %% Requests currently outstanding
     target :: non_neg_integer(), %% Target number of requests outstanding
     rate :: non_neg_integer() %% How long (ms) to wait between making requests
 }).
@@ -26,7 +26,7 @@ start_link() ->
     gen_fsm:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init([]) ->
-    {ok, make_request, #st{pending=0, target=3, rate=100}, 0}.
+    {ok, make_request, #st{pending=[], target=3, rate=100}, 0}.
 
 make_request(timeout, #st{pending=P0, target=T}=State) when length(P0) < T ->
     {ok, ReqID, Pid} = oscilloscope_persistence_fsm:persist(),
