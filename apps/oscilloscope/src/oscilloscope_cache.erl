@@ -98,7 +98,7 @@ read(From, Until, _Cache) when From > Until ->
     {error, temporal_inversion};
 read(From0, Until0, Cache) ->
     #cache{resolutions=Resolutions, aggregation=Aggregation} = Cache,
-    #resolution{meta=Meta, t=T, points=Points}=Resolution = select_resolution(
+    #resolution{meta=Meta, t=T, points=Points} = select_resolution(
         From0,
         Resolutions
     ),
@@ -111,7 +111,7 @@ read(From0, Until0, Cache) ->
         T,
         Points
     ),
-    {From1, Until1, Resolution, Read}.
+    {From1, Until1, Meta, Read}.
 
 -spec cached(Cache, Resolution) -> {Points, Meta} when
     Cache :: #cache{},
