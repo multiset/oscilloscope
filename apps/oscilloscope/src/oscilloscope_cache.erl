@@ -24,6 +24,13 @@
     points :: array() %% Array of points
 }).
 
+-ifdef(TEST).
+
+-include_lib("proper/include/proper.hrl").
+-include_lib("eunit/include/eunit.hrl").
+
+-endif.
+
 new(Metric) ->
     Meta = case oscilloscope_metadata:find(Metric) of
         {ok, M} ->
@@ -87,6 +94,8 @@ update(Points, Cache) ->
     ),
     Cache#cache{resolutions=Resolutions1}.
 
+read(From, Until, _Cache) when From > Until ->
+    {error, temporal_inversion};
 read(From0, Until0, Cache) ->
     #cache{resolutions=Resolutions, aggregation=Aggregation} = Cache,
     #resolution{meta=Meta, t=T, points=Points}=Resolution = select_resolution(
@@ -115,7 +124,6 @@ cached(Cache, Resolution) ->
     #resolution{meta=Meta, t=T, points=PointsArray} = Resolution,
     Interval = oscilloscope_metadata_resolution:interval(Meta),
     Points = array:foldr(
-        %% TODO: Aggregate Value
         fun(Idx, Values, Acc) -> [{T + (Idx * Interval), AF(Values)}|Acc] end,
         [],
         PointsArray
@@ -208,7 +216,7 @@ prepend_point(Index, Value, Points) ->
     Points1 = array:from_list(Prepend ++ ListPoints, null),
     append_point(0, Value, Points1).
 
-append_point(Index, Value, Points) ->
+append_point(Index, Value, Points) when Index >= 0 ->
     case array:get(Index, Points) of
         null ->
             array:set(Index, [Value], Points);
@@ -257,7 +265,7 @@ earliest_timestamp(Resolution) ->
 
 read_int(From0, Until0, Interval, Aggregation, T, Points) ->
     {From, Until} = calculate_query_bounds(From0, Until0, Interval),
-    Read = case T =< Until of
+    case T =< Until of
         true ->
             %% At least some of the query is in the cache
             Acc0 = case (T - From) div Interval of
@@ -275,12 +283,11 @@ read_int(From0, Until0, Interval, Aggregation, T, Points) ->
             ),
             %% But the cache might not have all the points we need
             Missing = trunc((((Until - From) / Interval) + 1) - length(Result)),
-            Result ++ lists:duplicate(Missing, null);
+            {From, Until, Result ++ lists:duplicate(Missing, null)};
         false ->
-            PointCount = ((Until - From) div Interval),
-            lists:duplicate(PointCount, null)
-    end,
-    {From, Until, Read}.
+            PointCount = ((Until - From) div Interval + 1),
+            {From, Until, lists:duplicate(PointCount, null)}
+    end.
 
 calculate_query_bounds(From0, Until0, Interval) ->
     %% Floor the query's From to the preceding interval bound
@@ -302,8 +309,8 @@ range_from_array(Start, End, AF, Acc0, Points) ->
         Acc0,
         Points
     )).
+
 -ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
 
 divide_array_test() ->
     ?assertEqual({[], []}, divide_array(array:new(), 4)),
@@ -401,6 +408,29 @@ append_negative_reject_test() ->
     ?assertEqual(T0, T),
     ?assertEqual(Points, P).
 
+prop_append() ->
+    ?FORALL(
+        {T0, Points0, Interval, Persisted, ToAppend},
+        {
+            timestamp(),
+            [[number()]],
+            interval(),
+            persisted(),
+            [{timestamp(), number()}]
+        },
+        begin
+            {T1, Array} = append(
+                ToAppend,
+                T0,
+                array:from_list(Points0, null),
+                Interval,
+                Persisted
+            ),
+            Points1 = array:to_list(Array),
+            true
+        end
+    ).
+
 append_point_test() ->
     DP0 = array:new({default, null}),
     DP1 = append_point(0, 45, DP0),
@@ -409,6 +439,16 @@ append_point_test() ->
     ?assertEqual([[50, 45]], array:to_list(DP2)),
     DP3 = append_point(2, 42, DP2),
     ?assertEqual([[50, 45], null, [42]], array:to_list(DP3)).
+
+prop_append_point() ->
+    ?FORALL(
+        {Idx, Value, List},
+        {pos_integer(), number(), [[number()]]},
+        begin
+            Array1 = append_point(Idx, Value, array:from_list(List, null)),
+            true = Value == hd(lists:nth(Idx + 1, array:to_list(Array1)))
+        end
+    ).
 
 read_int_null_test() ->
     Result = read_int(
@@ -419,7 +459,7 @@ read_int_null_test() ->
         undefined,
         array:new({default, null})
     ),
-    ?assertEqual({100, 200, lists:duplicate(5, null)}, Result).
+    ?assertEqual({100, 200, lists:duplicate(6, null)}, Result).
 
 read_int_some_end_test() ->
     Points = [[20.0] || _ <- lists:seq(1, 10)],
@@ -473,10 +513,44 @@ read_int_all_test() ->
     Expected = {100, 200, [20.0, 20.0, 20.0, 20.0, 20.0, 20.0]},
     ?assertEqual(Expected, Result).
 
+prop_read_int() ->
+    ?FORALL(
+        {From0, Until0, Interval, T, Points0},
+        {timestamp(), timestamp(), interval(), timestamp(), [[float()]]},
+        begin
+            case From0 =< Until0 of
+                true ->
+                    {From1, Until1, Points1} = read_int(
+                        From0,
+                        Until0,
+                        Interval,
+                        fun oscilloscope_aggregations:avg/1,
+                        T,
+                        array:from_list(Points0, null)
+                    ),
+                    %% Number of points matches the provided range
+                    true = ((Until1 - From1) / Interval) + 1 == length(Points1);
+                false ->
+                    true
+            end
+        end
+    ).
+
 calculate_query_bounds_test() ->
     ?assertEqual({10, 20}, calculate_query_bounds(12, 17, 10)),
     ?assertEqual({10, 20}, calculate_query_bounds(10, 20, 10)),
     ?assertEqual({10, 20}, calculate_query_bounds(12, 11, 10)).
+
+prop_calculate_query_bounds() ->
+    ?FORALL(
+        {From0, Until0, Interval},
+        {timestamp(), timestamp(), interval()},
+        begin
+            {From1, Until1} = calculate_query_bounds(From0, Until0, Interval),
+            true = From1 rem Interval == 0,
+            true = Until1 rem Interval == 0
+        end
+    ).
 
 maybe_trim_test() ->
     ?assertEqual(
@@ -487,5 +561,35 @@ maybe_trim_test() ->
         {120, array:from_list([c, d], null)},
         maybe_trim(100, array:from_list([a, b, c, d], null), 10, 2)
     ).
+
+prop_maybe_trim() ->
+    ?FORALL(
+        {Time0, Points0, Interval, Count},
+        {timestamp(), [any()], interval(), count()},
+        begin
+            {Time1, Array} = maybe_trim(
+                Time0,
+                array:from_list(Points0, null),
+                Interval,
+                Count
+            ),
+            Points1 = array:to_list(Array),
+            %% Time never decreases
+            true = Time1 >= Time0,
+            %% We remove the same number of points as we accelerate
+            true = (Time1 - Time0) / Interval == length(Points0) - length(Points1),
+            %% We never leave more than Count points in place
+            true = length(Points1) =< Count,
+            %% Points are trimmed from the end
+            true = lists:suffix(Points1, Points0)
+        end
+    ).
+
+proper_test_() ->
+    {
+        timeout,
+        1000,
+        [] = proper:module(?MODULE, [{to_file, user}, {numtests, 1}])
+    }.
 
 -endif.
