@@ -128,7 +128,11 @@ handle_command({update, ReqID, Metric, Points}, _From, State) ->
 handle_command({fold, ReqID, Fun, Acc0}, _From, #st{metrics=Metrics}=State) ->
     Acc1 = dict:fold(
         fun(Metric, #metric{cache=Cache}, A0) ->
-            Fun(Metric, Cache, A0)
+            try Fun(Metric, Cache, A0)
+            catch Class:Error ->
+                lager:error("Vnode fold error: ~p:~p", [Class, Error]),
+                error
+            end
         end,
         Acc0,
         Metrics
