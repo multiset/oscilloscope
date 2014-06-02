@@ -24,9 +24,9 @@
 ]).
 
 -record(st, {
-    pending :: list(), %% Requests currently outstanding
-    target :: non_neg_integer(), %% Target number of requests outstanding
-    rate :: non_neg_integer() %% How long (ms) to wait between making requests
+    pending = [] :: list(), %% Requests currently outstanding
+    target = 1 :: non_neg_integer(), %% Target number of requests outstanding
+    rate = 1000 :: non_neg_integer() %% How long (ms) to wait between requests
 }).
 
 set_rate(Rate) when is_integer(Rate) ->
@@ -39,7 +39,8 @@ start_link() ->
     gen_fsm:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init([]) ->
-    {ok, make_request, #st{pending=[], target=1, rate=1000}, 1000}.
+    Delay = 60000, % Delay the first attempt to allow the ring to prepare
+    {ok, make_request, #st{pending=[], target=1, rate=1000}, Delay}.
 
 make_request(timeout, #st{pending=P0, target=T}=State) when length(P0) < T ->
     P1 = case oscilloscope_persistence_fsm:persist() of
