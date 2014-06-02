@@ -114,7 +114,7 @@ handle_command({fold, ReqID, Fun, Acc0}, _From, #st{metrics=Metrics}=State) ->
         Metrics
     ),
     {reply, {ok, ReqID, {ok, Acc1}}, State};
-handle_command({lock, ReqID, Metric}, {_, _, Pid}=From, State0) ->
+handle_command({lock, ReqID, Metric}, {_, _, Pid}=_From, State0) ->
     #st{metrics=Metrics0, locks=Locks0} = State0,
     {Reply, State1} = case dict:find(Metric, Metrics0) of
         {ok, #metric{lock=undefined}=Stored} ->
@@ -125,7 +125,7 @@ handle_command({lock, ReqID, Metric}, {_, _, Pid}=From, State0) ->
                     locks=dict:store(Pid, Metric, Locks0),
                     metrics=dict:store(
                         Metric,
-                        Stored#metric{lock=From},
+                        Stored#metric{lock=Pid},
                         Metrics0
                     )
                 }
