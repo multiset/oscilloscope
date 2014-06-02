@@ -81,7 +81,7 @@ start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
 init(_) ->
-    {ok, #st{metrics=dict:new()}}.
+    {ok, #st{metrics=dict:new(), locks=dict:new()}}.
 
 handle_command({read, ReqID, Metric, From, Until}, _From, State) ->
     Reply = case dict:find(Metric, State#st.metrics) of
@@ -114,15 +114,15 @@ handle_command({fold, ReqID, Fun, Acc0}, _From, #st{metrics=Metrics}=State) ->
         Metrics
     ),
     {reply, {ok, ReqID, {ok, Acc1}}, State};
-handle_command({lock, ReqID, Metric}, From, State0) ->
+handle_command({lock, ReqID, Metric}, {_, _, Pid}=From, State0) ->
     #st{metrics=Metrics0, locks=Locks0} = State0,
     {Reply, State1} = case dict:find(Metric, Metrics0) of
         {ok, #metric{lock=undefined}=Stored} ->
-            erlang:link(From),
+            erlang:link(Pid),
             {
                 {ok, locked},
                 State0#st{
-                    locks=dict:store(From, Metric, Locks0),
+                    locks=dict:store(Pid, Metric, Locks0),
                     metrics=dict:store(
                         Metric,
                         Stored#metric{lock=From},
