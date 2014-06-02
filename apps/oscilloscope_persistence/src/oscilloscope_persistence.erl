@@ -99,7 +99,7 @@ read(Resolution, From0, Until0) ->
             ),
             {From1, From1 + (Interval * length(Read)), Read}
     end,
-    {ok, {From, Until, Resolution, Points}}.
+    {ok, {From, Until, Points}}.
 
 commutator() ->
     {ok, Table} = application:get_env(oscilloscope_persistence, dynamo_table),

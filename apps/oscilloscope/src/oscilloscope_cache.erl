@@ -1,7 +1,7 @@
 -module(oscilloscope_cache).
 
 -export([
-    new/1,
+    new/2,
     refresh/1,
     update/2,
     read/3,
@@ -31,14 +31,7 @@
 
 -endif.
 
-new(Metric) ->
-    Meta = case oscilloscope_metadata:find(Metric) of
-        {ok, M} ->
-            M;
-        {error, not_found} ->
-            {ok, M} = oscilloscope_metadata:create(Metric),
-            M
-    end,
+new(Metric, Meta) ->
     AggregationAtom = oscilloscope_metadata:aggregation(Meta),
     AggregationFun = fun(Vals) ->
         erlang:apply(oscilloscope_aggregations, AggregationAtom, [Vals])
@@ -97,12 +90,12 @@ update(Points, Cache) ->
 read(From, Until, _Cache) when From > Until ->
     {error, temporal_inversion};
 read(From0, Until0, Cache) ->
-    #cache{resolutions=Resolutions, aggregation=Aggregation} = Cache,
-    #resolution{meta=Meta, t=T, points=Points} = select_resolution(
+    #cache{meta=Meta, resolutions=Resolutions, aggregation=Aggregation} = Cache,
+    #resolution{meta=Resolution, t=T, points=Points} = select_resolution(
         From0,
         Resolutions
     ),
-    Interval = oscilloscope_metadata_resolution:interval(Meta),
+    Interval = oscilloscope_metadata_resolution:interval(Resolution),
     {From1, Until1, Read} = read_int(
         From0,
         Until0,
@@ -111,7 +104,7 @@ read(From0, Until0, Cache) ->
         T,
         Points
     ),
-    {From1, Until1, Meta, Read}.
+    {Meta, Resolution, {From1, Until1, Read}}.
 
 -spec cached(Cache, Resolution) -> {Points, Meta} when
     Cache :: #cache{},

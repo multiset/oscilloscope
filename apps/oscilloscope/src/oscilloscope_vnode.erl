@@ -84,13 +84,26 @@ init(_) ->
     {ok, #st{metrics=dict:new(), locks=dict:new()}}.
 
 handle_command({read, ReqID, Metric, From, Until}, _From, State) ->
-    Reply = case dict:find(Metric, State#st.metrics) of
+    Metrics0 = State#st.metrics,
+    case dict:find(Metric, Metrics0) of
         {ok, #metric{cache=Cache}} ->
-            oscilloscope_cache:read(From, Until, Cache);
+            Read = oscilloscope_cache:read(From, Until, Cache),
+            {reply, {ok, ReqID, Read}, State};
         error ->
-            not_found
-    end,
-    {reply, {ok, ReqID, Reply}, State};
+            case oscilloscope_metadata:find(Metric) of
+                {ok, Meta} ->
+                    Cache = oscilloscope_cache:new(Metric, Meta),
+                    Metrics1 = dict:store(
+                        Metric,
+                        #metric{cache=Cache},
+                        Metrics0
+                    ),
+                    Read = oscilloscope_cache:read(From, Until, Cache),
+                    {reply, {ok, ReqID, Read}, State#st{metrics=Metrics1}};
+                {error, not_found} ->
+                    {reply, {ok, ReqID, not_found}, State}
+            end
+    end;
 handle_command({update, ReqID, Metric, Points}, _From, State) ->
     Metrics0 = State#st.metrics,
     Metrics1 = case dict:find(Metric, Metrics0) of
@@ -98,9 +111,16 @@ handle_command({update, ReqID, Metric, Points}, _From, State) ->
             Cache1 = oscilloscope_cache:update(Points, Cache0),
             dict:store(Metric, Stored#metric{cache=Cache1}, Metrics0);
         error ->
+            Meta = case oscilloscope_metadata:find(Metric) of
+                {ok, M} ->
+                    M;
+                {error, not_found} ->
+                    {ok, M} = oscilloscope_metadata:create(Metric),
+                    M
+            end,
             Cache = oscilloscope_cache:update(
                 Points,
-                oscilloscope_cache:new(Metric)
+                oscilloscope_cache:new(Metric, Meta)
             ),
             dict:store(Metric, #metric{cache=Cache}, Metrics0)
     end,

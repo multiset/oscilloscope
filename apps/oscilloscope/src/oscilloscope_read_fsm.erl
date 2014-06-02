@@ -62,7 +62,7 @@ init([ReqID, Sender, Metric, From, Until, Opts]) ->
         false ->
             {stop, ring_not_ready};
         true ->
-            State0 = #st{
+            State = #st{
                 r = proplists:get_value(r, Opts, ?DEFAULT_R),
                 bucket = proplists:get_value(bucket, Opts, ?DEFAULT_BUCKET),
                 replies = [],
@@ -72,13 +72,7 @@ init([ReqID, Sender, Metric, From, Until, Opts]) ->
                 from = From,
                 until = Until
             },
-            case oscilloscope_metadata:find(Metric) of
-                {error, Error} ->
-                    {ok, reply, State0#st{reply=Error}, 0};
-                {ok, Meta} ->
-                    State1 = State0#st{meta=Meta},
-                    {ok, prepare_cache_read, State1, 0}
-            end
+            {ok, prepare_cache_read, State, 0}
     end.
 
 prepare_cache_read(timeout, #st{r=R, bucket=Bucket, metric=Metric}=State) ->
@@ -100,8 +94,7 @@ wait_for_cache({ok, _ReqID, Reply}, State0) ->
     #st{
         r=R,
         from=From,
-        replies=Replies0,
-        meta=Meta
+        replies=Replies0
     } = State0,
     Replies1 = [Reply|Replies0],
     State1 = State0#st{replies=Replies1},
@@ -111,11 +104,13 @@ wait_for_cache({ok, _ReqID, Reply}, State0) ->
                 [Reply] -> Reply;
                 _Else -> hd(Replies1) %% TODO read repair
             end,
-            {CFrom, CUntil, Resolution, Points} = Read,
+            {Meta, Resolution, CRead} = Read,
             State2 = State1#st{
-                cache_read=Read,
+                cache_read=CRead,
+                meta=Meta,
                 resolution=Resolution
             },
+            {CFrom, CUntil, Points} = CRead,
             case CFrom =< From of
                 true ->
                     Response = [
@@ -149,8 +144,8 @@ merge_reads(timeout, State) ->
         persistent_read=PRead,
         resolution=Resolution
     } = State,
-    {CFrom, CUntil, Resolution, CData} = CRead,
-    {PFrom, PUntil, Resolution, PData} = PRead,
+    {CFrom, CUntil, CData} = CRead,
+    {PFrom, PUntil, PData} = PRead,
     Interval = oscilloscope_metadata_resolution:interval(Resolution),
     Gap = lists:duplicate((CFrom - PUntil) div Interval, null),
     Reply = [
