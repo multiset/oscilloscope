@@ -58,22 +58,27 @@ start_link(ReqID, Sender, Metric, From, Until, Opts) ->
     gen_fsm:start_link(?MODULE, [ReqID, Sender, Metric, From, Until, Opts], []).
 
 init([ReqID, Sender, Metric, From, Until, Opts]) ->
-    State0 = #st{
-        r = proplists:get_value(r, Opts, ?DEFAULT_R),
-        bucket = proplists:get_value(bucket, Opts, ?DEFAULT_BUCKET),
-        replies = [],
-        req_id = ReqID,
-        sender = Sender,
-        metric = Metric,
-        from = From,
-        until = Until
-    },
-    case oscilloscope_metadata:find(Metric) of
-        {error, Error} ->
-            {ok, reply, State0#st{reply=Error}, 0};
-        {ok, Meta} ->
-            State1 = State0#st{meta=Meta},
-            {ok, prepare_cache_read, State1, 0}
+    case oscilloscope_util:ring_ready() of
+        false ->
+            {stop, ring_not_ready};
+        true ->
+            State0 = #st{
+                r = proplists:get_value(r, Opts, ?DEFAULT_R),
+                bucket = proplists:get_value(bucket, Opts, ?DEFAULT_BUCKET),
+                replies = [],
+                req_id = ReqID,
+                sender = Sender,
+                metric = Metric,
+                from = From,
+                until = Until
+            },
+            case oscilloscope_metadata:find(Metric) of
+                {error, Error} ->
+                    {ok, reply, State0#st{reply=Error}, 0};
+                {ok, Meta} ->
+                    State1 = State0#st{meta=Meta},
+                    {ok, prepare_cache_read, State1, 0}
+            end
     end.
 
 prepare_cache_read(timeout, #st{r=R, bucket=Bucket, metric=Metric}=State) ->

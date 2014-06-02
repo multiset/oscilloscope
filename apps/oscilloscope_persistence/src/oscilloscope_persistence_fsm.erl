@@ -64,14 +64,14 @@ start_link(ReqID, Sender, Opts) ->
     gen_fsm:start_link(?MODULE, [ReqID, Sender, Opts], []).
 
 init([ReqID, Sender, Opts]) ->
-    Bucket = proplists:get_value(bucket, Opts, ?DEFAULT_BUCKET),
-    R = proplists:get_value(r, Opts, ?DEFAULT_R),
-    Key = riak_core_util:chash_key({Bucket, term_to_binary(now())}),
-    Preflist = riak_core_apl:get_apl(Key, R, oscilloscope),
-    case Preflist of
-        [] ->
-            {stop, no_vnodes};
-        _ ->
+    case oscilloscope_util:ring_ready() of
+        false ->
+            {stop, ring_not_ready};
+        true ->
+            Bucket = proplists:get_value(bucket, Opts, ?DEFAULT_BUCKET),
+            R = proplists:get_value(r, Opts, ?DEFAULT_R),
+            Key = riak_core_util:chash_key({Bucket, term_to_binary(now())}),
+            Preflist = riak_core_apl:get_apl(Key, R, ?SERVICE),
             State = #st{
                 r = R,
                 req_id = ReqID,

@@ -1,5 +1,13 @@
 -module(oscilloscope_util).
--export([parse_resolution/1]).
+-export([
+    ring_ready/0,
+    parse_resolution/1
+]).
+
+-include_lib("oscilloscope/include/oscilloscope.hrl").
+
+ring_ready() ->
+    riak_core_node_watcher:nodes(?SERVICE) =/= [].
 
 parse_resolution(ResolutionString) ->
     Retentions = re:split(ResolutionString, ","),

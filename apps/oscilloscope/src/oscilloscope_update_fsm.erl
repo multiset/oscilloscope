@@ -48,16 +48,21 @@ start_link(ReqID, Sender, Metric, Points, Opts) ->
     gen_fsm:start_link(?MODULE, [ReqID, Sender, Metric, Points, Opts], []).
 
 init([ReqID, Sender, Metric, Points, Opts]) ->
-    State = #st{
-        w = proplists:get_value(w, Opts, ?DEFAULT_W),
-        bucket = proplists:get_value(bucket, Opts, ?DEFAULT_BUCKET),
-        replies = [],
-        req_id = ReqID,
-        sender = Sender,
-        metric = Metric,
-        points = Points
-    },
-    {ok, prepare, State, 0}.
+    case oscilloscope_util:ring_ready() of
+        false ->
+            {stop, ring_not_ready};
+        true ->
+            State = #st{
+                w = proplists:get_value(w, Opts, ?DEFAULT_W),
+                bucket = proplists:get_value(bucket, Opts, ?DEFAULT_BUCKET),
+                replies = [],
+                req_id = ReqID,
+                sender = Sender,
+                metric = Metric,
+                points = Points
+            },
+            {ok, prepare, State, 0}
+    end.
 
 prepare(timeout, #st{w=W, bucket=Bucket, metric=Metric}=State) ->
     Key = riak_core_util:chash_key({Bucket, Metric}),
