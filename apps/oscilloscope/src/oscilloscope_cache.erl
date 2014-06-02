@@ -607,8 +607,6 @@ select_resolution_test() ->
     ?assertEqual(hd(tl(Resolutions)), select_resolution(0, Resolutions)),
     ?assertEqual(hd(Resolutions), select_resolution(10, Resolutions)).
 
-
-
 proper_test_() ->
     {
         timeout,
