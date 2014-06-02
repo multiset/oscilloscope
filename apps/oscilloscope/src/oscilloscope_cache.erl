@@ -585,6 +585,37 @@ prop_maybe_trim() ->
         end
     ).
 
+select_resolution_test() ->
+    Resolutions = [
+        #resolution{
+            meta={22,10,1000,[]},
+            t=10,
+            points=array:from_list(
+                [
+                    [20.0,14.0,10.0],
+                    [40.0],
+                    null,null,null,null,null,null,null,
+                    [-10.0]
+                ],
+                null
+            )
+        },
+        #resolution{
+            meta={23,60,1000,[]},
+            t=0,
+            points=array:from_list([[40.0,20.0,14.0,10.0],[-10.0]], null)
+        },
+        #resolution{
+            meta={24,3600,1000,[]},
+            t=0,
+            points=array:from_list([[-10.0,40.0,20.0,14.0,10.0]], null)
+        }
+    ],
+    ?assertEqual(hd(tl(Resolutions)), select_resolution(0, Resolutions)),
+    ?assertEqual(hd(Resolutions), select_resolution(10, Resolutions)).
+
+
+
 proper_test_() ->
     {
         timeout,
