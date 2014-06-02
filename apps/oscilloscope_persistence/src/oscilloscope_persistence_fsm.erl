@@ -230,27 +230,33 @@ vnode_fold(Metric, Cache, Acc) ->
 
 cache_fold(Metric, Cache, Resolution, Acc) ->
     {Points, Meta} = oscilloscope_cache:cached(Cache, Resolution),
-    Interval = oscilloscope_metadata_resolution:interval(Meta),
-    Count = oscilloscope_metadata_resolution:count(Meta),
-    Persisted = oscilloscope_metadata_resolution:persisted(Meta),
-    {ok, MinPersistAge} = application:get_env(
-        oscilloscope_persistence,
-        min_persist_age
-    ),
-    {TNow, _} = lists:last(Points),
-    PersistBoundary = TNow - MinPersistAge,
-    ToPersist = lists:filter(
-        fun({T, _V}) -> T < PersistBoundary end,
-        Points
-    ),
-    TExpired = TNow - Interval * Count,
-    ToVacuum = [Time || {Time, _} <- Persisted, Time < TExpired],
-    %% N.B.: The cache will be persisted which has the most Dynamo operations
-    %% to perform. This is, of course, not optimal, but it'll do for now.
-    ThisScore = length(ToPersist) + length(ToVacuum),
-    case Acc of
-        {_M, _C, _R, _TP, _TV, Score} when Score > ThisScore ->
+    case Points of
+        [] ->
             Acc;
         _ ->
-            {Metric, Cache, Resolution, ToPersist, ToVacuum, ThisScore}
+            Interval = oscilloscope_metadata_resolution:interval(Meta),
+            Count = oscilloscope_metadata_resolution:count(Meta),
+            Persisted = oscilloscope_metadata_resolution:persisted(Meta),
+            {ok, MinPersistAge} = application:get_env(
+                oscilloscope_persistence,
+                min_persist_age
+            ),
+            {TNow, _} = lists:last(Points),
+            PersistBoundary = TNow - MinPersistAge,
+            ToPersist = lists:filter(
+                fun({T, _V}) -> T < PersistBoundary end,
+                Points
+            ),
+            TExpired = TNow - Interval * Count,
+            ToVacuum = [Time || {Time, _} <- Persisted, Time < TExpired],
+            %% N.B.: The cache will be persisted which has the most Dynamo
+            %% operations to perform. This is, of course, not optimal, but
+            %% it'll do for now.
+            ThisScore = length(ToPersist) + length(ToVacuum),
+            case Acc of
+                {_M, _C, _R, _TP, _TV, Score} when Score > ThisScore ->
+                    Acc;
+                _ ->
+                    {Metric, Cache, Resolution, ToPersist, ToVacuum, ThisScore}
+            end
     end.
