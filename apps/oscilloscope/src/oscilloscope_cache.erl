@@ -166,13 +166,7 @@ append([{Timestamp0, Value}|Ps], T0, Points0, Interval, Persisted) ->
     Timestamp1 = Timestamp0 - (Timestamp0 rem Interval),
     %% Any point that's newer than the last persist time is acceptable, but
     %% we'll never try to overwrite a previously-persisted index.
-    LastPersist = case Persisted of
-        [] ->
-            -1;
-        Persisted ->
-            {LastPersistTime, LastPersistCount} = lists:last(Persisted),
-            LastPersistTime + Interval * LastPersistCount
-    end,
+    LastPersist = last_persisted_time(Persisted, Interval),
     {T1, Points1} = case {Timestamp1 > LastPersist, T0} of
         {false, _} ->
             {T0, Points0};
@@ -303,6 +297,15 @@ range_from_array(Start, End, AF, Acc0, Points) ->
         Points
     )).
 
+last_persisted_time(Persisted, Interval) ->
+    case Persisted of
+        [] ->
+            -1 * Interval;
+        Persisted ->
+            {LastPersistTime, LastPersistCount} = lists:last(Persisted),
+            LastPersistTime + Interval * LastPersistCount - 1
+    end.
+
 -ifdef(TEST).
 
 divide_array_test() ->
@@ -403,15 +406,25 @@ append_negative_reject_test() ->
 
 prop_append() ->
     ?FORALL(
-        {T0, Points0, Interval, Persisted, ToAppend},
+        {TKernel, Points0, Interval, {PKTime, PKCounts}, ToAppend},
         {
             timestamp(),
             [[number()]],
             interval(),
-            persisted(),
+            {pos_integer(), [pos_integer()]},
             [{timestamp(), number()}]
         },
         begin
+            %% Initialize types based on random values
+            Persisted = lists:reverse(lists:foldl(
+                fun(Count, [{T, C}|_]=Acc) ->
+                    [{T + C * Interval, Count}|Acc]
+                end,
+                [{PKTime - (PKTime rem Interval), hd(PKCounts)}],
+                tl(PKCounts)
+            )),
+            LastPersist = last_persisted_time(Persisted, Interval),
+            T0 = (LastPersist + Interval) + (TKernel - (TKernel rem Interval)),
             {T1, Array} = append(
                 ToAppend,
                 T0,
@@ -420,8 +433,32 @@ prop_append() ->
                 Persisted
             ),
             Points1 = array:to_list(Array),
-            true
-        end
+            [{EarliestT, _}|_] = lists:sort(ToAppend),
+            T = EarliestT - (EarliestT rem Interval),
+            %% T1 is set to the smallest sensible value
+            true = T1 == case {T =< LastPersist, T =< T0} of
+                {true, _} ->
+                    T0;
+                {false, true} ->
+                    T;
+                _ ->
+                    T0
+            end,
+            %% Total points in the cache should equal the number of valid points
+            %% (i.e., T > LastPersistTime) in ToAppend plus the original number
+            %% of points, minus any null filler values. Note that point lists
+            %% must be flattened since each array is a list of lists and we
+            %% allow multiple entries to the same time range
+            PointsActuallyAdded = lists:filter(
+                fun({Time, _Value}) -> Time > LastPersist end,
+                ToAppend
+            ),
+            TotalPoints0 = length(lists:flatten(Points0)) -
+                length(lists:filter(fun(I) -> I == null end, Points0)),
+            TotalPoints1 = length(lists:flatten(Points1)) -
+                length(lists:filter(fun(I) -> I == null end, Points1)),
+            true = TotalPoints1 == TotalPoints0 + length(PointsActuallyAdded)
+         end
     ).
 
 append_point_test() ->
@@ -436,7 +473,7 @@ append_point_test() ->
 prop_append_point() ->
     ?FORALL(
         {Idx, Value, List},
-        {pos_integer(), number(), [[number()]]},
+        {pos_integer(), number(), [value()]},
         begin
             Array1 = append_point(Idx, Value, array:from_list(List, null)),
             true = Value == hd(lists:nth(Idx + 1, array:to_list(Array1)))
@@ -508,24 +545,20 @@ read_int_all_test() ->
 
 prop_read_int() ->
     ?FORALL(
-        {From0, Until0, Interval, T, Points0},
-        {timestamp(), timestamp(), interval(), timestamp(), [[float()]]},
+        {From0, Delta, Interval, T, Points0},
+        {timestamp(), timestamp(), interval(), timestamp(), [value()]},
         begin
-            case From0 =< Until0 of
-                true ->
-                    {From1, Until1, Points1} = read_int(
-                        From0,
-                        Until0,
-                        Interval,
-                        fun oscilloscope_aggregations:avg/1,
-                        T,
-                        array:from_list(Points0, null)
-                    ),
-                    %% Number of points matches the provided range
-                    true = ((Until1 - From1) / Interval) + 1 == length(Points1);
-                false ->
-                    true
-            end
+            Until0 = From0 + Delta,
+            {From1, Until1, Points1} = read_int(
+                From0,
+                Until0,
+                Interval,
+                fun oscilloscope_aggregations:avg/1,
+                T,
+                array:from_list(Points0, null)
+            ),
+            %% Number of points matches the provided range
+            true = ((Until1 - From1) / Interval) + 1 == length(Points1)
         end
     ).
 
@@ -610,8 +643,8 @@ select_resolution_test() ->
 proper_test_() ->
     {
         timeout,
-        1000,
-        [] = proper:module(?MODULE, [{to_file, user}, {numtests, 1}])
+        100000,
+        [] = proper:module(?MODULE, [{to_file, user}, {numtests, 1000}])
     }.
 
 -endif.

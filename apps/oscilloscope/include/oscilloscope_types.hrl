@@ -8,13 +8,13 @@
 -type interval() :: pos_integer().
 -type count() :: pos_integer().
 -type timestamp() :: pos_integer().
+-type value() :: nonempty_list(number()) | null.
 -type persisted() :: [{timestamp(), pos_integer()}].
 
 -type read() :: {
     timestamp(),
     timestamp(),
-    oscilloscope_metadata_resolution:resolution(),
-    [number()]
+    [value()]
 }.
 
 %% TODO: import proper type from supervisor
