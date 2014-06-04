@@ -257,6 +257,6 @@ cache_fold(Metric, Cache, Resolution, Acc) ->
                 {_M, _C, _R, _TP, _TV, Score} when Score > ThisScore ->
                     Acc;
                 _ ->
-                    {Metric, Cache, Resolution, ToPersist, ToVacuum, ThisScore}
+                    {Metric, Cache, Meta, ToPersist, ToVacuum, ThisScore}
             end
     end.
