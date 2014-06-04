@@ -22,6 +22,10 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init([]) ->
+    {ok, _, Orgs} = oscilloscope_metadata:named(get_orgs, []),
+    lists:foldl(fun({OrgID, OrgName}, _) ->
+        ets:insert(orgs, {OrgName, OrgID})
+    end, ok, Orgs),
     {ok, _, Metrics} = oscilloscope_metadata:named(get_metrics, []),
     MetricDict = lists:map(fun
         ({OrgID, TeamID, Tags, MetricID}) -> {{OrgID, TeamID, Tags}, MetricID}
@@ -103,8 +107,10 @@ get_metrics(OrgID, TeamIDs, Tags, State) ->
     filter_metrics(Tags, Authed).
 
 
-handle_cast(_Msg, State) ->
-    {noreply, State}.
+handle_cast({create_metric, OwnerID, MetricID, Props}, State) ->
+    #state{metrics=Metrics0} = State,
+    Metrics = dict:append(OwnerID, {Props, MetricID}, Metrics0),
+    {noreply, State#state{metrics=Metrics}}.
 
 handle_info(_Info, State) ->
     {noreply, State}.

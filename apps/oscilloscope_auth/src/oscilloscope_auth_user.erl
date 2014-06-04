@@ -1,6 +1,13 @@
 -module(oscilloscope_auth).
 
--export([is_authorized/2, create/3, get_owner_id/1, join_team/2, join_org/2]).
+-export([
+    is_authorized/2,
+    create/3,
+    get_owner_id/1,
+    join_team/2,
+    join_org/2,
+    get_teams/2
+]).
 
 -include("oscilloscope_auth.hrl").
 
@@ -34,15 +41,13 @@ create(Name, Pass, Email) ->
     {ok, Id}.
 
 
--spec get_owner_id(tuple()) -> {ok, integer()} | not_found.
+-spec get_owner_id(#user{} | #org{}) -> {ok, integer()} | not_found.
 get_owner_id(#user{}=User) ->
     #user{id=Id} = User,
     get_owner_id_int(Id, select_owner_id_from_user_id);
-
 get_owner_id(#org{}=Org) ->
     #org{id=Id} = Org,
     get_owner_id_int(Id, select_owner_id_from_user_id).
-
 
 get_owner_id_int(Id, Query) ->
     QueryResp = oscilloscope_metadata:named(
@@ -56,6 +61,9 @@ get_owner_id_int(Id, Query) ->
             not_found
     end.
 
+
+get_teams(Org, User) ->
+    ets:lookup(user_teams, {Org#org.id, User#user.id}).
 
 -spec join_org(integer(), integer()) -> ok | {error, binary()}.
 join_org(UserID, OrgID) ->

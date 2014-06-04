@@ -41,6 +41,10 @@ create({OwnerID, Props}=Metric) ->
             {ok, _, [{MetricID}]} = oscilloscope_metadata_sql:named(
                 select_metric_id, [OwnerID, EncodedProps]
             ),
+            gen_server:cast(
+                oscilloscope_auth_server,
+                {create_metric, OwnerID, MetricID, Props}
+            ),
             lists:foreach(
                 fun({Interval, Count}) ->
                     {ok, 1} = oscilloscope_metadata_sql:named(
