@@ -1,6 +1,7 @@
 -module(oscilloscope_vnode).
-
 -behavior(riak_core_vnode).
+
+-compile([{parse_transform, lager_transform}]).
 
 -export([
     read/5,

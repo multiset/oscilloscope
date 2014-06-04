@@ -1,4 +1,7 @@
 -module(oscilloscope_net_tcp).
+
+-compile([{parse_transform, lager_transform}]).
+
 -export([start_link/4, init/4]).
 
 -record(state, {

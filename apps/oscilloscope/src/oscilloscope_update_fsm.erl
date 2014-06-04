@@ -1,6 +1,8 @@
 -module(oscilloscope_update_fsm).
 -behavior(gen_fsm).
 
+-compile([{parse_transform, lager_transform}]).
+
 -export([
     update/3
 ]).

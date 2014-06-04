@@ -1,5 +1,7 @@
 -module(oscilloscope_persistence).
 
+-compile([{parse_transform, lager_transform}]).
+
 -ifdef(TEST).
 -compile(export_all).
 -endif.

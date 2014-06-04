@@ -1,6 +1,8 @@
 -module(oscilloscope_read_fsm).
 -behavior(gen_fsm).
 
+-compile([{parse_transform, lager_transform}]).
+
 -export([
     read/4
 ]).
