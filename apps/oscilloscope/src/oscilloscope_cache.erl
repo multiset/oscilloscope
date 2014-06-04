@@ -93,7 +93,7 @@ read(From0, Until0, Cache) ->
         Resolutions
     ),
     Interval = oscilloscope_metadata_resolution:interval(Resolution),
-    {From1, Until1, Read} = read_int(
+    Read = read_int(
         From0,
         Until0,
         Interval,
@@ -101,7 +101,7 @@ read(From0, Until0, Cache) ->
         T,
         Points
     ),
-    {Meta, Resolution, {From1, Until1, Read}}.
+    {ok, {Meta, Resolution, Read}}.
 
 -spec cached(Cache, Resolution) -> {Points, Meta} when
     Cache :: #cache{},
@@ -248,40 +248,36 @@ earliest_timestamp(Resolution) ->
     end.
 
 read_int(From0, Until0, Interval, Aggregation, T, Points) ->
-    {From, Until} = calculate_query_bounds(From0, Until0, Interval),
-    case T =< Until of
+    {From1, Until1} = oscilloscope_util:adjust_query_range(
+        From0,
+        Until0,
+        Interval
+    ),
+    case T =< Until1 of
+        false ->
+            not_found;
         true ->
             %% At least some of the query is in the cache
-            Acc0 = case (T - From) div Interval of
+            Acc0 = case (T - From1) div Interval of
                 Count when Count > 0 -> lists:duplicate(Count, null);
                 _ -> []
             end,
-            StartIndex = (From - T) div Interval,
-            EndIndex = (Until - T) div Interval,
-            Result = range_from_array(
+            StartIndex = erlang:max(0, (From1 - T) div Interval),
+            EndIndex = erlang:min(
+                array:size(Points) - 1,
+                (Until1 - T) div Interval
+            ),
+            From2 = T + StartIndex * Interval,
+            Until2 = T + EndIndex * Interval,
+            Read = range_from_array(
                 StartIndex,
                 EndIndex,
                 Aggregation,
                 Acc0,
                 Points
             ),
-            %% But the cache might not have all the points we need
-            Missing = trunc((((Until - From) / Interval) + 1) - length(Result)),
-            {From, Until, Result ++ lists:duplicate(Missing, null)};
-        false ->
-            PointCount = ((Until - From) div Interval + 1),
-            {From, Until, lists:duplicate(PointCount, null)}
+            {From2, Until2, Read}
     end.
-
-calculate_query_bounds(From0, Until0, Interval) ->
-    %% Floor the query's From to the preceding interval bound
-    From = From0 - (From0 rem Interval),
-    %% Ceil the query's Until to the next interval bound
-    Until = case Until0 rem Interval of
-        0 -> Until0;
-        N -> Until0 + Interval - N
-    end,
-    {From, Until}.
 
 range_from_array(Start, End, AF, Acc0, Points) ->
     lists:reverse(array:foldl(

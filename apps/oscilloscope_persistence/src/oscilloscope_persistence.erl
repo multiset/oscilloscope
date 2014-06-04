@@ -1,15 +1,18 @@
 -module(oscilloscope_persistence).
 
+-ifdef(TEST).
+-compile(export_all).
+-endif.
+
 -export([
     persist/2,
     vacuum/2,
     read/3
 ]).
 
--define(VALENCODE(V), zlib:compress(term_to_binary(V))).
--define(VALDECODE(V), binary_to_term(zlib:uncompress(V))).
 -define(GUESS, 150).
 
+-include_lib("oscilloscope_persistence/include/oscilloscope_persistence.hrl").
 -include_lib("oscilloscope/include/oscilloscope_types.hrl").
 
 -spec persist(Resolution, Points) -> {ok, Persisted} when
@@ -29,7 +32,7 @@ persist(Resolution, Points) ->
         max_chunk_size
     ),
     Chunks = chunkify(Points, MinChunkSize, MaxChunkSize),
-    lager:debug(
+    lager:error(
         "Got chunks ~p for cache ~p, attempting to persist",
         [Chunks, ResolutionID]
     ),
@@ -82,24 +85,41 @@ read(Resolution, From0, Until0) ->
     ID = oscilloscope_metadata_resolution:id(Resolution),
     Interval = oscilloscope_metadata_resolution:interval(Resolution),
     Persisted = oscilloscope_metadata_resolution:persisted(Resolution),
-    {From, Until, Points} = case calculate_starttime(From0, Persisted) of
+    {From1, Until1} = oscilloscope_util:adjust_query_range(
+        From0,
+        Until0,
+        Interval
+    ),
+    Bounds = calculate_query_bounds(
+        From1,
+        Until1,
+        Interval,
+        Persisted
+    ),
+    Reply = case Bounds of
         not_found ->
-            {From0, From0, []};
-        From1 ->
-            Until1 = calculate_endtime(Until0, Persisted),
+            not_found;
+        {ReadFrom, ReadUntil} ->
             {ok, Rows} = commutator:query(
                 Commutator,
                 [
                     {<<"id">>, equals, [ID]},
-                    {<<"t">>, between, [From1, Until1]}
+                    {<<"t">>, between, [ReadFrom, ReadUntil]}
                 ]
             ),
             Read = lists:flatten(
                 [?VALDECODE(proplists:get_value(<<"v">>, I)) || I <- Rows]
             ),
-            {From1, From1 + (Interval * length(Read)), Read}
+            {From2, Until2, TrimmedRead} = trim_read(
+                From1,
+                Until1,
+                Interval,
+                ReadFrom,
+                Read
+            ),
+            {From2, Until2, TrimmedRead}
     end,
-    {ok, {From, Until, Points}}.
+    {ok, Reply}.
 
 commutator() ->
     {ok, Table} = application:get_env(oscilloscope_persistence, dynamo_table),
@@ -220,65 +240,34 @@ chunkify(Timestamps, Values, Excess, Min, Max, Count, Chunks, Guess) ->
             )
     end.
 
-calculate_starttime(T, Ts) ->
-    case lists:partition(fun({T1, _C}) -> T1 =< T end, Ts) of
-        {[], []} ->
+%% TODO: TESTME
+calculate_query_bounds(From, Until, Interval, Persisted) ->
+    {InRange, _OutOfRange} = lists:foldr(
+        fun({T, C}, {In, Out}) ->
+            End = T + C * Interval,
+            case T > Until orelse End < From of
+                true -> {In, [T|Out]};
+                false -> {[T|In], Out}
+            end
+        end,
+        {[], []},
+        Persisted
+    ),
+    case InRange of
+        [] ->
             not_found;
-        {[], [{Time, _Count}|_]} ->
-            Time;
-        {Earlier, _} ->
-            {Time, _Count} = lists:last(Earlier),
-            Time
+        _Else ->
+            {hd(InRange), lists:last(InRange)}
     end.
 
-calculate_endtime(T, Ts) ->
-    case lists:partition(fun({T1, _C}) -> T1 >= T end, Ts) of
-        {[], _} -> T;
-        {[{Time, _Count}|_], _} ->
-            Time
-    end.
-
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
-
-chunkify_test() ->
-    %% No chunking
-    Input = [{0, 1.0}, {10, 2.0}, {20, 3.0}],
-    ?assertEqual(
-        [],
-        chunkify(
-            Input,
-            1000000,
-            1000000
-        )
-    ),
-    %% Chunking each value
-    Chunked = chunkify(
-        Input,
-        11,
-        1000000
-    ),
-    Decoded = lists:map(fun({I, V, _}) -> {I, ?VALDECODE(V)} end, Chunked),
-    ?assertEqual([{0, [1.0, 2.0, 3.0]}], Decoded),
-    %% Chunking multiple values together
-    Input1 = [{I * 10, float(I)} || I <- lists:seq(0, 21)],
-    Chunked1 = chunkify(
-        Input1,
-        30,
-        65
-    ),
-    Decoded1 = lists:map(fun({I, V, _}) -> {I, ?VALDECODE(V)} end, Chunked1),
-    ?assertEqual([
-        {0, [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0]},
-        {120, [12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0]}
-    ], Decoded1).
-
-calculate_starttime_test() ->
-    ?assertEqual(2, calculate_starttime(3, [{2, 2}, {4, 2}, {6, 2}, {8, 2}])),
-    ?assertEqual(2, calculate_starttime(1, [{2, 2}, {4, 2}, {6, 2}, {8, 2}])).
-
-calculate_endtime_test() ->
-    ?assertEqual(4, calculate_endtime(3, [{2, 2}, {4, 2}, {6, 2}, {8, 2}])),
-    ?assertEqual(9, calculate_endtime(9, [{2, 2}, {4, 2}, {6, 2}, {8, 2}])).
-
--endif.
+%% TODO: TESTME
+trim_read(From, Until, Interval, ReadFrom, Read) ->
+    StartIndex = ((From - ReadFrom) div Interval),
+    %% Until and From are both inclusive, so add one
+    PointCount = ((Until - From) div Interval) + 1,
+    %% Add one for 1-indexing
+    Points = lists:sublist(Read, StartIndex + 1, PointCount),
+    StartTime = ReadFrom + StartIndex * Interval,
+    %% Subtract one for that nasty inclusive end again
+    EndTime = StartTime + (length(Points) - 1) * Interval,
+    {StartTime, EndTime, Points}.

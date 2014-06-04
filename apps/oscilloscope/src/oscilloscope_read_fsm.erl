@@ -93,7 +93,6 @@ execute_cache_read(timeout, State) ->
 wait_for_cache({ok, _ReqID, Reply}, State0) ->
     #st{
         r=R,
-        from=From,
         replies=Replies0
     } = State0,
     Replies1 = [Reply|Replies0],
@@ -104,24 +103,15 @@ wait_for_cache({ok, _ReqID, Reply}, State0) ->
                 [Reply] -> Reply;
                 _Else -> hd(Replies1) %% TODO read repair
             end,
-            {Meta, Resolution, CRead} = Read,
-            State2 = State1#st{
-                cache_read=CRead,
-                meta=Meta,
-                resolution=Resolution
-            },
-            {CFrom, CUntil, Points} = CRead,
-            case CFrom =< From of
-                true ->
-                    Response = [
-                        {meta, Meta},
-                        {from, CFrom},
-                        {until, CUntil},
-                        {resolution, Resolution},
-                        {datapoints, Points}
-                    ],
-                    {next_state, reply, State2#st{reply=Response}, 0};
-                false ->
+            case Read of
+                {error, _Error} ->
+                    {next_state, reply, State1#st{reply=Read}};
+                {ok, {Meta, Resolution, CRead}} ->
+                    State2 = State1#st{
+                        cache_read=CRead,
+                        meta=Meta,
+                        resolution=Resolution
+                    },
                     {next_state, execute_persistent_read, State2, 0}
             end;
         false ->
@@ -142,18 +132,46 @@ merge_reads(timeout, State) ->
         meta=Meta,
         cache_read=CRead,
         persistent_read=PRead,
-        resolution=Resolution
+        resolution=Resolution,
+        from=From0,
+        until=Until0
     } = State,
-    {CFrom, CUntil, CData} = CRead,
-    {PFrom, PUntil, PData} = PRead,
     Interval = oscilloscope_metadata_resolution:interval(Resolution),
-    Gap = lists:duplicate((CFrom - PUntil) div Interval, null),
+    {From1, Until1} = oscilloscope_util:adjust_query_range(
+        From0,
+        Until0,
+        Interval
+    ),
+    Points = case {PRead, CRead} of
+        {not_found, not_found} ->
+            lists:duplicate((Until1 - From1) div Interval, null);
+        {{PFrom, PUntil, PData}, not_found} ->
+            lists:append([
+                lists:duplicate((PFrom - From1) div Interval, null),
+                PData,
+                lists:duplicate((Until1 - PUntil) div Interval, null)
+            ]);
+        {not_found, {CFrom, CUntil, CData}} ->
+            lists:append([
+                lists:duplicate((CFrom - From1) div Interval, null),
+                CData,
+                lists:duplicate((Until1 - CUntil) div Interval, null)
+            ]);
+        {{_, PUntil, PData}, {CFrom, CUntil, CData}} ->
+            lists:append([
+                lists:duplicate((CFrom - From1) div Interval, null),
+                PData,
+                lists:duplicate((CFrom - PUntil) div Interval, null),
+                CData,
+                lists:duplicate((Until1 - CUntil) div Interval, null)
+            ])
+    end,
     Reply = [
         {meta, Meta},
-        {from, PFrom},
-        {until, CUntil},
+        {from, From1},
+        {until, Until1},
         {resolution, Resolution},
-        {datapoints, PData ++ Gap ++ CData}
+        {datapoints, Points}
     ],
     {next_state, reply, State#st{reply=Reply}, 0}.
 
