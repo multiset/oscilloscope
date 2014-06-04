@@ -52,9 +52,12 @@ init([ReqID, Sender, Metric, Points, Opts]) ->
         false ->
             {stop, ring_not_ready};
         true ->
+            Bucket = riak_core_bucket:get_bucket(
+                proplists:get_value(bucket, Opts, ?DEFAULT_BUCKET)
+            ),
             State = #st{
                 w = proplists:get_value(w, Opts, ?DEFAULT_W),
-                bucket = proplists:get_value(bucket, Opts, ?DEFAULT_BUCKET),
+                bucket = Bucket,
                 replies = [],
                 req_id = ReqID,
                 sender = Sender,
@@ -64,9 +67,10 @@ init([ReqID, Sender, Metric, Points, Opts]) ->
             {ok, prepare, State, 0}
     end.
 
-prepare(timeout, #st{w=W, bucket=Bucket, metric=Metric}=State) ->
+prepare(timeout, #st{bucket=Bucket, metric=Metric}=State) ->
     Key = riak_core_util:chash_key({Bucket, Metric}),
-    Preflist = riak_core_apl:get_apl(Key, W, oscilloscope),
+    N = riak_core_bucket:n_val(Bucket),
+    Preflist = riak_core_apl:get_apl(Key, N, oscilloscope),
     {next_state, execute, State#st{preflist=Preflist}, 0}.
 
 execute(timeout, State) ->

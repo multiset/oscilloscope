@@ -68,12 +68,14 @@ init([ReqID, Sender, Opts]) ->
         false ->
             {stop, ring_not_ready};
         true ->
-            Bucket = proplists:get_value(bucket, Opts, ?DEFAULT_BUCKET),
-            R = proplists:get_value(r, Opts, ?DEFAULT_R),
+            Bucket = riak_core_bucket:get_bucket(
+                proplists:get_value(bucket, Opts, ?DEFAULT_BUCKET)
+            ),
+            N = riak_core_bucket:n_val(Bucket),
             Key = riak_core_util:chash_key({Bucket, term_to_binary(now())}),
-            Preflist = riak_core_apl:get_apl(Key, R, ?SERVICE),
+            Preflist = riak_core_apl:get_apl(Key, N, ?SERVICE),
             State = #st{
-                r = R,
+                r = proplists:get_value(r, Opts, ?DEFAULT_R),
                 req_id = ReqID,
                 sender = Sender,
                 bucket = Bucket,

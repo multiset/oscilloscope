@@ -25,7 +25,7 @@
 ]).
 
 -record(st, {
-    bucket :: binary(),
+    bucket :: riak_core_bucket_type:bucket_type(),
     cache_read :: read(),
     from :: timestamp(),
     meta :: oscilllscope_metadata:meta(),
@@ -62,9 +62,12 @@ init([ReqID, Sender, Metric, From, Until, Opts]) ->
         false ->
             {stop, ring_not_ready};
         true ->
+            Bucket = riak_core_bucket:get_bucket(
+                proplists:get_value(bucket, Opts, ?DEFAULT_BUCKET)
+            ),
             State = #st{
                 r = proplists:get_value(r, Opts, ?DEFAULT_R),
-                bucket = proplists:get_value(bucket, Opts, ?DEFAULT_BUCKET),
+                bucket = Bucket,
                 replies = [],
                 req_id = ReqID,
                 sender = Sender,
@@ -75,9 +78,10 @@ init([ReqID, Sender, Metric, From, Until, Opts]) ->
             {ok, prepare_cache_read, State, 0}
     end.
 
-prepare_cache_read(timeout, #st{r=R, bucket=Bucket, metric=Metric}=State) ->
+prepare_cache_read(timeout, #st{bucket=Bucket, metric=Metric}=State) ->
     Key = riak_core_util:chash_key({Bucket, Metric}),
-    Preflist = riak_core_apl:get_apl(Key, R, oscilloscope),
+    N = riak_core_bucket:n_val(Bucket),
+    Preflist = riak_core_apl:get_apl(Key, N, oscilloscope),
     {next_state, execute_cache_read, State#st{preflist=Preflist}, 0}.
 
 execute_cache_read(timeout, State) ->
