@@ -1,4 +1,4 @@
--module(oscilloscope_cache_eunit).
+-module(oscilloscope_eunit).
 
 -include_lib("eunit/include/eunit.hrl").
 
@@ -108,73 +108,73 @@ append_point_test() ->
     ?assertEqual([[50, 45], null, [42]], array:to_list(DP3)).
 
 
-read_int_null_test() ->
-    Result = oscilloscope_cache:read_int(
-        100,
-        200,
-        20,
-        fun oscilloscope_aggregations:avg/1,
-        undefined,
-        array:new({default, null})
-    ),
-    ?assertEqual({100, 200, lists:duplicate(6, null)}, Result).
+%% read_int_null_test() ->
+%%     Result = oscilloscope_cache:read_int(
+%%         100,
+%%         200,
+%%         20,
+%%         fun oscilloscope_aggregations:avg/1,
+%%         undefined,
+%%         array:new({default, null})
+%%     ),
+%%     ?assertEqual({100, 200, lists:duplicate(6, null)}, Result).
 
-read_int_some_end_test() ->
-    Points = [[20.0] || _ <- lists:seq(1, 10)],
-    Result = oscilloscope_cache:read_int(
-        100,
-        200,
-        20,
-        fun oscilloscope_aggregations:avg/1,
-        140,
-        array:from_list(Points, null)
-    ),
-    Expected = {100, 200, [null, null, 20.0, 20.0, 20.0, 20.0]},
-    ?assertEqual(Expected, Result).
+%% read_int_some_end_test() ->
+%%     Points = [[20.0] || _ <- lists:seq(1, 10)],
+%%     Result = oscilloscope_cache:read_int(
+%%         100,
+%%         200,
+%%         20,
+%%         fun oscilloscope_aggregations:avg/1,
+%%         140,
+%%         array:from_list(Points, null)
+%%     ),
+%%     Expected = {100, 200, [null, null, 20.0, 20.0, 20.0, 20.0]},
+%%     ?assertEqual(Expected, Result).
 
-read_int_some_start_test() ->
-    Points = [[20.0] || _ <- lists:seq(1, 3)],
-    Result = oscilloscope_cache:read_int(
-        100,
-        200,
-        20,
-        fun oscilloscope_aggregations:avg/1,
-        100,
-        array:from_list(Points, null)
-    ),
-    Expected = {100, 200, [20.0, 20.0, 20.0, null, null, null]},
-    ?assertEqual(Expected, Result).
+%% read_int_some_start_test() ->
+%%     Points = [[20.0] || _ <- lists:seq(1, 3)],
+%%     Result = oscilloscope_cache:read_int(
+%%         100,
+%%         200,
+%%         20,
+%%         fun oscilloscope_aggregations:avg/1,
+%%         100,
+%%         array:from_list(Points, null)
+%%     ),
+%%     Expected = {100, 200, [20.0, 20.0, 20.0, null, null, null]},
+%%     ?assertEqual(Expected, Result).
 
-read_int_middle_test() ->
-    Points = [[20.0], [20.0]],
-    Result = oscilloscope_cache:read_int(
-        12330,
-        12360,
-        10,
-        fun oscilloscope_aggregations:avg/1,
-        12340,
-        array:from_list(Points, null)
-    ),
-    Expected = {12330, 12360, [null, 20.0, 20.0, null]},
-    ?assertEqual(Expected, Result).
+%% read_int_middle_test() ->
+%%     Points = [[20.0], [20.0]],
+%%     Result = oscilloscope_cache:read_int(
+%%         12330,
+%%         12360,
+%%         10,
+%%         fun oscilloscope_aggregations:avg/1,
+%%         12340,
+%%         array:from_list(Points, null)
+%%     ),
+%%     Expected = {12330, 12360, [null, 20.0, 20.0, null]},
+%%     ?assertEqual(Expected, Result).
 
-read_int_all_test() ->
-    Points = [[20.0] || _ <- lists:seq(1, 10)],
-    Result = oscilloscope_cache:read_int(
-        100,
-        200,
-        20,
-        fun oscilloscope_aggregations:avg/1,
-        80,
-        array:from_list(Points, null)
-    ),
-    Expected = {100, 200, [20.0, 20.0, 20.0, 20.0, 20.0, 20.0]},
-    ?assertEqual(Expected, Result).
+%% read_int_all_test() ->
+%%     Points = [[20.0] || _ <- lists:seq(1, 10)],
+%%     Result = oscilloscope_cache:read_int(
+%%         100,
+%%         200,
+%%         20,
+%%         fun oscilloscope_aggregations:avg/1,
+%%         80,
+%%         array:from_list(Points, null)
+%%     ),
+%%     Expected = {100, 200, [20.0, 20.0, 20.0, 20.0, 20.0, 20.0]},
+%%     ?assertEqual(Expected, Result).
 
-calculate_query_bounds_test() ->
-    ?assertEqual({10, 20}, oscilloscope_cache:calculate_query_bounds(12, 17, 10)),
-    ?assertEqual({10, 20}, oscilloscope_cache:calculate_query_bounds(10, 20, 10)),
-    ?assertEqual({10, 20}, oscilloscope_cache:calculate_query_bounds(12, 11, 10)).
+adjust_query_range_test() ->
+    ?assertEqual({10, 20}, oscilloscope_util:adjust_query_range(12, 17, 10)),
+    ?assertEqual({10, 20}, oscilloscope_util:adjust_query_range(10, 20, 10)),
+    ?assertEqual({10, 20}, oscilloscope_util:adjust_query_range(12, 11, 10)).
 
 maybe_trim_test() ->
     ?assertEqual(

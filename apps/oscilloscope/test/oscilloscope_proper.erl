@@ -1,4 +1,4 @@
--module(oscilloscope_cache_proper).
+-module(oscilloscope_proper).
 
 -include_lib("proper/include/proper.hrl").
 -include_lib("eunit/include/eunit.hrl").
@@ -80,7 +80,7 @@ prop_append_point() ->
         end
     ).
 
-prop_read_int() ->
+disabled_prop_read_int() ->
     ?FORALL(
         {From0, Delta, Interval, T, Points0},
         {timestamp(), timestamp(), interval(), timestamp(), [value()]},
@@ -100,12 +100,12 @@ prop_read_int() ->
     ).
 
 
-prop_calculate_query_bounds() ->
+prop_adjust_query_range() ->
     ?FORALL(
         {From0, Until0, Interval},
         {timestamp(), timestamp(), interval()},
         begin
-            {From1, Until1} = oscilloscope_cache:calculate_query_bounds(
+            {From1, Until1} = oscilloscope_util:adjust_query_range(
                 From0,
                 Until0,
                 Interval
