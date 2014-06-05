@@ -254,7 +254,6 @@ chunkify(Timestamps, Values, Excess, Min, Max, Count, Chunks, Guess) ->
     I :: interval(),
     P :: persisted().
 
-%% TODO: TESTME
 calculate_query_bounds(From, Until, Interval, Persisted) ->
     {InRange, _OutOfRange} = lists:foldr(
         fun({T, C}, {In, Out}) ->
@@ -284,11 +283,11 @@ calculate_query_bounds(From, Until, Interval, Persisted) ->
     F :: timestamp(),
     U :: timestamp(),
     Points :: [value()].
-%% TODO: TESTME
+
 trim_read(From, Until, Interval, ReadFrom, Read) ->
-    StartIndex = ((From - ReadFrom) div Interval),
+    StartIndex = erlang:max(0, (From - ReadFrom) div Interval),
     %% Until and From are both inclusive, so add one
-    PointCount = ((Until - From) div Interval) + 1,
+    PointCount = ((Until - erlang:max(From, ReadFrom)) div Interval) + 1,
     %% Add one for 1-indexing
     Points = lists:sublist(Read, StartIndex + 1, PointCount),
     StartTime = ReadFrom + StartIndex * Interval,
