@@ -24,17 +24,25 @@
 ]).
 
 -record(st, {
-    w,
-    bucket,
-    replies,
-    req_id,
-    preflist,
-    sender,
-    metric,
-    points
+    bucket :: riak_core_bucket_type:bucket_type_props(),
+    metric :: metric(),
+    points :: [{timestamp(), value()}],
+    preflist :: riak_core_apl:preflist(),
+    replies :: [ok],
+    req_id :: integer(),
+    sender :: pid(),
+    w :: pos_integer()
 }).
 
 -include("oscilloscope.hrl").
+-include_lib("oscilloscope/include/oscilloscope_types.hrl").
+
+
+-spec update(Metric, Points, Opts) -> {ok, ReqID} when
+    Metric :: metric(),
+    Points :: [{timestamp(), value()}],
+    Opts :: [{atom(), any()}],
+    ReqID :: integer().
 
 update(Metric, Points, Opts) ->
     %% TODO: consider using a ref here
@@ -76,7 +84,7 @@ prepare(timeout, #st{bucket=Bucket, metric=Metric}=State) ->
     {next_state, execute, State#st{preflist=Preflist}, 0}.
 
 execute(timeout, State) ->
-    oscilloscope_vnode:update(
+    ok = oscilloscope_vnode:update(
         State#st.preflist,
         State#st.req_id,
         State#st.metric,

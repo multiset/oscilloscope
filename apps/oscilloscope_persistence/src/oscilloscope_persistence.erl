@@ -17,6 +17,7 @@
 -include_lib("oscilloscope_persistence/include/oscilloscope_persistence.hrl").
 -include_lib("oscilloscope/include/oscilloscope_types.hrl").
 
+
 -spec persist(Resolution, Points) -> {ok, Persisted} when
     Resolution :: oscilloscope_metadata_resolution:resolution(),
     Points :: [{timestamp(), number()}],
@@ -59,6 +60,7 @@ persist(Resolution, Points) ->
     ),
     {ok, Persisted}.
 
+
 -spec vacuum(Resolution, Timestamps) -> {ok, Timestamps} when
     Resolution :: oscilloscope_metadata_resolution:resolution(),
     Timestamps :: [timestamp()].
@@ -75,6 +77,7 @@ vacuum(Resolution, Timestamps) ->
         Timestamps
     ),
     {ok, Vacuumed}.
+
 
 -spec read(Resolution, From, Until) -> {ok, Read} when
     Resolution :: oscilloscope_metadata_resolution:resolution(),
@@ -123,6 +126,7 @@ read(Resolution, From0, Until0) ->
     end,
     {ok, Reply}.
 
+
 commutator() ->
     {ok, Table} = application:get_env(oscilloscope_persistence, dynamo_table),
     {ok, Schema} = application:get_env(oscilloscope_persistence, dynamo_schema),
@@ -143,6 +147,7 @@ commutator() ->
         SecretKey
     ),
     Commutator.
+
 
 -spec chunkify(Points, MinChunkSize, MaxChunkSize) -> Chunked when
     Points :: [{timestamp(), number()}],
@@ -242,6 +247,13 @@ chunkify(Timestamps, Values, Excess, Min, Max, Count, Chunks, Guess) ->
             )
     end.
 
+
+-spec calculate_query_bounds(F, U, I, P) -> {F, U} | not_found when
+    F :: timestamp(),
+    U :: timestamp(),
+    I :: interval(),
+    P :: persisted().
+
 %% TODO: TESTME
 calculate_query_bounds(From, Until, Interval, Persisted) ->
     {InRange, _OutOfRange} = lists:foldr(
@@ -262,6 +274,16 @@ calculate_query_bounds(From, Until, Interval, Persisted) ->
             {hd(InRange), lists:last(InRange)}
     end.
 
+
+-spec trim_read(From, Until, Interval, ReadFrom, Read) -> {F, U, Points} when
+    From :: timestamp(),
+    Until :: timestamp(),
+    Interval :: interval(),
+    ReadFrom :: timestamp(),
+    Read :: [value()],
+    F :: timestamp(),
+    U :: timestamp(),
+    Points :: [value()].
 %% TODO: TESTME
 trim_read(From, Until, Interval, ReadFrom, Read) ->
     StartIndex = ((From - ReadFrom) div Interval),

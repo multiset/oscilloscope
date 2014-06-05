@@ -38,6 +38,16 @@
     lock
 }).
 
+-include_lib("oscilloscope/include/oscilloscope_types.hrl").
+
+
+-spec read(Preflist, ReqID, Metric, From, Until) -> ok when
+    Preflist :: riak_core_apl:preflist(),
+    ReqID :: integer(),
+    Metric :: metric(),
+    From :: timestamp(),
+    Until :: timestamp().
+
 read(Preflist, ReqID, Metric, From, Until) ->
     riak_core_vnode_master:command(
         Preflist,
@@ -45,6 +55,13 @@ read(Preflist, ReqID, Metric, From, Until) ->
         {fsm, undefined, self()},
         oscilloscope_vnode_master
     ).
+
+
+-spec update(Preflist, ReqID, Metric, Points) -> ok when
+    Preflist :: riak_core_apl:preflist(),
+    ReqID :: integer(),
+    Metric :: metric(),
+    Points :: [{timestamp(), value()}].
 
 update(Preflist, ReqID, Metric, Points) ->
     riak_core_vnode_master:command(
@@ -54,6 +71,15 @@ update(Preflist, ReqID, Metric, Points) ->
         oscilloscope_vnode_master
     ).
 
+
+-spec fold(Preflist, ReqID, Fun, Acc) -> ok when
+    Preflist :: riak_core_apl:preflist(),
+    ReqID :: integer(),
+    Fun :: fun((Metric, Cache, Acc) -> Acc),
+    Metric :: metric(),
+    Cache :: oscilloscope_cache:cache(),
+    Acc :: any().
+
 fold(Preflist, ReqID, Fun, Acc) ->
     riak_core_vnode_master:command(
         Preflist,
@@ -62,6 +88,12 @@ fold(Preflist, ReqID, Fun, Acc) ->
         oscilloscope_vnode_master
     ).
 
+
+-spec lock(Preflist, ReqID, Metric) -> ok when
+    Preflist :: riak_core_apl:preflist(),
+    ReqID :: integer(),
+    Metric :: metric().
+
 lock(Preflist, ReqID, Metric) ->
     riak_core_vnode_master:command(
         Preflist,
@@ -69,6 +101,12 @@ lock(Preflist, ReqID, Metric) ->
         {fsm, undefined, self()},
         oscilloscope_vnode_master
     ).
+
+
+-spec refresh(Preflist, ReqID, Metric) -> ok when
+    Preflist :: riak_core_apl:preflist(),
+    ReqID :: integer(),
+    Metric :: metric().
 
 refresh(Preflist, ReqID, Metric) ->
     riak_core_vnode_master:command(

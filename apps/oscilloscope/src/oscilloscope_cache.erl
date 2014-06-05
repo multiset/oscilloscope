@@ -13,13 +13,15 @@
     fold/3
 ]).
 
+-export_type([cache/0, resolution/0]).
+
 -include_lib("oscilloscope/include/oscilloscope_types.hrl").
 
 -record(cache, {
-    metric,
-    meta,
-    aggregation,
-    resolutions
+    metric :: metric(),
+    meta :: oscilloscope_metadata:meta(),
+    aggregation :: fun((wrapped_value()) -> value()),
+    resolutions :: [resolution()]
 }).
 
 -record(resolution, {
@@ -27,6 +29,15 @@
     t :: timestamp(), %% Earliest point in array
     points :: array() %% Array of points
 }).
+
+-type cache() :: #cache{}.
+-type resolution() :: resolution().
+
+
+-spec new(Metric, Meta) -> Cache when
+    Metric :: metric(),
+    Meta :: oscilloscope_metadata:meta(),
+    Cache :: cache().
 
 new(Metric, Meta) ->
     AggregationAtom = oscilloscope_metadata:aggregation(Meta),
@@ -49,6 +60,10 @@ new(Metric, Meta) ->
         aggregation=AggregationFun,
         resolutions=Resolutions
     }.
+
+
+-spec refresh(Cache) -> Cache when
+    Cache :: cache().
 
 refresh(Cache) ->
     #cache{
@@ -76,6 +91,11 @@ refresh(Cache) ->
     ),
     Cache#cache{aggregation=AF1, resolutions=Resolutions1}.
 
+
+-spec update(Points, Cache) -> Cache when
+    Points :: [{timestamp(), value()}],
+    Cache :: cache().
+
 update(Points, Cache) ->
     #cache{resolutions=Resolutions0} = Cache,
     Resolutions1 = lists:map(
@@ -83,6 +103,14 @@ update(Points, Cache) ->
         Resolutions0
     ),
     Cache#cache{resolutions=Resolutions1}.
+
+
+-spec read(From, Until, Cache) -> {ok, Read} | {error, Error} when
+    From :: timestamp(),
+    Until :: timestamp(),
+    Cache :: cache(),
+    Read :: cache_read(),
+    Error :: atom().
 
 read(From, Until, _Cache) when From > Until ->
     {error, temporal_inversion};
@@ -103,9 +131,10 @@ read(From0, Until0, Cache) ->
     ),
     {ok, {Meta, Resolution, Read}}.
 
+
 -spec cached(Cache, Resolution) -> {Points, Meta} when
-    Cache :: #cache{},
-    Resolution :: #resolution{},
+    Cache :: cache(),
+    Resolution :: resolution(),
     Points :: [{timestamp(), number()}],
     Meta :: oscilloscope_metadata_resolution:resolution().
 
@@ -120,9 +149,20 @@ cached(Cache, Resolution) ->
     ),
     {Points, Meta}.
 
+
+-spec fold(Fun, Acc, Cache) -> Acc when
+    Fun :: fun((Cache, resolution(), Acc) -> Acc),
+    Acc :: any(),
+    Cache :: cache().
+
 fold(Fun, Acc, Cache) ->
     #cache{resolutions=Resolutions} = Cache,
     lists:foldl(fun(R, A) -> Fun(Cache, R, A) end, Acc, Resolutions).
+
+
+-spec refresh_resolution(Resolution, Metas) -> Resolution when
+    Resolution :: resolution(),
+    Metas :: [oscilloscope_metadata_resolution:resolution()].
 
 refresh_resolution(Resolution, Metas) ->
     %% TODO: This only handles persistence updates
@@ -147,6 +187,11 @@ refresh_resolution(Resolution, Metas) ->
     end,
     #resolution{meta=Meta1, t=T1, points=Points1}.
 
+
+-spec update_int(Points, Resolution) -> Resolution when
+    Points :: [{timestamp(), value()}],
+    Resolution :: resolution().
+
 update_int(Points, Resolution) ->
     #resolution{meta=Meta, t=T0, points=Points0} = Resolution,
     Interval = oscilloscope_metadata_resolution:interval(Meta),
@@ -155,6 +200,13 @@ update_int(Points, Resolution) ->
     {T1, Points1} = append(Points, T0, Points0, Interval, Persisted),
     {T2, Points2} = maybe_trim(T1, Points1, Interval, Count),
     Resolution#resolution{t=T2, points=Points2}.
+
+-spec append(ToAppend, T, Points, Interval, Persisted) -> {T, Points} when
+    ToAppend :: [{timestamp(), value()}],
+    T :: timestamp(),
+    Points :: array(),
+    Interval :: interval(),
+    Persisted :: persisted().
 
 append([], T, Points, _Interval, _Persisted) ->
     {T, Points};
@@ -180,6 +232,13 @@ append([{Timestamp0, Value}|Ps], T0, Points0, Interval, Persisted) ->
     end,
     append(Ps, T1, Points1, Interval, Persisted).
 
+
+-spec maybe_trim(Timestamp, Points, Interval, Count) -> {Timestamp, Points} when
+    Timestamp :: timestamp(),
+    Points :: array:array(wrapped_value()),
+    Interval :: interval(),
+    Count :: pos_integer().
+
 maybe_trim(undefined, Points, _Interval, _Count) ->
     {undefined, Points};
 maybe_trim(T, Points0, Interval, Count) ->
@@ -194,11 +253,23 @@ maybe_trim(T, Points0, Interval, Count) ->
             {EarliestTime, array:from_list(Points1, null)}
     end.
 
+
+-spec prepend_point(Index, Value, Points) -> Points when
+    Index :: array:array_indx(),
+    Value :: value(),
+    Points :: array:array(wrapped_value()).
+
 prepend_point(Index, Value, Points) ->
     ListPoints = array:to_list(Points),
     Prepend = lists:duplicate(Index, null),
     Points1 = array:from_list(Prepend ++ ListPoints, null),
     append_point(0, Value, Points1).
+
+
+-spec append_point(Index, Value, Points) -> Points when
+    Index :: array:array_indx(),
+    Value :: value(),
+    Points :: array:array(wrapped_value()).
 
 append_point(Index, Value, Points) when Index >= 0 ->
     case array:get(Index, Points) of
@@ -207,6 +278,12 @@ append_point(Index, Value, Points) when Index >= 0 ->
         Vs when is_list(Vs) ->
             array:set(Index, [Value|Vs], Points)
     end.
+
+
+-spec divide_array(Array, Index) -> Divided when
+    Array :: array:array(wrapped_value()),
+    Index :: array:array_indx(),
+    Divided :: {[wrapped_value()], [wrapped_value()]}.
 
 divide_array(Arr, DivIdx) ->
     array:foldr(
@@ -219,6 +296,12 @@ divide_array(Arr, DivIdx) ->
         {[], []},
         Arr
     ).
+
+
+-spec select_resolution(From, Resolutions) -> Resolution when
+    From :: timestamp(),
+    Resolutions :: [resolution()],
+    Resolution :: resolution().
 
 select_resolution(From, Resolutions) ->
     [R|Rs] = lists:sort(
@@ -240,12 +323,27 @@ select_resolution(From, Resolutions) ->
         Rs
     ).
 
+
+-spec earliest_timestamp(Resolution) -> Timestamp when
+    Resolution :: resolution(),
+    Timestamp :: timestamp().
+
 earliest_timestamp(Resolution) ->
     #resolution{meta=Meta, t=T} = Resolution,
     case oscilloscope_metadata_resolution:earliest_persist_time(Meta) of
         undefined -> T;
         Timestamp -> Timestamp
     end.
+
+
+-spec read_int(From, Until, Interval, Aggregation, T, Points) -> Read when
+    From :: timestamp(),
+    Until :: timestamp(),
+    Interval :: interval(),
+    Aggregation :: fun((wrapped_value()) -> value()),
+    T :: timestamp(),
+    Points :: array:array(wrapped_value()),
+    Read :: read().
 
 read_int(From0, Until0, Interval, Aggregation, T, Points) ->
     {From1, Until1} = oscilloscope_util:adjust_query_range(
@@ -279,6 +377,14 @@ read_int(From0, Until0, Interval, Aggregation, T, Points) ->
             {From2, Until2, Read}
     end.
 
+
+-spec range_from_array(Start, End, Aggregation, Acc, Points) -> Acc when
+    Start :: array:array_indx(),
+    End :: array:array_indx(),
+    Aggregation :: fun((wrapped_value()) -> value()),
+    Acc :: [value()],
+    Points :: array:array(wrapped_value()).
+
 range_from_array(Start, End, AF, Acc0, Points) ->
     lists:reverse(array:foldl(
         fun(I, Vs, Acc) when I >= Start andalso I =< End ->
@@ -289,6 +395,12 @@ range_from_array(Start, End, AF, Acc0, Points) ->
         Acc0,
         Points
     )).
+
+
+-spec last_persisted_time(Persisted, Interval) -> Timestamp when
+    Persisted :: persisted(),
+    Interval :: interval(),
+    Timestamp :: integer(). %% Not timestamp() because it can be negative!
 
 last_persisted_time(Persisted, Interval) ->
     case Persisted of

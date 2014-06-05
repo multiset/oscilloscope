@@ -27,15 +27,15 @@
 ]).
 
 -record(st, {
-    bucket :: riak_core_bucket_type:bucket_type(),
+    bucket :: riak_core_bucket_type:bucket_type_props(),
     cache_read :: read(),
     from :: timestamp(),
     meta :: oscilllscope_metadata:meta(),
     metric :: metric(),
-    persistent_read :: read(),
+    persistent_read :: read() | not_found,
     preflist :: riak_core_apl:preflist(),
     r :: pos_integer(),
-    replies :: [read() | not_found],
+    replies :: [{ok, cache_read()} | {error, atom()}],
     reply :: any(),
     req_id :: integer(),
     resolution :: oscilloscope_metadata_resolution:resolution(),
@@ -45,6 +45,14 @@
 
 -include("oscilloscope.hrl").
 -include_lib("oscilloscope/include/oscilloscope_types.hrl").
+
+
+-spec read(Metric, From, Until, Opts) -> {ok, ReqID} when
+    Metric :: metric(),
+    From :: timestamp(),
+    Until :: timestamp(),
+    Opts :: [{atom(), any()}],
+    ReqID :: integer().
 
 read(Metric, From, Until, Opts) ->
     %% TODO: consider using a ref here
@@ -87,7 +95,7 @@ prepare_cache_read(timeout, #st{bucket=Bucket, metric=Metric}=State) ->
     {next_state, execute_cache_read, State#st{preflist=Preflist}, 0}.
 
 execute_cache_read(timeout, State) ->
-    oscilloscope_vnode:read(
+    ok = oscilloscope_vnode:read(
         State#st.preflist,
         State#st.req_id,
         State#st.metric,

@@ -31,23 +31,24 @@
 ]).
 
 -record(st, {
-    r,
-    req_id,
-    sender,
-    preflist,
-    bucket,
-    lock_replies = [],
-    fold_replies = [],
-    refresh_replies = [],
-    metric,
-    resolution,
-    cache,
-    to_persist,
-    to_vacuum
+    bucket :: riak_core_bucket_type:bucket_type_props(),
+    cache :: oscilloscope_cache:cache(),
+    fold_replies = [] :: [{ok, any()}],
+    lock_replies = [] :: [{ok, locked}],
+    metric :: metric(),
+    preflist :: riak_core_apl:preflist(),
+    r :: pos_integer(),
+    refresh_replies = [] :: [ok | {error, any()}],
+    req_id :: integer(),
+    resolution :: oscilloscope_cache:resolution(),
+    sender :: pid(),
+    to_persist :: [{timestamp(), wrapped_value()}],
+    to_vacuum :: [timestamp()]
 }).
 
 -include_lib("oscilloscope/include/oscilloscope.hrl").
 -include_lib("oscilloscope/include/oscilloscope_types.hrl").
+
 
 persist() ->
     persist([]).
@@ -221,6 +222,16 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 terminate(_Reason, _SN, _SD) ->
     ok.
 
+
+-spec vnode_fold(Metric, Cache, Acc) -> Acc when
+    Metric :: metric(),
+    Cache :: oscilloscope_cache:cache(),
+    Acc :: {Metric, Cache, R, TP, TV, S} | nil,
+    R :: oscilloscope_metadata_resolution:resolution(),
+    TP :: [{timestamp(), wrapped_value()}],
+    TV :: [timestamp()],
+    S :: pos_integer().
+
 vnode_fold(Metric, Cache, Acc) ->
     oscilloscope_cache:fold(
         fun(C, Resolution, A) ->
@@ -229,6 +240,17 @@ vnode_fold(Metric, Cache, Acc) ->
         Acc,
         Cache
     ).
+
+
+-spec cache_fold(Metric, Cache, Resolution, Acc) -> Acc when
+    Metric :: metric(),
+    Cache :: oscilloscope_cache:cache(),
+    Resolution :: oscilloscope_cache:resolution(),
+    Acc :: {Metric, Cache, R, TP, TV, S} | nil,
+    R :: oscilloscope_metadata_resolution:resolution(),
+    TP :: [{timestamp(), wrapped_value()}],
+    TV :: [timestamp()],
+    S :: pos_integer().
 
 cache_fold(Metric, Cache, Resolution, Acc) ->
     {Points, Meta} = oscilloscope_cache:cached(Cache, Resolution),

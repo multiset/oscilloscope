@@ -38,7 +38,7 @@ eunit:
 	@./rebar skip_deps=true eunit
 
 dialyze:
-	@dialyzer --src apps/*/src/ -pa apps/oscilloscope -pa apps/oscilloscope_persistence -pa deps/lager/ebin
+	@dialyzer --src apps/*/src/ -pa apps/oscilloscope_persistence/ebin -pa apps/oscilloscope_metadata/ebin -pa apps/oscilloscope/ebin -pa deps/lager/ebin -pa deps/riak_core/ebin
 
 release: deps compile
 	@./rebar generate
