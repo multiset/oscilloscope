@@ -35,7 +35,7 @@ persist(Resolution, Points) ->
         max_chunk_size
     ),
     Chunks = chunkify(Points, MinChunkSize, MaxChunkSize),
-    lager:error(
+    lager:debug(
         "Got chunks ~p for cache ~p, attempting to persist",
         [Chunks, ResolutionID]
     ),

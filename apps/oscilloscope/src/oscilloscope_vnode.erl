@@ -230,7 +230,7 @@ handoff_finished(_TargetNode, State) ->
 handle_handoff_command(_Cmd, _From, State) ->
     {stop, not_implemented, State}.
 
-handle_exit(Pid, _Reason, #st{locks=Locks, metrics=Metrics}=State0) ->
+handle_exit(Pid, Reason, #st{locks=Locks, metrics=Metrics}=State0) ->
     State1 = case dict:find(Pid, Locks) of
         {ok, Metric} ->
             {ok, #metric{lock=Pid}=Stored} = dict:find(Metric, Metrics),
@@ -243,7 +243,9 @@ handle_exit(Pid, _Reason, #st{locks=Locks, metrics=Metrics}=State0) ->
                 )
             };
         error ->
-            lager:error("Vnode received exit for unknown pid: ~p", [Pid]),
+            lager:error(
+                "Vnode received exit for unknown pid: ~p: ~P",
+                [Pid, Reason]),
             State0
     end,
     {noreply, State1}.
