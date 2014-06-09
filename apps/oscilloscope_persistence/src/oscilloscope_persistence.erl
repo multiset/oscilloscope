@@ -171,7 +171,7 @@ chunkify(Points, MinChunkSize, MaxChunkSize) ->
 chunkify(Timestamps, Values, Excess, Min, Max, Count, Chunks, Guess) ->
     %% N.B.: This will OOM your BEAM if Min < ?VALENCODE([]).
     %% As of this comment, ?VALENCODE([]) == 11
-    lager:error("Chunking ~p, ~p with guess ~p", [Values, Excess, Guess]),
+    lager:debug("Chunking ~p, ~p with guess ~p", [Values, Excess, Guess]),
     Chunk = ?VALENCODE(Values),
     PointsChunked = length(Values),
     case byte_size(Chunk) of

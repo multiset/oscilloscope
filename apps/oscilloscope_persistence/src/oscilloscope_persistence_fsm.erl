@@ -122,6 +122,8 @@ wait_for_fold({ok, _ReqID, {ok, _}=Reply}, State0) ->
                     },
                     {next_state, lock_metric, State2, 0};
                 [{ok, nil}] ->
+                    %% No metrics found - the chosen vnode is most likely empty
+                    lager:debug("No suitable metrics found for persisting"),
                     {stop, normal, State1}
             end;
         false ->
