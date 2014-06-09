@@ -40,7 +40,8 @@
     req_id :: integer(),
     resolution :: oscilloscope_metadata_resolution:resolution(),
     sender :: pid(),
-    until :: timestamp()
+    until :: timestamp(),
+    timeout :: pos_integer()
 }).
 
 -include("oscilloscope.hrl").
@@ -83,7 +84,8 @@ init([ReqID, Sender, Metric, From, Until, Opts]) ->
                 sender = Sender,
                 metric = Metric,
                 from = From,
-                until = Until
+                until = Until,
+                timeout = proplists:get_value(timeout, Opts, ?DEFAULT_TIMEOUT)
             },
             {ok, prepare_cache_read, State, 0}
     end.
@@ -102,12 +104,19 @@ execute_cache_read(timeout, State) ->
         State#st.from,
         State#st.until
     ),
-    {next_state, wait_for_cache, State}.
+    {next_state, wait_for_cache, State, State#st.timeout}.
 
+wait_for_cache(timeout, State) ->
+    lager:warning(
+        "Read FSM timed out while waiting for cache for metric ~p",
+        [State#st.metric]
+    ),
+    {stop, timeout, State};
 wait_for_cache({ok, _ReqID, Reply}, State0) ->
     #st{
         r=R,
-        replies=Replies0
+        replies=Replies0,
+        timeout=Timeout
     } = State0,
     Replies1 = [Reply|Replies0],
     State1 = State0#st{replies=Replies1},
@@ -129,7 +138,7 @@ wait_for_cache({ok, _ReqID, Reply}, State0) ->
                     {next_state, execute_persistent_read, State2, 0}
             end;
         false ->
-            {next_state, wait_for_cache, State1}
+            {next_state, wait_for_cache, State1, Timeout}
     end.
 
 execute_persistent_read(timeout, State) ->
@@ -138,6 +147,7 @@ execute_persistent_read(timeout, State) ->
         from=From,
         until=Until
     } = State,
+    %% TODO: handle timeout/make sure we don't wait forever
     {ok, Read} = oscilloscope_persistence:read(Resolution, From, Until),
     {next_state, merge_reads, State#st{persistent_read=Read}, 0}.
 

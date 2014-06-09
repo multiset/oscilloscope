@@ -31,7 +31,8 @@
     replies :: [ok],
     req_id :: integer(),
     sender :: pid(),
-    w :: pos_integer()
+    w :: pos_integer(),
+    timeout :: pos_integer()
 }).
 
 -include("oscilloscope.hrl").
@@ -72,7 +73,8 @@ init([ReqID, Sender, Metric, Points, Opts]) ->
                 req_id = ReqID,
                 sender = Sender,
                 metric = Metric,
-                points = Points
+                points = Points,
+                timeout = proplists:get_value(timeout, Opts, ?DEFAULT_TIMEOUT)
             },
             {ok, prepare, State, 0}
     end.
@@ -90,9 +92,21 @@ execute(timeout, State) ->
         State#st.metric,
         State#st.points
     ),
-    {next_state, waiting, State}.
+    {next_state, waiting, State, State#st.timeout}.
 
-waiting({ok, ReqID, Reply}, #st{w=W, replies=Replies0, sender=Sender}=State0) ->
+waiting(timeout, State) ->
+    lager:warning(
+        "Update FSM timed out while waiting for cache for metric ~p",
+        [State#st.metric]
+    ),
+    {stop, timeout, State};
+waiting({ok, ReqID, Reply}, State0) ->
+    #st{
+        w=W,
+        replies=Replies0,
+        sender=Sender,
+        timeout=Timeout
+    } = State0,
     Replies1 = [Reply|Replies0],
     State1 = State0#st{replies=Replies1},
     case length(Replies1) >= W of
@@ -100,7 +114,7 @@ waiting({ok, ReqID, Reply}, #st{w=W, replies=Replies0, sender=Sender}=State0) ->
             Sender ! {ReqID, ok},
             {stop, normal, State1};
         false ->
-            {next_state, waiting, State1}
+            {next_state, waiting, State1, Timeout}
     end.
 
 handle_info(Msg, _StateName, StateData) ->
