@@ -31,7 +31,7 @@
 }).
 
 -type cache() :: #cache{}.
--type resolution() :: resolution().
+-type resolution() :: #resolution{}.
 
 
 -spec new(Metric, Meta) -> Cache when
