@@ -1,6 +1,6 @@
 SHELL=/bin/bash
 
-all: clean deps compile run
+all: clean deps compile rel console
 
 deps:
 	@./rebar get-deps
@@ -25,6 +25,9 @@ relclean:
 
 clean:
 	@./rebar clean
+
+console:
+	@rel/oscilloscope/bin/oscilloscope console
 
 test: eunit dialyze
 
