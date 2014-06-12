@@ -1,6 +1,5 @@
 -record(user, {
     id :: integer(),
-    name :: binary(),
     password :: binary(),
     email :: binary(),
     created_at :: integer(),

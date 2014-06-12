@@ -101,7 +101,7 @@ is_authorized(ReqData, State) ->
                 {false, 'DELETE'} ->
                     % Check if user is removing self from team
                     DeletesName = lists:all(
-                        fun(Name) -> Name == User#user.name end,
+                        fun(Name) -> Name == User#user.email end,
                         State#state.names
                     ),
                     DeletesID = lists:all(

@@ -1,6 +1,14 @@
 -module(oscilloscope_auth_org).
 
--export([create/1, get_org/1, get_users/1, is_owner/2]).
+-export([
+    create/1,
+    lookup/1,
+    get_users/1,
+    is_owner/2,
+    add_members/2,
+    remove_members/2,
+    is_member/2
+]).
 
 -include("oscilloscope_auth.hrl").
 
@@ -10,17 +18,17 @@ create(Name) ->
     {ok, _, [{Id}]} = oscilloscope_metadata:named(select_org_id, [Name]),
     {ok, #org{name=Name, id=Id}}.
 
--spec get_org(binary() | #org{} | integer()) -> {ok, #org{}} | not_found.
-get_org(Org) when is_record(Org, org) ->
+-spec lookup(binary() | #org{} | integer()) -> {ok, #org{}} | not_found.
+lookup(Org) when is_record(Org, org) ->
     {ok, Org};
-get_org(Name) when is_binary(Name) ->
+lookup(Name) when is_binary(Name) ->
     case ets:lookup(org_name_to_id, Name) of
         [] ->
             not_found;
         [{_, OrgID}] ->
-            get_org(OrgID)
+            lookup(OrgID)
     end;
-get_org(OrgID) when is_integer(OrgID) ->
+lookup(OrgID) when is_integer(OrgID) ->
     case ets:lookup(orgs, OrgID) of
         [] ->
             not_found;
@@ -41,7 +49,7 @@ is_owner(User, OrgID) ->
 
 -spec add_members(integer() | #org{} | binary(), integer()) -> ok.
 add_members(Org0, Users0) ->
-    Org = get_org(Org0),
+    Org = lookup(Org0),
     Users = [oscilloscope_auth_user:get_user(User) || User <- Users0],
     {ok, _, _} = oscilloscope_metadata:named(
         add_users_to_org,
@@ -51,7 +59,7 @@ add_members(Org0, Users0) ->
 
 -spec remove_members(integer() | #org{} | binary(), integer()) -> ok.
 remove_members(Org0, Users0) ->
-    Org = get_org(Org0),
+    Org = lookup(Org0),
     Users = [oscilloscope_auth_user:get_user(User) || User <- Users0],
 
     lists:foldl(fun(User, _) ->
@@ -68,10 +76,8 @@ remove_members(Org0, Users0) ->
 
     ok.
 
-get_org_and_user_ids(Org0, Users0) ->
-
 -spec is_member(binary() | #org{} | integer(), binary() | #user{} | integer()) -> boolean().
 is_member(Org0, User0) ->
-    Org = get_org(Org0),
+    Org = lookup(Org0),
     User = oscilloscope_auth_user:get_user(User0),
     ets:member(otu, {Org#org.id, User#user.id}).

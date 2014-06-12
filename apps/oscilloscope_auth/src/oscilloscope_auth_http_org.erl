@@ -14,7 +14,12 @@ init([]) ->
     {ok, ok}.
 
 is_authorized(ReqData, Context) ->
-    oscilloscope_auth_util:is_authorized(ReqData, Context).
+    case oscilloscope_auth_util:get_authorized_user(ReqData) of
+        #user{}=User ->
+            {true, ReqData, User#user.id};
+        Unauthorized ->
+            {Unauthorized, ReqData, Context}
+    end.
 
 allowed_methods(ReqData, Context) ->
     {['PUT'], ReqData, Context}.
@@ -22,7 +27,13 @@ allowed_methods(ReqData, Context) ->
 content_types_provided(ReqData, Context) ->
     {[{"application/json", to_json}], ReqData, Context}.
 
-to_json(ReqData, Context) ->
+to_json(ReqData, UserID) ->
     OrgName = wrq:path_info(org_name, ReqData),
-    {ok, _} = oscilloscope_auth_org:create(OrgName),
-    {<<"{\"ok\": true}">>, ReqData, Context}.
+    % TODO: Handle org creation errors
+    {ok, Org} = oscilloscope_auth_org:create(OrgName),
+    ok = oscilloscope_auth_team:add_members(
+        Org#org.id,
+        <<"owners">>,
+        UserID
+    ),
+    {<<"{\"ok\": true}">>, ReqData, ok}.

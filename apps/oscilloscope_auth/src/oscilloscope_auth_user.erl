@@ -2,7 +2,7 @@
 
 -export([
     is_authorized/2,
-    create/3,
+    create/2,
     get_owner_id/1,
     join_team/2,
     join_org/2,
@@ -13,8 +13,8 @@
 
 
 -spec is_authorized(binary(), binary()) -> boolean().
-is_authorized(Name, Pass) ->
-    Match = #user{name=list_to_binary(Name), _='_'},
+is_authorized(Email, Pass) ->
+    Match = #user{email=list_to_binary(Email), _='_'},
     case ets:match_object(user_cache, Match) of
         [#user{password=Hash}] ->
             {ok, LHash} = bcrypt:hashpw(Pass, Hash),
@@ -24,21 +24,22 @@ is_authorized(Name, Pass) ->
     end.
 
 
--spec create(binary(), binary(), binary()) -> {ok, pos_integer()}.
-create(Name, Pass, Email) ->
+-spec create(binary(), binary()) -> {ok, #user{}}.
+create(Email, Pass) ->
+    {ok, Salt} = bcrypt:gen_salt(),
+    {ok, Hash} = bcrypt:hashpw(Pass, Salt),
     {ok, 1} = oscilloscope_metadata:named(
         insert_user,
-        [Name, Email, Pass]
+        [Email, Hash]
     ),
-    {ok, _, [{Id}]} = oscilloscope_metadata:named(select_user_id, [Name]),
+    {ok, _, [{Id}]} = oscilloscope_metadata:named(select_user_id, [Email]),
     User = #user{
         id=Id,
-        name=Name,
-        password=Pass,
+        password=Hash,
         email=Email
     },
     ok = ets:insert(user_cache, User),
-    {ok, Id}.
+    {ok, User}.
 
 
 -spec get_owner_id(#user{} | #org{}) -> {ok, integer()} | not_found.
