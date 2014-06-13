@@ -14,6 +14,8 @@
 
 -export_type([meta/0]).
 
+-include_lib("oscilloscope/include/oscilloscope_types.hrl").
+
 -type meta() :: [{atom(), any()}].
 
 start() ->
@@ -83,6 +85,10 @@ find({OwnerID, Props}) ->
             ],
             {ok, Meta}
     end.
+
+-spec aggregation(Meta) -> Aggregation when
+    Meta :: meta(),
+    Aggregation :: aggregation().
 
 aggregation(Meta) ->
     proplists:get_value(aggregation, Meta).

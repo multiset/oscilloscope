@@ -30,8 +30,8 @@
     points :: array() %% Array of points
 }).
 
--type cache() :: #cache{}.
--type resolution() :: #resolution{}.
+-opaque cache() :: #cache{}.
+-opaque resolution() :: #resolution{}.
 
 
 -spec new(Metric, Meta) -> Cache when

@@ -20,7 +20,7 @@
 
 -spec persist(Resolution, Points) -> {ok, Persisted} when
     Resolution :: oscilloscope_metadata_resolution:resolution(),
-    Points :: [{timestamp(), number()}],
+    Points :: [{timestamp(), value()}],
     Persisted :: [{timestamp(), number()}].
 
 persist(Resolution, Points) ->

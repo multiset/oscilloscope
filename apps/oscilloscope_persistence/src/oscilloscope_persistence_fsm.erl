@@ -40,7 +40,7 @@
     r :: pos_integer(),
     refresh_replies = [] :: [ok | {error, any()}],
     req_id :: integer(),
-    resolution :: oscilloscope_cache:resolution(),
+    resolution :: oscilloscope_metadata_resolution:resolution(),
     sender :: pid(),
     to_persist :: [{timestamp(), wrapped_value()}],
     to_vacuum :: [timestamp()]
