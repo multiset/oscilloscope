@@ -12,7 +12,7 @@ start_link() ->
 
 init([]) ->
     {ok, Apps} = application:get_env(oscilloscope_http, dispatch_apps),
-    {ok, CompleteDispatch} = lists:flatmap(fun(App) ->
+    CompleteDispatch = lists:flatmap(fun(App) ->
         {ok, Dispatch} = file:consult(code:priv_dir(App) ++ "/dispatch.conf"),
         Dispatch
     end, Apps),

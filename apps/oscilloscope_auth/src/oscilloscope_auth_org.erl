@@ -14,9 +14,9 @@
 
 -spec create(binary()) -> {ok, tuple()}.
 create(Name) ->
-    {ok, 1} = oscilloscope_metadata:named(create_org, [Name]),
-    {ok, _, [{Id}]} = oscilloscope_metadata:named(select_org_id, [Name]),
-    {ok, #org{name=Name, id=Id}}.
+    {ok,_,_,[{OwnerID}]} = oscilloscope_metadata_sql:named(insert_owner, []),
+    {ok,_,_,[{ID}]} = oscilloscope_metadata_sql:named(insert_org, [Name, OwnerID]),
+    {ok, #org{name=Name, id=ID, owner_id=OwnerID}}.
 
 -spec lookup(binary() | #org{} | integer()) -> {ok, #org{}} | not_found.
 lookup(Org) when is_record(Org, org) ->
@@ -37,7 +37,7 @@ lookup(OrgID) when is_integer(OrgID) ->
     end.
 
 get_users(OrgID) ->
-    oscilloscope_metadata:named(get_users, [OrgID]).
+    oscilloscope_metadata_sql:named(get_users, [OrgID]).
 
 
 -spec is_owner(#user{} | integer(), #org{} | integer()) -> boolean().
@@ -51,7 +51,7 @@ is_owner(User, OrgID) ->
 add_members(Org0, Users0) ->
     Org = lookup(Org0),
     Users = [oscilloscope_auth_user:get_user(User) || User <- Users0],
-    {ok, _, _} = oscilloscope_metadata:named(
+    {ok, _, _} = oscilloscope_metadata_sql:named(
         add_users_to_org,
         [Org#org.id|[User#user.id || User <- Users]]
     ),
@@ -64,12 +64,12 @@ remove_members(Org0, Users0) ->
 
     lists:foldl(fun(User, _) ->
         TeamIDs = oscilloscope_auth_user:get_teams(User),
-        {ok, _, _} = oscilloscope_metadata:named(
+        {ok, _, _} = oscilloscope_metadata_sql:named(
             remove_user_from_teams,
             [User#user.id|TeamIDs]
         )
     end, ok, Users),
-    {ok, _, _} = oscilloscope_metadata:named(
+    {ok, _, _} = oscilloscope_metadata_sql:named(
         remove_users_from_org,
         [Org#org.id|[User#user.id || User <- Users]]
     ),

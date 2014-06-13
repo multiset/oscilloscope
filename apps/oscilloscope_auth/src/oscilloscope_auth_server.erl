@@ -13,6 +13,8 @@
     code_change/3
 ]).
 
+-include_lib("oscilloscope_auth/include/oscilloscope_auth.hrl").
+
 -record(state, {
     rules,
     metrics
@@ -22,14 +24,15 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init([]) ->
-    {ok, _, Orgs} = oscilloscope_metadata:named(get_orgs, []),
+    {ok, _, Orgs} = oscilloscope_metadata_sql:named(get_orgs, []),
     lists:foldl(fun({OrgID, OrgName}, _) ->
-        ets:insert(orgs, {OrgName, OrgID})
+        ets:insert(orgs, #org{id=OrgID, name=OrgName})
     end, ok, Orgs),
-    {ok, _, Metrics} = oscilloscope_metadata:named(get_metrics, []),
-    MetricDict = lists:map(fun
-        ({OrgID, TeamID, Tags, MetricID}) -> {{OrgID, TeamID, Tags}, MetricID}
-    end, Metrics),
+    {ok, _, Metrics} = oscilloscope_metadata_sql:named(get_metrics, []),
+    MetricDict = lists:foldl(fun
+        ({OrgID, TeamID, Tags, MetricID}, Dict) ->
+            dict:append({OrgID, TeamID}, {Tags, MetricID}, Dict)
+    end, dict:new(), Metrics),
     {ok, #state{metrics=MetricDict}}.
 
 
@@ -73,34 +76,36 @@ get_authed_metrics(OrgID, TeamIDs, State) ->
             {ok, Rules} -> Rules
         end
     end, TeamIDs),
-    case dict:find(OrgID, AllMetrics) of
-        {ok, Metrics} ->
-            lists:filtermap(fun({Metric, MID}) ->
-                FinalLevel = lists:foldl(fun({Rule, AuthLevel}, CurrentLevel) ->
-                    IsAuthed = lists:foldl(fun({Key, Value}, Acc0) ->
-                        case dict:find(Key, Rule) of
-                            error ->
-                                Acc0;
-                            {ok, Regex} ->
-                                re_match(Value, Regex)
+    lists:foldl(fun(TeamID) ->
+        case dict:find({OrgID, TeamID}, AllMetrics) of
+            {ok, Metrics} ->
+                lists:filtermap(fun({Metric, MID}) ->
+                    FinalLevel = lists:foldl(fun({Rule, AuthLevel}, CurrentLevel) ->
+                        IsAuthed = lists:foldl(fun({Key, Value}, Acc0) ->
+                            case dict:find(Key, Rule) of
+                                error ->
+                                    Acc0;
+                                {ok, Regex} ->
+                                    re_match(Value, Regex)
+                            end
+                        end, false, Metric),
+                        if IsAuthed ->
+                            CurrentLevel bor AuthLevel;
+                        true ->
+                            CurrentLevel
                         end
-                    end, false, Metric),
-                    if IsAuthed ->
-                        CurrentLevel bor AuthLevel;
-                    true ->
-                        CurrentLevel
-                    end
-                end, 0, Rules),
+                    end, 0, Rules),
 
-                if FinalLevel > 0 ->
-                    {true, {Metric, MID, FinalLevel}};
-                true ->
-                    false
-                end
-            end, [], Metrics);
-        error ->
-            []
-    end.
+                    if FinalLevel > 0 ->
+                        {true, {Metric, MID, FinalLevel}};
+                    true ->
+                        false
+                    end
+                end, [], Metrics);
+            error ->
+                []
+        end
+    end, [], TeamIDs).
 
 get_metrics(OrgID, TeamIDs, Tags, State) ->
     Authed = get_authed_metrics(OrgID, TeamIDs, State),

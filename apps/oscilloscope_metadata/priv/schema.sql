@@ -25,12 +25,8 @@ CREATE TABLE users (
 
 CREATE TABLE orgs (
     id serial PRIMARY KEY,
+    owner_id integer NOT NULL REFERENCES owners(id),
     name bytea UNIQUE NOT NULL
-);
-
-CREATE TABLE org_members (
-    org_id integer NOT NULL REFERENCES orgs(id),
-    user_id integer NOT NULL REFERENCES users(id)
 );
 
 CREATE TABLE teams (
@@ -40,6 +36,7 @@ CREATE TABLE teams (
 );
 
 CREATE TABLE team_members (
+    org_id integer NOT NULL REFERENCES orgs(id),
     team_id integer NOT NULL REFERENCES teams(id),
     user_id integer NOT NULL REFERENCES users(id)
 );
@@ -94,7 +91,6 @@ ALTER TABLE public.users OWNER TO oscilloscope;
 ALTER TABLE public.owners OWNER TO oscilloscope;
 ALTER TABLE public.users OWNER TO oscilloscope;
 ALTER TABLE public.orgs OWNER TO oscilloscope;
-ALTER TABLE public.org_members OWNER TO oscilloscope;
 ALTER TABLE public.teams OWNER TO oscilloscope;
 ALTER TABLE public.team_members OWNER TO oscilloscope;
 ALTER TABLE public.metrics OWNER TO oscilloscope;

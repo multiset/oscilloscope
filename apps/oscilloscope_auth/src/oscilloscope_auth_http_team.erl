@@ -4,6 +4,7 @@
 
 -export([
     init/1,
+    ping/2,
     is_authorized/2,
     malformed_request/2,
     allowed_methods/2,
@@ -19,6 +20,9 @@
 
 init([]) ->
     {ok, #state{}}.
+
+ping(ReqData, State) ->
+    {pong, ReqData, State}.
 
 allowed_methods(ReqData, State) ->
     {['PUT', 'DELETE'], ReqData, State}.

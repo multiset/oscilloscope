@@ -1,5 +1,6 @@
 -record(user, {
     id :: integer(),
+    owner_id :: integer(),
     password :: binary(),
     email :: binary(),
     created_at :: integer(),
@@ -8,6 +9,7 @@
 
 -record(org, {
     id :: integer(),
+    owner_id :: integer(),
     name :: binary()
 }).
 

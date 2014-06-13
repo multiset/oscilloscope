@@ -7,8 +7,8 @@
 
 -spec create(integer(), binary()) -> {ok, tuple()}.
 create(OrgID, Name) ->
-    {ok, 1} = oscilloscope_metadata:named(create_team, [Name, OrgID]),
-    {ok, _, [{Id}]} = oscilloscope_metadata:named(
+    {ok, 1} = oscilloscope_metadata_sql:named(create_team, [Name, OrgID]),
+    {ok, _, [{Id}]} = oscilloscope_metadata_sql:named(
         select_team_id,
         [OrgID, Name]
     ),
@@ -37,7 +37,7 @@ get_team_int(_OrgID, ID) when is_integer(ID) ->
 -spec add_members(integer() | #org{} | binary(), integer() | #team{} | binary(), integer()) -> ok.
 add_members(Org, Team, Users) ->
     {TeamID, UserIDs} = get_team_and_user_ids(Org, Team, Users),
-    {ok, _, _} = oscilloscope_metadata:named(
+    {ok, _, _} = oscilloscope_metadata_sql:named(
         add_users_to_team,
         [TeamID|UserIDs]
     ),
@@ -46,7 +46,7 @@ add_members(Org, Team, Users) ->
 -spec remove_members(integer() | #org{} | binary(), integer() | #team{} | binary(), integer()) -> ok.
 remove_members(Org, Team, Users) ->
     {TeamID, UserIDs} = get_team_and_user_ids(Org, Team, Users),
-    {ok, _, _} = oscilloscope_metadata:named(
+    {ok, _, _} = oscilloscope_metadata_sql:named(
         remove_users_from_team,
         [TeamID|UserIDs]
     ),

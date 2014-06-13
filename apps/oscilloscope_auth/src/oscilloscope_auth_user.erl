@@ -1,4 +1,4 @@
--module(oscilloscope_auth).
+-module(oscilloscope_auth_user).
 
 -export([
     is_authorized/2,
@@ -28,13 +28,14 @@ is_authorized(Email, Pass) ->
 create(Email, Pass) ->
     {ok, Salt} = bcrypt:gen_salt(),
     {ok, Hash} = bcrypt:hashpw(Pass, Salt),
-    {ok, 1} = oscilloscope_metadata:named(
+    {ok,_,_,[{OwnerID}]} = oscilloscope_metadata_sql:named(insert_owner, []),
+    {ok,_,_,UserID} = oscilloscope_metadata_sql:named(
         insert_user,
-        [Email, Hash]
+        [Email, Hash, OwnerID]
     ),
-    {ok, _, [{Id}]} = oscilloscope_metadata:named(select_user_id, [Email]),
     User = #user{
-        id=Id,
+        id=UserID,
+        owner_id=OwnerID,
         password=Hash,
         email=Email
     },
@@ -51,7 +52,7 @@ get_owner_id(#org{}=Org) ->
     get_owner_id_int(Id, select_owner_id_from_user_id).
 
 get_owner_id_int(Id, Query) ->
-    QueryResp = oscilloscope_metadata:named(
+    QueryResp = oscilloscope_metadata_sql:named(
         Query,
         [Id]
     ),
@@ -63,14 +64,15 @@ get_owner_id_int(Id, Query) ->
     end.
 
 
+-spec get_teams(#org{}, #user{}) -> [#team{}].
 get_teams(Org, User) ->
     ets:lookup(user_teams, {Org#org.id, User#user.id}).
 
 -spec join_org(integer(), integer()) -> ok | {error, binary()}.
 join_org(UserID, OrgID) ->
-    oscilloscope_metadata:named(user_join_org, [UserID, OrgID]).
+    oscilloscope_metadata_sql:named(user_join_org, [UserID, OrgID]).
 
 
 -spec join_team(integer(), integer()) -> ok | {error, binary()}.
 join_team(UserID, TeamID) ->
-    oscilloscope_metadata:named(user_join_team, [UserID, TeamID]).
+    oscilloscope_metadata_sql:named(user_join_team, [UserID, TeamID]).

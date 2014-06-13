@@ -4,14 +4,18 @@
 
 -export([
     init/1,
+    ping/2,
     is_authorized/2,
     allowed_methods/2,
-    content_types_provided/2,
-    to_json/2
+    content_types_accepted/2,
+    from_form/2
 ]).
 
 init([]) ->
     {ok, ok}.
+
+ping(ReqData, State) ->
+    {pong, ReqData, State}.
 
 is_authorized(ReqData, Context) ->
     case oscilloscope_auth_util:get_authorized_user(ReqData) of
@@ -24,10 +28,10 @@ is_authorized(ReqData, Context) ->
 allowed_methods(ReqData, Context) ->
     {['PUT'], ReqData, Context}.
 
-content_types_provided(ReqData, Context) ->
-    {[{"application/json", to_json}], ReqData, Context}.
+content_types_accepted(ReqData, Context) ->
+    {[{"application/x-www-form-urlencoded", from_form}], ReqData, Context}.
 
-to_json(ReqData, UserID) ->
+from_form(ReqData, UserID) ->
     OrgName = wrq:path_info(org_name, ReqData),
     % TODO: Handle org creation errors
     {ok, Org} = oscilloscope_auth_org:create(OrgName),

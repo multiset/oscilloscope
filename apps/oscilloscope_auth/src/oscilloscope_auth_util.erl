@@ -41,6 +41,8 @@ is_authorized(Req, State) ->
 parse_body(Body) ->
     parse_body(binary:split(Body, <<"&">>, [global]), []).
 
+parse_body([], Acc) ->
+    Acc;
 parse_body([Pair|Pairs], Acc) ->
     case binary:split(Pair, <<"=">>) of
         Split when length(Split) =:= 2 ->

@@ -4,11 +4,12 @@
 
 -export([
     init/1,
+    ping/2,
     is_authorized/2,
     malformed_request/2,
     allowed_methods/2,
-    content_types_provided/2,
-    to_json/2
+    content_types_accepted/2,
+    from_form/2
 ]).
 
 -record(state, {
@@ -20,6 +21,10 @@
 
 init([]) ->
     {ok, #state{}}.
+
+
+ping(ReqData, State) ->
+    {pong, ReqData, State}.
 
 allowed_methods(ReqData, State) ->
     {['PUT', 'DELETE'], ReqData, State}.
@@ -64,10 +69,10 @@ malformed_request(ReqData, State) ->
         {true, ReqData, State}
     end.
 
-content_types_provided(ReqData, State) ->
-    {[{"application/json", to_json}], ReqData, State}.
+content_types_accepted(ReqData, State) ->
+    {[{"application/x-www-form-urlencoded", from_form}], ReqData, State}.
 
-to_json(ReqData, State) ->
+from_form(ReqData, State) ->
     #state{
         org=Org,
         team=Team,
