@@ -356,10 +356,6 @@ read_int(From0, Until0, Interval, Aggregation, T, Points) ->
             not_found;
         true ->
             %% At least some of the query is in the cache
-            Acc0 = case (T - From1) div Interval of
-                Count when Count > 0 -> lists:duplicate(Count, null);
-                _ -> []
-            end,
             StartIndex = erlang:max(0, (From1 - T) div Interval),
             EndIndex = erlang:min(
                 array:size(Points) - 1,
@@ -371,28 +367,27 @@ read_int(From0, Until0, Interval, Aggregation, T, Points) ->
                 StartIndex,
                 EndIndex,
                 Aggregation,
-                Acc0,
                 Points
             ),
             {From2, Until2, Read}
     end.
 
 
--spec range_from_array(Start, End, Aggregation, Acc, Points) -> Acc when
+-spec range_from_array(Start, End, Aggregation, Points) -> Acc when
     Start :: array:array_indx(),
     End :: array:array_indx(),
     Aggregation :: fun((wrapped_value()) -> value()),
     Acc :: [value()],
     Points :: array:array(wrapped_value()).
 
-range_from_array(Start, End, AF, Acc0, Points) ->
+range_from_array(Start, End, AF, Points) ->
     lists:reverse(array:foldl(
         fun(I, Vs, Acc) when I >= Start andalso I =< End ->
                [AF(Vs)|Acc];
            (_I, _Vs, Acc) ->
                Acc
         end,
-        Acc0,
+        [],
         Points
     )).
 
