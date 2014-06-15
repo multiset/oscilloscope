@@ -1,5 +1,14 @@
--module(oscilloscope_cache_util).
--export([parse_resolution/1]).
+-module(oscilloscope_util).
+-export([
+    ring_ready/0,
+    parse_resolution/1,
+    adjust_query_range/3
+]).
+
+-include_lib("oscilloscope/include/oscilloscope.hrl").
+
+ring_ready() ->
+    riak_core_node_watcher:nodes(?SERVICE) =/= [].
 
 parse_resolution(ResolutionString) ->
     Retentions = re:split(ResolutionString, ","),
@@ -43,6 +52,16 @@ translate_unit("m") -> 60;
 translate_unit("h") -> 3600;
 translate_unit("d") -> 86400;
 translate_unit("y") -> 31536000.
+
+adjust_query_range(From0, Until0, Interval) ->
+    %% Floor the query's From to the preceding interval bound
+    From = From0 - (From0 rem Interval),
+    %% Ceil the query's Until to the next interval bound
+    Until = case Until0 rem Interval of
+        0 -> Until0;
+        N -> Until0 + Interval - N
+    end,
+    {From, Until}.
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

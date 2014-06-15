@@ -9,7 +9,7 @@
         kernel,
         stdlib,
         ranch,
-        oscilloscope_cache
+        oscilloscope
   ]},
   {mod, {oscilloscope_net_app, []}},
   {env, []}

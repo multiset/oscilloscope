@@ -8,8 +8,14 @@
 -type interval() :: pos_integer().
 -type count() :: pos_integer().
 -type timestamp() :: pos_integer().
+-type wrapped_value() :: nonempty_list(number()) | null.
+-type value() :: number() | null.
 -type persisted() :: [{timestamp(), pos_integer()}].
--type resolution() :: {resolution_id(), interval(), count(), persisted()}.
 
-%% TODO: import proper type from supervisor
--type child_spec() :: any().
+-type read() :: {timestamp(), timestamp(), [value()]} | not_found.
+
+-type cache_read() :: {
+    oscilloscope_metadata:meta(),
+    oscilloscope_metadata_resolution:resolution(),
+    read()
+}.

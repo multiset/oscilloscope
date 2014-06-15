@@ -1,6 +1,6 @@
 SHELL=/bin/bash
 
-all: clean deps compile run
+all: clean deps compile rel console
 
 deps:
 	@./rebar get-deps
@@ -8,14 +8,26 @@ deps:
 compile:
 	@./rebar compile
 
-run:
-	@erl -smp enable -pa deps/*/ebin -pa apps/*/ebin -s folsom -s lager -s oscilloscope_net -s oscilloscope_metadata -s inets -s crypto -s mochiweb -s webmachine -s oscilloscope_cache -s ibrowse -s oscilloscope_http -s oscilloscope_net -s oscilloscope_persistence
+rel: deps compile
+	./rebar generate
 
-noshell:
-	@erl -name oscilloscope@`hostname -f` -noshell -setcookie monster -smp enable -pa deps/*/ebin -pa apps/*/ebin -s folsom -s lager -s oscilloscope_net -s oscilloscope_metadata -s inets -s crypto -s mochiweb -s webmachine -s oscilloscope_cache -s ibrowse -s oscilloscope_http -s oscilloscope_net -s oscilloscope_persistence
+devrel: dev1 dev2 dev3
+
+dev1 dev2 dev3:
+	mkdir -p dev
+	(cd rel && ../rebar generate target_dir=../dev/$@ overlay_vars=vars/$@.config)
+
+devclean:
+	rm -rf dev
+
+relclean:
+	rm -rf rel/oscilloscope
 
 clean:
 	@./rebar clean
+
+console:
+	@rel/oscilloscope/bin/oscilloscope console
 
 test: eunit dialyze
 
@@ -23,7 +35,7 @@ eunit:
 	@./rebar skip_deps=true eunit
 
 dialyze:
-	@dialyzer --src apps/*/src/ -pa apps/oscilloscope -pa apps/oscilloscope_http
+	@dialyzer --src apps/*/src/ -pa apps/oscilloscope_persistence/ebin -pa apps/oscilloscope_metadata/ebin -pa apps/oscilloscope/ebin -pa deps/lager/ebin -pa deps/riak_core/ebin
 
 release: deps compile
 	@./rebar generate

@@ -41,5 +41,7 @@ to_json(Req, State) ->
     Metric = list_to_binary(State#st.metric_name),
     From = list_to_integer(State#st.from),
     Until = list_to_integer(State#st.until),
-    {ok, Values} = oscilloscope_cache:read(Metric, <<"">>, From, Until),
+    %% TODO: handle timeout
+    %% TODO: dereference Metric in to proper IDs
+    {ok, Values} = oscilloscope:read(Metric, From, Until),
     {jiffy:encode({Values}), Req, State}.

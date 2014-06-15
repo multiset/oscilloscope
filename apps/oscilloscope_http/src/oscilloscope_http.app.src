@@ -12,7 +12,7 @@
         crypto,
         mochiweb,
         webmachine,
-        oscilloscope_cache
+        oscilloscope
   ]},
   {mod, {oscilloscope_http_app, []}},
   {env, []}

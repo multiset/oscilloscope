@@ -1,6 +1,8 @@
--module(oscilloscope_cache_aggregations).
+-module(oscilloscope_aggregations).
 
--export([avg/1]).
+-export([
+    avg/1
+]).
 
 avg(Values) ->
     go(fun(Vs) -> lists:sum(Vs) / length(Vs) end, Values).

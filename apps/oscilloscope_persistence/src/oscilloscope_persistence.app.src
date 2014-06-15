@@ -2,8 +2,9 @@
     {description, "Persistent store interactions for Oscilloscope"},
     {vsn, git},
     {registered, [
-        oscilloscope_persistence_server,
-        oscilloscope_persistence_sup
+        oscilloscope_persistence_sup,
+        oscilloscope_persistence_fsm_sup,
+        oscilloscope_persistence_manager_fsm
     ]},
     {applications, [
         kernel,
