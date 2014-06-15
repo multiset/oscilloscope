@@ -8,8 +8,8 @@
     is_authorized/2,
     malformed_request/2,
     allowed_methods/2,
-    content_types_provided/2,
-    to_json/2
+    content_types_accepted/2,
+    from_json/2
 ]).
 
 -record(state, {
@@ -128,10 +128,10 @@ is_authorized(ReqData, State) ->
     Ret = if IsAuthed -> true; true -> "Basic realm=oscilloscope" end,
     {Ret, ReqData, State#state{org_id=OrgID}}.
 
-content_types_provided(ReqData, State) ->
-    {[{"application/json", to_json}], ReqData, State}.
+content_types_accepted(ReqData, State) ->
+    {[{"application/x-www-form-urlencoded", from_json}], ReqData, State}.
 
-to_json(ReqData, State) ->
+from_json(ReqData, State) ->
     % TODO: Handle errors, eg. team name already exists
     TeamName = wrq:path_info(team_name_or_id, ReqData),
     case {wrq:method(ReqData), State} of
@@ -157,4 +157,4 @@ to_json(ReqData, State) ->
             )
     end,
 
-    {<<"{\"ok\": true}">>, ReqData, State}.
+    {true, wrq:set_resp_body(<<"{\"ok\": true}">>, ReqData), State}.

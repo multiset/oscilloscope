@@ -8,7 +8,7 @@
     is_authorized/2,
     allowed_methods/2,
     content_types_accepted/2,
-    from_form/2
+    to_json/2
 ]).
 
 init([]) ->
@@ -29,9 +29,11 @@ allowed_methods(ReqData, Context) ->
     {['PUT'], ReqData, Context}.
 
 content_types_accepted(ReqData, Context) ->
-    {[{"application/x-www-form-urlencoded", from_form}], ReqData, Context}.
+    ContentType = wrq:get_req_header("Content-Type", ReqData),
+    lager:error("Whattt: ~p", [ContentType]),
+    {[{ContentType, to_json}], ReqData, Context}.
 
-from_form(ReqData, UserID) ->
+to_json(ReqData, UserID) ->
     OrgName = wrq:path_info(org_name, ReqData),
     % TODO: Handle org creation errors
     {ok, Org} = oscilloscope_auth_org:create(OrgName),
@@ -40,4 +42,4 @@ from_form(ReqData, UserID) ->
         <<"owners">>,
         UserID
     ),
-    {<<"{\"ok\": true}">>, ReqData, ok}.
+    {true, wrq:set_resp_body(<<"{\"ok\": true}">>, ReqData), ok}.

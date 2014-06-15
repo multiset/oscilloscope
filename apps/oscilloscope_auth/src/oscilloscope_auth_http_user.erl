@@ -54,4 +54,4 @@ content_types_accepted(ReqData, State) ->
 
 from_form(ReqData, State) ->
     oscilloscope_auth_user:create(State#state.email, State#state.pass),
-    {<<"{\"ok\": true}">>, ReqData, ok}.
+    {true, wrq:set_resp_body(<<"{\"ok\": true}">>, ReqData), ok}.

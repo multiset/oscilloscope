@@ -29,7 +29,7 @@ create(Email, Pass) ->
     {ok, Salt} = bcrypt:gen_salt(),
     {ok, Hash} = bcrypt:hashpw(Pass, Salt),
     {ok,_,_,[{OwnerID}]} = oscilloscope_metadata_sql:named(insert_owner, []),
-    {ok,_,_,UserID} = oscilloscope_metadata_sql:named(
+    {ok,_,_,[{UserID}]} = oscilloscope_metadata_sql:named(
         insert_user,
         [Email, Hash, OwnerID]
     ),
@@ -39,7 +39,7 @@ create(Email, Pass) ->
         password=Hash,
         email=Email
     },
-    ok = ets:insert(user_cache, User),
+    true = ets:insert(user_cache, User),
     {ok, User}.
 
 
