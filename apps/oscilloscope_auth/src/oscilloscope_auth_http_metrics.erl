@@ -50,7 +50,7 @@ malformed_request(ReqData, State) ->
     end.
 
 content_types_accepted(ReqData, State) ->
-    {[{"application/x-www-form-urlencoded", from_form}], ReqData, State}.
+    {[{"application/json", from_form}], ReqData, State}.
 
 from_form(ReqData, State) ->
-    {<<"">>, ReqData, State}.
+    {true, wrq:set_resp_body(<<"">>, ReqData), State}.

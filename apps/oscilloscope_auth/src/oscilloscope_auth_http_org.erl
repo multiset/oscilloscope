@@ -29,9 +29,7 @@ allowed_methods(ReqData, Context) ->
     {['PUT'], ReqData, Context}.
 
 content_types_accepted(ReqData, Context) ->
-    ContentType = wrq:get_req_header("Content-Type", ReqData),
-    lager:error("Whattt: ~p", [ContentType]),
-    {[{ContentType, to_json}], ReqData, Context}.
+    {[{"application/json", to_json}], ReqData, Context}.
 
 to_json(ReqData, UserID) ->
     OrgName = wrq:path_info(org_name, ReqData),
