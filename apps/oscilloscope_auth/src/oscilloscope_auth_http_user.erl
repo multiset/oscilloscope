@@ -8,7 +8,7 @@
     allowed_methods/2,
     malformed_request/2,
     content_types_accepted/2,
-    from_form/2
+    from_json/2
 ]).
 
 -record(state, {
@@ -52,8 +52,8 @@ is_valid_email(_) ->
     true.
 
 content_types_accepted(ReqData, State) ->
-    {[{"application/x-www-form-urlencoded", from_form}], ReqData, State}.
+    {[{"application/json", from_json}], ReqData, State}.
 
-from_form(ReqData, State) ->
+from_json(ReqData, State) ->
     oscilloscope_auth_user:create(State#state.email, State#state.pass),
     {true, wrq:set_resp_body(<<"{\"ok\": true}">>, ReqData), ok}.
