@@ -30,10 +30,8 @@ malformed_request(ReqData, State) ->
         undefined ->
             {true, ReqData, State};
         Body ->
-            case oscilloscope_auth_util:parse_body(Body) of
-                false ->
-                    {true, ReqData, State};
-                ParsedBody ->
+            try jiffy:decode(Body) of
+                {ParsedBody} ->
                     case lists:keyfind(<<"password">>, 1, ParsedBody) of
                         false ->
                             {true, ReqData, State};
@@ -41,7 +39,11 @@ malformed_request(ReqData, State) ->
                             Email = wrq:path_info(email, ReqData),
                             State1 = State#state{pass=Pass, email=Email},
                             {not is_valid_email(Email), ReqData, State1}
-                    end
+                    end;
+                _Other ->
+                    {true, ReqData, State}
+            catch throw:_Reason ->
+                {true, ReqData, State}
             end
     end.
 
