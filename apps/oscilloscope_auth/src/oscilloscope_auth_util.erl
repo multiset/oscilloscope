@@ -36,17 +36,3 @@ is_authorized(Req, State) ->
         Other ->
             {Other, Req, State}
     end.
-
--spec parse_body(binary()) -> [{binary(), binary()}] | false.
-parse_body(Body) ->
-    parse_body(binary:split(Body, <<"&">>, [global]), []).
-
-parse_body([], Acc) ->
-    Acc;
-parse_body([Pair|Pairs], Acc) ->
-    case binary:split(Pair, <<"=">>) of
-        Split when length(Split) =:= 2 ->
-            parse_body(Pairs, [list_to_tuple(Split)|Acc]);
-        _ ->
-            false
-    end.
