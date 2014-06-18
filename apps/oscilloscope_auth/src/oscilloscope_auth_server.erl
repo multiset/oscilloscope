@@ -42,7 +42,7 @@ handle_call({grant_perms, OrgID, TeamID, Tags, Level}, _From, State) ->
     {reply, ok, #state{rules=Rules}};
 
 
-handle_call({get_metrics, OrgID, UserID, Tags}, _From, State) ->
+handle_call({find_metrics, OrgID, UserID, Tags}, _From, State) ->
     TeamIDs = ets:lookup(user_org_teams, [{OrgID, UserID}]),
     {reply, get_metrics(OrgID, TeamIDs, Tags, State), State}.
 
@@ -67,7 +67,7 @@ re_match(Subject, Regex) ->
     end.
 
 
-get_authed_metrics(OrgID, TeamIDs, State) ->
+find_authed_metrics(OrgID, TeamIDs, State) ->
     #state{metrics=AllMetrics, rules=AllRules} = State,
     % Get all applicable rules
     Rules = lists:flatmap(fun(TeamID) ->
@@ -108,7 +108,7 @@ get_authed_metrics(OrgID, TeamIDs, State) ->
     end, [], TeamIDs).
 
 get_metrics(OrgID, TeamIDs, Tags, State) ->
-    Authed = get_authed_metrics(OrgID, TeamIDs, State),
+    Authed = find_authed_metrics(OrgID, TeamIDs, State),
     filter_metrics(Tags, Authed).
 
 
