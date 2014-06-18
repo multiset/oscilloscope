@@ -35,9 +35,5 @@ to_json(ReqData, UserID) ->
     OrgName = wrq:path_info(org_name, ReqData),
     % TODO: Handle org creation errors
     {ok, Org} = oscilloscope_auth_org:create(OrgName),
-    ok = oscilloscope_auth_team:add_members(
-        Org#org.id,
-        <<"owners">>,
-        UserID
-    ),
+    ok = oscilloscope_auth_team:add_members(Org#org.id, <<"owners">>, UserID),
     {true, wrq:set_resp_body(<<"{\"ok\": true}">>, ReqData), ok}.
