@@ -18,34 +18,31 @@ create(Name) ->
     {ok,_,_,[{ID}]} = oscilloscope_metadata_sql:named(insert_org, [Name, OwnerID]),
     {ok, #org{name=Name, id=ID, owner_id=OwnerID}}.
 
--spec lookup(binary() | #org{} | integer()) -> {ok, #org{}} | not_found.
-lookup(Org) when is_record(Org, org) ->
-    {ok, Org};
+-spec lookup(binary()) -> {ok, #org{}} | not_found.
 lookup(Name) when is_binary(Name) ->
-    case ets:lookup(org_name_to_id, Name) of
-        [] ->
-            not_found;
-        [{_, OrgID}] ->
-            lookup(OrgID)
-    end;
-lookup(OrgID) when is_integer(OrgID) ->
-    case ets:lookup(orgs, OrgID) of
+    case ets:lookup(orgs, Name) of
         [] ->
             not_found;
         [#org{}=Org] ->
-            {ok, Org}
+            Org
     end.
 
 get_users(OrgID) ->
     oscilloscope_metadata_sql:named(get_users, [OrgID]).
 
 
--spec is_owner(#user{} | integer(), #org{} | integer()) -> boolean().
-is_owner(User, #org{}=Org) ->
-    is_owner(User, Org#org.id);
-is_owner(User, OrgID) ->
-    {_, TeamID} = ets:lookup(teams, {OrgID, <<"owners">>}),
-    oscilloscope_auth_team:is_member(User, TeamID, OrgID).
+-spec is_owner(#user{}, #org{}) -> boolean().
+is_owner(User, Org) ->
+    case ets:lookup(teams, {Org#org.id, <<"owners">>}) of
+        [] ->
+            lager:error(
+                "owners team not in ets table for org: id: ~p, name: ~p",
+                [Org#org.id, Org#org.name]
+            ),
+            false;
+        [#team{}=Team] ->
+            oscilloscope_auth_team:is_member(User, Team, Org)
+    end.
 
 -spec add_members(integer() | #org{} | binary(), integer()) -> ok.
 add_members(Org0, Users0) ->
