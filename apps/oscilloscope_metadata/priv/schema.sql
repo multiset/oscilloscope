@@ -19,6 +19,7 @@ CREATE TABLE owners (
 CREATE TABLE users (
     id serial PRIMARY KEY,
     owner_id integer NOT NULL REFERENCES owners(id),
+    name bytea NOT NULL,
     email bytea NOT NULL,
     password bytea NOT NULL
 );
