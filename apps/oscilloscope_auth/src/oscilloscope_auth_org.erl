@@ -5,8 +5,8 @@
     lookup/1,
     get_users/1,
     is_owner/2,
-    add_members/2,
-    remove_members/2,
+    add_member/2,
+    remove_member/2,
     is_member/2
 ]).
 
@@ -44,37 +44,24 @@ is_owner(User, Org) ->
             oscilloscope_auth_team:is_member(User, Team, Org)
     end.
 
--spec add_members(integer() | #org{} | binary(), integer()) -> ok.
-add_members(Org0, Users0) ->
-    Org = lookup(Org0),
-    Users = [oscilloscope_auth_user:get_user(User) || User <- Users0],
+-spec add_member(#org{}, #user{}) -> ok.
+add_member(Org, User) ->
     {ok, _, _} = oscilloscope_metadata_sql:named(
         add_users_to_org,
-        [Org#org.id|[User#user.id || User <- Users]]
+        [Org#org.id, User#user.id]
     ),
+    ets:insert(org_members, {Org#org.id, User#user.id}),
     ok.
 
--spec remove_members(integer() | #org{} | binary(), integer()) -> ok.
-remove_members(Org0, Users0) ->
-    Org = lookup(Org0),
-    Users = [oscilloscope_auth_user:get_user(User) || User <- Users0],
-
-    lists:foldl(fun(User, _) ->
-        TeamIDs = oscilloscope_auth_user:get_teams(User),
-        {ok, _, _} = oscilloscope_metadata_sql:named(
-            remove_user_from_teams,
-            [User#user.id|TeamIDs]
-        )
-    end, ok, Users),
+-spec remove_member(#org{}, #user{}) -> ok.
+remove_member(Org, User) ->
     {ok, _, _} = oscilloscope_metadata_sql:named(
-        remove_users_from_org,
-        [Org#org.id|[User#user.id || User <- Users]]
+        remove_user_from_org,
+        [Org#org.id, User#user.id]
     ),
-
+    ets:insert(org_members, {Org#org.id, User#user.id}),
     ok.
 
--spec is_member(binary() | #org{} | integer(), binary() | #user{} | integer()) -> boolean().
-is_member(Org0, User0) ->
-    Org = lookup(Org0),
-    User = oscilloscope_auth_user:get_user(User0),
-    ets:member(otu, {Org#org.id, User#user.id}).
+-spec is_member(#org{}, #user{}) -> boolean().
+is_member(Org, User) ->
+    ets:member(org_members, {Org#org.id, User#user.id}).
