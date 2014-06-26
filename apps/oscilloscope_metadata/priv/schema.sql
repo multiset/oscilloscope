@@ -64,9 +64,12 @@ CREATE TABLE certs (
 );
 
 CREATE TABLE ports (
-    owner_id integer PRIMARY KEY REFERENCES owners(id),
-    port serial UNIQUE NOT NULL,
-    cert_id integer NOT NULL REFERENCES certs(id)
+    id serial PRIMARY KEY,
+    port integer NOT NULL,
+    host integer NOT NULL,
+    owner_id integer NOT NULL REFERENCES owners(id),
+    cert_id integer REFERENCES certs(id),
+    UNIQUE(port, host)
 );
 
 CREATE TABLE resolutions (
