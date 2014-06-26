@@ -29,21 +29,27 @@ init([]) ->
     lists:foldl(fun({OrgID, OrgName}, _) ->
         ets:insert(orgs, #org{id=OrgID, name=OrgName})
     end, ok, Orgs),
+
     {ok, _, OrgMetrics} = oscilloscope_metadata_sql:named(get_org_metrics, []),
     OrgMetricDict = lists:foldl(fun
         ({OrgID, TeamID, TagNames, TagValues, MetricID}, Dict) ->
             Tags = lists:zip(TagNames, TagValues),
             dict:append({OrgID, TeamID}, {Tags, MetricID}, Dict)
     end, dict:new(), OrgMetrics),
+
     {ok, _, UserMetrics} = oscilloscope_metadata_sql:named(get_user_metrics, []),
-    {ok, #state{org_metrics=OrgMetricDict, user_metrics=UserMetrics}}.
+
+    State = #state{
+        org_metrics=OrgMetricDict,
+        user_metrics=UserMetrics
+    },
+    {ok, State}.
 
 
 handle_call({grant_perms, OrgID, TeamID, Tags, Level}, _From, State) ->
     #state{rules=Rules0} = State,
     Rules = dict:append({OrgID, TeamID}, {Tags, Level}, Rules0),
     {reply, ok, #state{rules=Rules}};
-
 
 handle_call({find_org_metrics, OrgID, UserID, Tags}, _From, State) ->
     TeamIDs = ets:lookup(user_org_teams, [{OrgID, UserID}]),
