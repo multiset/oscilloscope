@@ -2,6 +2,7 @@
     id :: integer(),
     owner_id :: integer(),
     password :: binary(),
+    name :: binary(),
     email :: binary(),
     created_at :: integer(),
     updated_at :: integer()

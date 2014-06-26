@@ -12,6 +12,7 @@
 ]).
 
 -record(state, {
+    name,
     email,
     pass
 }).
@@ -37,8 +38,15 @@ malformed_request(ReqData, State) ->
                             {true, ReqData, State};
                         {_, Pass} ->
                             Email = wrq:path_info(email, ReqData),
-                            State1 = State#state{pass=Pass, email=Email},
-                            {not is_valid_email(Email), ReqData, State1}
+                            Name = wrq:path_info(name, ReqData),
+                            State1 = State#state{
+                                pass=Pass,
+                                name=Name,
+                                email=Email
+                            },
+                            InvalidEmail = not is_valid_email(Email),
+                            InvalidName = not is_valid_name(Name),
+                            {InvalidEmail orelse InvalidName, ReqData, State1}
                     end;
                 _Other ->
                     {true, ReqData, State}
@@ -46,6 +54,10 @@ malformed_request(ReqData, State) ->
                 {true, ReqData, State}
             end
     end.
+
+is_valid_name(_) ->
+    % whee
+    true.
 
 is_valid_email(_) ->
     % Ha
@@ -55,5 +67,6 @@ content_types_accepted(ReqData, State) ->
     {[{"application/json", from_json}], ReqData, State}.
 
 from_json(ReqData, State) ->
-    oscilloscope_auth_user:create(State#state.email, State#state.pass),
+    #state{name=Name, email=Email, pass=Pass} = State,
+    {ok, _User} = oscilloscope_auth_user:create(Name, Email, Pass),
     {true, wrq:set_resp_body(<<"{\"ok\": true}">>, ReqData), ok}.
