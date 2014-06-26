@@ -13,11 +13,12 @@
     code_change/3
 ]).
 
--include_lib("oscilloscope_auth/include/oscilloscope_auth.hrl").
+-include("oscilloscope_auth.hrl").
 
 -record(state, {
     rules,
-    metrics
+    org_metrics,
+    user_metrics
 }).
 
 start_link() ->
@@ -28,12 +29,14 @@ init([]) ->
     lists:foldl(fun({OrgID, OrgName}, _) ->
         ets:insert(orgs, #org{id=OrgID, name=OrgName})
     end, ok, Orgs),
-    {ok, _, Metrics} = oscilloscope_metadata_sql:named(get_metrics, []),
-    MetricDict = lists:foldl(fun
-        ({OrgID, TeamID, Tags, MetricID}, Dict) ->
+    {ok, _, OrgMetrics} = oscilloscope_metadata_sql:named(get_org_metrics, []),
+    OrgMetricDict = lists:foldl(fun
+        ({OrgID, TeamID, TagNames, TagValues, MetricID}, Dict) ->
+            Tags = lists:zip(TagNames, TagValues),
             dict:append({OrgID, TeamID}, {Tags, MetricID}, Dict)
-    end, dict:new(), Metrics),
-    {ok, #state{metrics=MetricDict}}.
+    end, dict:new(), OrgMetrics),
+    {ok, _, UserMetrics} = oscilloscope_metadata_sql:named(get_user_metrics, []),
+    {ok, #state{org_metrics=OrgMetricDict, user_metrics=UserMetrics}}.
 
 
 handle_call({grant_perms, OrgID, TeamID, Tags, Level}, _From, State) ->
@@ -42,9 +45,12 @@ handle_call({grant_perms, OrgID, TeamID, Tags, Level}, _From, State) ->
     {reply, ok, #state{rules=Rules}};
 
 
-handle_call({find_metrics, OrgID, UserID, Tags}, _From, State) ->
+handle_call({find_org_metrics, OrgID, UserID, Tags}, _From, State) ->
     TeamIDs = ets:lookup(user_org_teams, [{OrgID, UserID}]),
-    {reply, get_metrics(OrgID, TeamIDs, Tags, State), State}.
+    {reply, find_org_metrics(OrgID, TeamIDs, Tags, State), State};
+
+handle_call({find_user_metrics, UserID, Tags}, _From, State) ->
+    {reply, find_user_metrics(UserID, Tags, State), State}.
 
 
 filter_metrics(MatchPairs, MetricList) ->
@@ -67,8 +73,8 @@ re_match(Subject, Regex) ->
     end.
 
 
-find_authed_metrics(OrgID, TeamIDs, State) ->
-    #state{metrics=AllMetrics, rules=AllRules} = State,
+find_authed_org_metrics(OrgID, TeamIDs, State) ->
+    #state{org_metrics=AllMetrics, rules=AllRules} = State,
     % Get all applicable rules
     Rules = lists:flatmap(fun(TeamID) ->
         case dict:find({OrgID, TeamID}, AllRules) of
@@ -107,15 +113,22 @@ find_authed_metrics(OrgID, TeamIDs, State) ->
         end
     end, [], TeamIDs).
 
-get_metrics(OrgID, TeamIDs, Tags, State) ->
-    Authed = find_authed_metrics(OrgID, TeamIDs, State),
+find_org_metrics(OrgID, TeamIDs, Tags, State) ->
+    Authed = find_authed_org_metrics(OrgID, TeamIDs, State),
     filter_metrics(Tags, Authed).
 
+find_user_metrics(UserID, Tags, State) ->
+    case dict:find(UserID, State#state.user_metrics) of
+        {ok, Metrics} ->
+            filter_metrics(Tags, Metrics);
+        error ->
+            not_found
+    end.
 
 handle_cast({create_metric, OwnerID, MetricID, Props}, State) ->
-    #state{metrics=Metrics0} = State,
+    #state{org_metrics=Metrics0} = State,
     Metrics = dict:append(OwnerID, {Props, MetricID}, Metrics0),
-    {noreply, State#state{metrics=Metrics}}.
+    {noreply, State#state{org_metrics=Metrics}}.
 
 handle_info(_Info, State) ->
     {noreply, State}.
