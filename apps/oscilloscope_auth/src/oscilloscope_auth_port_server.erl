@@ -55,7 +55,7 @@ handle_call({create_port, OwnerID, Port}, _From, State) ->
             %TODO Add call to external stunnel-refreshing proc here
             {{ok, Port}, State#state{unused_ports=NewUnusedPorts}};
         false ->
-            {{error, port_in_use}, State}
+            {{error, <<"port in use">>}, State}
     end,
     {reply, Reply, State1}.
 

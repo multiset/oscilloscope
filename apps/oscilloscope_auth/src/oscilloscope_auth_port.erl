@@ -1,8 +1,10 @@
 -module(oscilloscope_auth_port).
 
--export([start/2]).
+-export([start/2, create/1, create/2]).
 
 -include("oscilloscope_auth.hrl").
+
+-define(PORT_SERVER, oscilloscope_auth_port_server).
 
 -spec start(integer(), integer()) -> ok | {error, binary()}.
 start(OwnerID, Port) ->
@@ -15,3 +17,11 @@ start(OwnerID, Port) ->
         [{parser, fun oscilloscope_net_protocols:graphite/1}]
     ),
     {ok, Pid}.
+
+-spec create(integer()) -> ok | {error, binary()}.
+create(OwnerID) ->
+    gen_server:call(?PORT_SERVER, {create_port, OwnerID}).
+
+-spec create(integer(), integer()) -> ok | {error, binary()}.
+create(OwnerID, Port) ->
+    gen_server:call(?PORT_SERVER, {create_port, OwnerID, Port}).
