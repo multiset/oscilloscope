@@ -1,6 +1,6 @@
 -module(oscilloscope_auth_util).
 
--export([get_authorized_user/1, is_authorized/2, parse_body/1]).
+-export([get_authorized_user/1, is_authorized/2]).
 
 -include("oscilloscope_auth.hrl").
 
