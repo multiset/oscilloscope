@@ -25,12 +25,59 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init([]) ->
+    ets:new(user_org_teams, [named_table, bag, public]),
+    ets:new(user_cache, [named_table, {keypos, #user.id}, public]),
+    {ok, _, Users} = oscilloscope_metadata_sql:named(select_users, []),
+    lists:foldl(fun({UserID, OwnerID, Name, Email, Password}, _) ->
+        User = #user{
+            id=UserID,
+            owner_id=OwnerID,
+            name=Name,
+            email=Email,
+            password=Password
+        },
+        true = ets:insert(user_cache, User)
+    end, ok, Users),
+
+    {ok, _, Resp} = oscilloscope_metadata_sql:named(get_user_org_teams, []),
+    lists:foldl(fun({UserID, OrgID, TeamID}, _) ->
+        ets:insert(user_org_teams, {{OrgID, UserID}, TeamID})
+    end, ok, Resp),
+
+    ets:new(orgs, [named_table, bag, public, {keypos, #org.id}]),
+    ets:new(org_ids, [named_table, bag, public]),
     {ok, _, Orgs} = oscilloscope_metadata_sql:named(get_orgs, []),
-    lists:foldl(fun({OrgID, OrgName}, _) ->
-        ets:insert(orgs, #org{id=OrgID, name=OrgName})
+    lager:error("oscilloscope_metadata: get_orgs: ~p", [Orgs]),
+    lists:foldl(fun({{OrgID, OrgName}}, _) ->
+        ets:insert(orgs, #org{id=OrgID, name=OrgName}),
+        ets:insert(org_ids, {OrgName, OrgID})
     end, ok, Orgs),
 
+    ets:new(teams, [named_table, bag, public, {keypos, #org.id}]),
+    ets:new(team_ids, [named_table, bag, public]),
+    {ok, _, Teams} = oscilloscope_metadata_sql:named(get_teams, []),
+    lager:error("oscilloscope_metadata: get_teams: ~p", [Teams]),
+    lists:foldl(fun({{OrgID, TeamID, TeamName}}, _) ->
+        ets:insert(teams, #team{id=TeamID, org_id=OrgID, name=TeamName}),
+        ets:insert(team_ids, {{OrgID, TeamName}, TeamID})
+    end, ok, Teams),
+
+    ets:new(org_members, [named_table, public]),
+    {ok, _, OrgMembers} = oscilloscope_metadata_sql:named(get_org_members, []),
+    lager:error("OrgMembers: ~p", [OrgMembers]),
+    lists:foldl(fun({OrgID, UserID}, _) ->
+        ets:insert(org_members, {OrgID, UserID})
+    end, ok, OrgMembers),
+
+    ets:new(team_members, [named_table, public]),
+    {ok, _, TeamMembers} = oscilloscope_metadata_sql:named(get_team_members, []),
+    lager:error("TeamMembers: ~p", [TeamMembers]),
+    lists:foldl(fun({OrgID, TeamID, UserID}, _) ->
+        ets:insert(team_members, {OrgID, TeamID, UserID})
+    end, ok, TeamMembers),
+
     {ok, _, OrgMetrics} = oscilloscope_metadata_sql:named(get_org_metrics, []),
+    lager:error("OrgMetrics: ~p", [OrgMetrics]),
     OrgMetricDict = lists:foldl(fun
         ({OrgID, TeamID, TagNames, TagValues, MetricID}, Dict) ->
             Tags = lists:zip(TagNames, TagValues),

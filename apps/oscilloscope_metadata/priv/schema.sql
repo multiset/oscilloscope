@@ -36,6 +36,11 @@ CREATE TABLE teams (
     org_id integer NOT NULL REFERENCES orgs(id)
 );
 
+CREATE TABLE org_members (
+    org_id integer NOT NULL REFERENCES orgs(id),
+    user_id integer NOT NULL REFERENCES users(id)
+);
+
 CREATE TABLE team_members (
     org_id integer NOT NULL REFERENCES orgs(id),
     team_id integer NOT NULL REFERENCES teams(id),

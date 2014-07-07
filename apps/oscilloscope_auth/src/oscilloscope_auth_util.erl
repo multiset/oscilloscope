@@ -9,9 +9,10 @@ get_authorized_user(Req) ->
         "Basic " ++ Base64 ->
             case string:tokens(base64:mime_decode_to_string(Base64), ":") of
                 [Name, Pass] ->
-                    Match = #user{email=list_to_binary(Name), _='_'},
+                    Match = #user{name=list_to_binary(Name), _='_'},
                     case ets:match_object(user_cache, Match) of
                         [#user{password=Hash}=User] ->
+                            lager:error("Found user: ~p", [User]),
                             {ok, LHash} = bcrypt:hashpw(Pass, Hash),
                             case Hash =:= list_to_binary(LHash) of
                                 true ->

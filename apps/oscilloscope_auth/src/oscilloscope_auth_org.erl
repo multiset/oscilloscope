@@ -46,8 +46,8 @@ is_owner(User, Org) ->
 
 -spec add_member(#org{}, #user{}) -> ok.
 add_member(Org, User) ->
-    {ok, _, _} = oscilloscope_metadata_sql:named(
-        add_users_to_org,
+    {ok, _} = oscilloscope_metadata_sql:named(
+        add_user_to_org,
         [Org#org.id, User#user.id]
     ),
     ets:insert(org_members, {Org#org.id, User#user.id}),
@@ -64,4 +64,4 @@ remove_member(Org, User) ->
 
 -spec is_member(#org{}, #user{}) -> boolean().
 is_member(Org, User) ->
-    ets:member(org_members, {Org#org.id, User#user.id}).
+    ets:member(org_member, {Org#org.id, User#user.id}).

@@ -33,12 +33,12 @@ malformed_request(ReqData, State) ->
         Body ->
             try jiffy:decode(Body) of
                 {ParsedBody} ->
-                    case lists:keyfind(<<"password">>, 1, ParsedBody) of
-                        false ->
-                            {true, ReqData, State};
-                        {_, Pass} ->
-                            Email = wrq:path_info(email, ReqData),
-                            Name = wrq:path_info(name, ReqData),
+                    MaybePass = lists:keyfind(<<"password">>, 1, ParsedBody),
+                    MaybeEmail = lists:keyfind(<<"email">>, 1, ParsedBody),
+                    case {MaybePass, MaybeEmail} of
+                        {{<<"password">>, Pass}, {<<"email">>, Email}} ->
+                            ListName = wrq:path_info(username, ReqData),
+                            Name = list_to_binary(ListName),
                             State1 = State#state{
                                 pass=Pass,
                                 name=Name,
@@ -46,7 +46,9 @@ malformed_request(ReqData, State) ->
                             },
                             InvalidEmail = not is_valid_email(Email),
                             InvalidName = not is_valid_name(Name),
-                            {InvalidEmail orelse InvalidName, ReqData, State1}
+                            {InvalidEmail orelse InvalidName, ReqData, State1};
+                        _ ->
+                            {true, ReqData, State}
                     end;
                 _Other ->
                     {true, ReqData, State}

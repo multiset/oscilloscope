@@ -27,17 +27,18 @@ is_authorized(Name, Pass) ->
 -spec create(binary(), binary(), binary()) -> {ok, #user{}}.
 create(Name, Email, Pass) ->
     {ok, Salt} = bcrypt:gen_salt(),
-    {ok, Hash} = bcrypt:hashpw(Pass, Salt),
+    {ok, LHash} = bcrypt:hashpw(Pass, Salt),
+    BHash = list_to_binary(LHash),
     {ok,_,_,[{OwnerID}]} = oscilloscope_metadata_sql:named(insert_owner, []),
     {ok,_,_,[{UserID}]} = oscilloscope_metadata_sql:named(
         insert_user,
-        [Name, Email, Hash, OwnerID]
+        [Name, Email, BHash, OwnerID]
     ),
     User = #user{
         id=UserID,
         name=Name,
         owner_id=OwnerID,
-        password=Hash,
+        password=BHash,
         email=Email
     },
     true = ets:insert(user_cache, User),
