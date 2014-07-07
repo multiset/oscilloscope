@@ -52,7 +52,7 @@ to_json(ReqData, State) ->
     % TODO: Handle org creation errors
     {ok, Org} = oscilloscope_auth_org:create(OrgName),
     ok = oscilloscope_auth_org:add_member(Org, User),
-    {ok, Owners} = case oscilloscope_auth_team:find(Org, <<"owners">>) of
+    {ok, Owners} = case oscilloscope_auth_team:lookup(Org, <<"owners">>) of
         not_found ->
             oscilloscope_auth_team:create(Org, <<"owners">>);
         {ok, #team{}}=Result ->

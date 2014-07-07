@@ -1,6 +1,6 @@
 -module(oscilloscope_auth_team).
 
--export([create/2, find/2, add_member/3, remove_member/3, is_member/3]).
+-export([create/2, lookup/2, add_member/3, remove_member/3, is_member/3]).
 
 -include("oscilloscope_auth.hrl").
 
@@ -11,8 +11,8 @@ create(Org, Name) ->
     {ok, 1, _, [{ID}]} = oscilloscope_metadata_sql:named(insert_team, [Name, OrgID]),
     {ok, #team{name=Name, id=ID, org_id=OrgID}}.
 
--spec find(#org{}, binary()) -> {ok, integer()} | not_found.
-find(Org, TeamName) ->
+-spec lookup(#org{}, binary()) -> {ok, integer()} | not_found.
+lookup(Org, TeamName) ->
     case ets:lookup(team_ids, {Org#org.id, TeamName}) of
         [] ->
             not_found;
@@ -23,9 +23,9 @@ find(Org, TeamName) ->
 -spec add_member(#org{}, #team{}, #user{}) -> ok.
 add_member(Org, Team, User) ->
     ets:insert(team_members, {Org#org.id, Team#team.id, User#user.id}),
-    {ok, _, _} = oscilloscope_metadata_sql:named(
+    {ok, _} = oscilloscope_metadata_sql:named(
         add_user_to_team,
-        [Team#team.id, User#user.id]
+        [Org#org.id, Team#team.id, User#user.id]
     ),
     ok.
 
