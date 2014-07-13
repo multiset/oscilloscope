@@ -1,4 +1,4 @@
--module(oscilloscope_auth_port_server).
+-module(oscilloscope_entities_port_server).
 
 -behaviour(gen_server).
 
@@ -13,7 +13,7 @@
     code_change/3
 ]).
 
--include("oscilloscope_auth.hrl").
+-include("oscilloscope_entities.hrl").
 
 -record(state, {
     unused_ports,
@@ -26,7 +26,7 @@ start_link() ->
 init([]) ->
     {ok, _, OwnerPorts} = oscilloscope_metadata_sql:named(get_used_ports, []),
     Ports = lists:foldl(fun({OwnerID, Port}, Acc) ->
-        oscilloscope_auth_port:start(OwnerID, Port),
+        oscilloscope_entities_port:start(OwnerID, Port),
         [Port|Acc]
     end, [], OwnerPorts),
     UnusedPorts = lists:seq(1025, 65536) -- Ports,
@@ -51,7 +51,7 @@ handle_call({create_port, OwnerID, Port}, _From, State) ->
                 insert_port,
                 [OwnerID, Host, Port]
             ),
-            oscilloscope_auth_port:start(OwnerID, Port),
+            oscilloscope_entities_port:start(OwnerID, Port),
             %TODO Add call to external stunnel-refreshing proc here
             {{ok, Port}, State#state{unused_ports=NewUnusedPorts}};
         false ->

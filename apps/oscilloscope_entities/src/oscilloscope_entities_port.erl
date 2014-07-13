@@ -1,10 +1,10 @@
--module(oscilloscope_auth_port).
+-module(oscilloscope_entities_port).
 
 -export([start/2, create/1, create/2]).
 
--include("oscilloscope_auth.hrl").
+-include("oscilloscope_entities.hrl").
 
--define(PORT_SERVER, oscilloscope_auth_port_server).
+-define(PORT_SERVER, oscilloscope_entities_port_server).
 
 -spec start(integer(), integer()) -> ok | {error, binary()}.
 start(OwnerID, Port) ->

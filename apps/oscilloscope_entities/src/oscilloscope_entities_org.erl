@@ -1,19 +1,19 @@
--module(oscilloscope_auth_org).
+-module(oscilloscope_entities_org).
 
 -export([
     create/1,
     lookup/1,
-    get_users/1,
+    members/1,
     is_owner/2,
     add_member/2,
     remove_member/2,
     is_member/2
 ]).
 
--include("oscilloscope_auth.hrl").
+-include("oscilloscope_entities.hrl").
 
 -spec create(binary()) -> {ok, tuple()}.
-create(Name) ->
+create(Name) when is_binary(Name) ->
     {ok,_,_,[{OwnerID}]} = oscilloscope_metadata_sql:named(insert_owner, []),
     {ok,_,_,[{ID}]} = oscilloscope_metadata_sql:named(insert_org, [Name, OwnerID]),
     {ok, #org{name=Name, id=ID, owner_id=OwnerID}}.
@@ -27,9 +27,9 @@ lookup(Name) when is_binary(Name) ->
             Org
     end.
 
-get_users(OrgID) ->
-    oscilloscope_metadata_sql:named(get_users, [OrgID]).
-
+-spec members(#org{}) -> [#user{}].
+members(Org) ->
+    oscilloscope_metadata_sql:named(get_users, [Org#org.id]).
 
 -spec is_owner(#user{}, #org{}) -> boolean().
 is_owner(User, Org) ->
@@ -41,7 +41,7 @@ is_owner(User, Org) ->
             ),
             false;
         [#team{}=Team] ->
-            oscilloscope_auth_team:is_member(User, Team, Org)
+            oscilloscope_entities_team:is_member(User, Team, Org)
     end.
 
 -spec add_member(#org{}, #user{}) -> ok.

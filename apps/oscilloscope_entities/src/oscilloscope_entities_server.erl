@@ -1,4 +1,4 @@
--module(oscilloscope_auth_server).
+-module(oscilloscope_entities_server).
 
 -behaviour(gen_server).
 
@@ -13,7 +13,7 @@
     code_change/3
 ]).
 
--include("oscilloscope_auth.hrl").
+-include("oscilloscope_entities.hrl").
 
 -record(state, {
     rules,
@@ -38,11 +38,6 @@ init([]) ->
         },
         true = ets:insert(user_cache, User)
     end, ok, Users),
-
-    {ok, _, Resp} = oscilloscope_metadata_sql:named(get_user_org_teams, []),
-    lists:foldl(fun({UserID, OrgID, TeamID}, _) ->
-        ets:insert(user_org_teams, {{OrgID, UserID}, TeamID})
-    end, ok, Resp),
 
     ets:new(orgs, [named_table, bag, public, {keypos, #org.id}]),
     ets:new(org_ids, [named_table, bag, public]),

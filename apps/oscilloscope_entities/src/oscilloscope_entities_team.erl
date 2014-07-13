@@ -1,8 +1,8 @@
--module(oscilloscope_auth_team).
+-module(oscilloscope_entities_team).
 
--export([create/2, lookup/2, add_member/3, remove_member/3, is_member/3]).
+-export([create/2, delete/2, lookup/2, add_member/3, remove_member/3, is_member/3]).
 
--include("oscilloscope_auth.hrl").
+-include("oscilloscope_entities.hrl").
 
 
 -spec create(#org{}, binary()) -> {ok, tuple()}.
@@ -10,6 +10,13 @@ create(Org, Name) ->
     #org{id=OrgID} = Org,
     {ok, 1, _, [{ID}]} = oscilloscope_metadata_sql:named(insert_team, [Name, OrgID]),
     {ok, #team{name=Name, id=ID, org_id=OrgID}}.
+
+-spec delete(#org{}, #team{}) -> ok.
+delete(Org, Team) ->
+    #org{id=OrgID} = Org,
+    #team{id=TeamID} = Team,
+    {ok, _} = oscilloscope_metadata_sql:named(delete_team, [OrgID, TeamID]),
+    ok.
 
 -spec lookup(#org{}, binary()) -> {ok, integer()} | not_found.
 lookup(Org, TeamName) ->
@@ -39,5 +46,5 @@ remove_member(Org, Team, User) ->
     ok.
 
 -spec is_member(#org{}, #team{}, #user{}) -> boolean().
-is_member(User, Team, Org) ->
+is_member(Org, Team, User) ->
     ets:member(team_members, {Org#org.id, Team#team.id, User#user.id}).

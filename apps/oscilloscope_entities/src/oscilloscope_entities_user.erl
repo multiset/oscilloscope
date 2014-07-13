@@ -1,4 +1,4 @@
--module(oscilloscope_auth_user).
+-module(oscilloscope_entities_user).
 
 -export([
     is_authorized/2,
@@ -9,7 +9,7 @@
     get_teams/2
 ]).
 
--include("oscilloscope_auth.hrl").
+-include("oscilloscope_entities.hrl").
 
 
 -spec is_authorized(binary(), binary()) -> boolean().
