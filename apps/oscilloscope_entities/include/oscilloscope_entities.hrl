@@ -5,17 +5,21 @@
     name :: binary(),
     email :: binary(),
     created_at :: integer(),
-    updated_at :: integer()
+    updated_at :: integer(),
+    orgs :: dict()
 }).
 
 -record(org, {
     id :: integer(),
     owner_id :: integer(),
-    name :: binary()
+    name :: binary(),
+    teams :: [integer()],
+    members :: [integer()]
 }).
 
 -record(team, {
     id :: integer(),
     org_id :: integer(),
-    name :: binary()
+    name :: binary(),
+    members :: [integer()]
 }).

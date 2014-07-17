@@ -1,6 +1,14 @@
 -module(oscilloscope_entities_team).
 
--export([create/2, delete/2, lookup/2, add_member/3, remove_member/3, is_member/3]).
+-export([
+    create/2,
+    delete/2,
+    lookup/2,
+    members/2,
+    add_member/3,
+    remove_member/3,
+    is_member/3
+]).
 
 -include("oscilloscope_entities.hrl").
 
@@ -9,23 +17,44 @@
 create(Org, Name) ->
     #org{id=OrgID} = Org,
     {ok, 1, _, [{ID}]} = oscilloscope_metadata_sql:named(insert_team, [Name, OrgID]),
-    {ok, #team{name=Name, id=ID, org_id=OrgID}}.
+    Team = #team{name=Name, id=ID, org_id=OrgID},
+    true = ets:insert(teams, Team),
+    {ok, Team}.
 
 -spec delete(#org{}, #team{}) -> ok.
 delete(Org, Team) ->
     #org{id=OrgID} = Org,
-    #team{id=TeamID} = Team,
+    #team{id=TeamID, name=TeamName} = Team,
     {ok, _} = oscilloscope_metadata_sql:named(delete_team, [OrgID, TeamID]),
+    true = ets:delete(teams, TeamName),
+    true = ets:match_delete(team_members, {OrgID, TeamID, '_'}),
     ok.
 
 -spec lookup(#org{}, binary()) -> {ok, integer()} | not_found.
 lookup(Org, TeamName) ->
-    case ets:lookup(team_ids, {Org#org.id, TeamName}) of
+    case ets:lookup(teams, {Org#org.id, TeamName}) of
         [] ->
             not_found;
-        [{TeamID}] ->
-            #team{name=TeamName, id=TeamID}
+        [#team{}=Team] ->
+            Team
     end.
+
+-spec members(#org{}, #team{}) -> [#user{}].
+members(Org, Team) ->
+    UserIDs = ets:match(team_members, {Org#org.id, Team#team.id, '$1'}),
+    lists:foldl(fun([UserID], Acc) ->
+        case ets:lookup(users, UserID) of
+            [#user{}=User] ->
+                [User|Acc];
+            [] ->
+                lager:error(
+                    "UserID ~p in team_members ets table but not users table",
+                    [UserID]
+                ),
+                Acc
+        end
+    end, [], UserIDs).
+
 
 -spec add_member(#org{}, #team{}, #user{}) -> ok.
 add_member(Org, Team, User) ->

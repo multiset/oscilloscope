@@ -2,6 +2,7 @@
 
 -export([
     create/1,
+    delete/1,
     lookup/1,
     members/1,
     is_owner/2,
@@ -18,6 +19,13 @@ create(Name) when is_binary(Name) ->
     {ok,_,_,[{ID}]} = oscilloscope_metadata_sql:named(insert_org, [Name, OwnerID]),
     {ok, #org{name=Name, id=ID, owner_id=OwnerID}}.
 
+-spec delete(#org{}) -> ok.
+delete(Org) ->
+    {ok,_} = oscilloscope_metadata_sql:named(delete_org, [Org#org.id]),
+    ets:delete(orgs, Org#org.name),
+    ets:match_delete(org_members, {{Org#org.id, '_'}, '_'}),
+    ets:match_delete(teams, {{Org#org.id, '_'}, '_'}).
+
 -spec lookup(binary()) -> {ok, #org{}} | not_found.
 lookup(Name) when is_binary(Name) ->
     case ets:lookup(orgs, Name) of
@@ -29,7 +37,20 @@ lookup(Name) when is_binary(Name) ->
 
 -spec members(#org{}) -> [#user{}].
 members(Org) ->
-    oscilloscope_metadata_sql:named(get_users, [Org#org.id]).
+    MemberIDs = ets:match(org_members, {Org#org.id, '$1'}),
+    lists:foldl(fun([MemberID], Acc) ->
+        case ets:lookup(user_names, MemberID) of
+            [MemberName] ->
+                case oscilloscope_entities_user:lookup(MemberName) of
+                    {ok, User} ->
+                        [User|Acc];
+                    not_found ->
+                        Acc
+                end;
+            [] ->
+                Acc
+        end
+    end, [], MemberIDs).
 
 -spec is_owner(#user{}, #org{}) -> boolean().
 is_owner(User, Org) ->
@@ -64,4 +85,4 @@ remove_member(Org, User) ->
 
 -spec is_member(#org{}, #user{}) -> boolean().
 is_member(Org, User) ->
-    ets:member(org_member, {Org#org.id, User#user.id}).
+    ets:member(org_members, {Org#org.id, User#user.id}).

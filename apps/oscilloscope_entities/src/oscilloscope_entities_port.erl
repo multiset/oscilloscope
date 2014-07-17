@@ -6,6 +6,7 @@
 
 -define(PORT_SERVER, oscilloscope_entities_port_server).
 
+
 -spec start(integer(), integer()) -> ok | {error, binary()}.
 start(OwnerID, Port) ->
     {ok, Pid} = ranch:start_listener(
@@ -18,10 +19,22 @@ start(OwnerID, Port) ->
     ),
     {ok, Pid}.
 
--spec create(integer()) -> ok | {error, binary()}.
-create(OwnerID) ->
+
+-spec create(#org{} | #user{}) -> {ok, integer()} | {error, binary()}.
+create(User) when is_record(User, user) ->
+    create_int(User#user.owner_id);
+create(Org) when is_record(Org, org) ->
+    create_int(Org#org.owner_id).
+
+create_int(OwnerID) when is_integer(OwnerID) ->
     gen_server:call(?PORT_SERVER, {create_port, OwnerID}).
 
--spec create(integer(), integer()) -> ok | {error, binary()}.
-create(OwnerID, Port) ->
+
+-spec create(#org{} | #user{}, integer()) -> {ok, integer()} | {error, binary()}.
+create(User, Port) when is_record(User, user) ->
+    create_int(User#user.owner_id, Port);
+create(Org, Port) when is_record(Org, org) ->
+    create_int(Org#org.owner_id, Port).
+
+create_int(OwnerID, Port) when is_integer(OwnerID), is_integer(Port) ->
     gen_server:call(?PORT_SERVER, {create_port, OwnerID, Port}).
