@@ -17,8 +17,7 @@
     {mod, {oscilloscope_http_app, []}},
     {env, [
         {dispatch_apps, [
-            oscilloscope_http,
-            oscilloscope_auth
+            oscilloscope_http
         ]}
     ]}
 ]}.
