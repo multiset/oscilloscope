@@ -20,14 +20,21 @@ CREATE TABLE users (
     id serial PRIMARY KEY,
     owner_id integer NOT NULL REFERENCES owners(id),
     name bytea NOT NULL,
-    email bytea NOT NULL,
-    password bytea NOT NULL
+    password bytea NOT NULL,
+    active boolean DEFAULT TRUE NOT NULL
+);
+
+CREATE TABLE emails (
+    id serial PRIMARY KEY,
+    user_id integer NOT NULL REFERENCES users(id),
+    email bytea NOT NULL
 );
 
 CREATE TABLE orgs (
     id serial PRIMARY KEY,
     owner_id integer NOT NULL REFERENCES owners(id),
-    name bytea UNIQUE NOT NULL
+    name bytea UNIQUE NOT NULL,
+    active boolean DEFAULT TRUE NOT NULL
 );
 
 CREATE TABLE teams (
@@ -64,6 +71,7 @@ CREATE TABLE tags (
 
 CREATE TABLE certs (
     id serial PRIMARY KEY,
+    owner_id integer NOT NULL REFERENCES owners(id),
     cert bytea NOT NULL,
     active boolean NOT NULL
 );
