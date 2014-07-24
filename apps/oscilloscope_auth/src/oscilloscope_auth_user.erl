@@ -14,11 +14,10 @@ is_authorized(Name, Pass) ->
             false
     end.
 
--spec delete(#user{}, #user{}) -> boolean().
+-spec can_delete(#user{}, #user{}) -> boolean().
 can_delete(AuthedUser, User) ->
     AuthedUser#user.id =:= User#user.id.
 
-
--spec add_port(#user{}) -> {ok, integer()} | unauthorized.
+-spec can_add_port(#user{}, #user{}) -> {ok, integer()} | unauthorized.
 can_add_port(AuthedUser, User) ->
     AuthedUser#user.id =:= User#user.id.
