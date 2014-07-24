@@ -4,7 +4,8 @@
     create/2,
     delete/1,
     lookup/1,
-    get_teams/2,
+    teams/2,
+    orgs/1,
     add_email/2,
     remove_email/2,
     change_password/2
@@ -99,8 +100,8 @@ delete(User) ->
     oscilloscope_metadata_sql:named(delete_user, []),
     ok.
 
--spec get_teams(#org{}, #user{}) -> [#team{}].
-get_teams(Org, User) ->
+-spec teams(#org{}, #user{}) -> [#team{}].
+teams(Org, User) ->
     case dict:find(Org#org.id, User#user.orgs) of
         error ->
             [];
@@ -114,3 +115,15 @@ get_teams(Org, User) ->
                 end
             end, [], TeamIDs)
     end.
+
+-spec orgs(#user{}) -> [#org{}].
+orgs(User) ->
+    OrgIDs = dict:fetch_keys(User#user.orgs),
+    lists:foldl(fun(OrgID, Acc) ->
+        case oscilloscope_entities_org:lookup(OrgID) of
+            not_found ->
+                Acc;
+            {ok, Org} ->
+                [Org|Acc]
+        end
+    end, [], OrgIDs).
