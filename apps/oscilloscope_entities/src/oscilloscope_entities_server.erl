@@ -25,52 +25,84 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init([]) ->
-    ets:new(user_org_teams, [named_table, bag, public]),
+    ets:new(user_org_teams, [named_table, public]),
     ets:new(users, [named_table, {keypos, #user.name}, public]),
-    ets:new(user_names, [named_table, bag, public]),
+    ets:new(user_names, [named_table, public]),
+    {ok, _, RawEmails} = oscilloscope_metadata_sql:named(select_emails, []),
+    Emails = lists:foldl(fun({UserID, Email}, Dict) ->
+        dict:append(UserID, Email, Dict)
+    end, dict:new(), RawEmails),
     {ok, _, Users} = oscilloscope_metadata_sql:named(select_users, []),
-    lists:foldl(fun({UserID, OwnerID, Name, Email, Password}, _) ->
+    lists:foldl(fun({UserID, OwnerID, Name, Password}, _) ->
+        UserEmails = case dict:find(UserID, Emails) of
+            {ok, UserEmails0} -> UserEmails0;
+            error -> []
+        end,
         User = #user{
             id=UserID,
             owner_id=OwnerID,
             name=Name,
-            email=Email,
-            password=Password
+            emails=UserEmails,
+            password=Password,
+            orgs=dict:new()
         },
         true = ets:insert(users, User),
         true = ets:insert(user_names, {UserID, Name})
     end, ok, Users),
 
-    ets:new(orgs, [named_table, bag, public, {keypos, #org.name}]),
-    ets:new(org_names, [named_table, bag, public]),
+    ets:new(orgs, [named_table, public, {keypos, #org.name}]),
+    ets:new(org_names, [named_table, public]),
     {ok, _, Orgs} = oscilloscope_metadata_sql:named(get_orgs, []),
-    lists:foldl(fun({{OrgID, OrgName}}, _) ->
-        ets:insert(orgs, #org{id=OrgID, name=OrgName}),
+    lists:foldl(fun({{OrgID, OwnerID, OrgName}}, _) ->
+        Org = #org{
+            id=OrgID,
+            owner_id=OwnerID,
+            name=OrgName,
+            members=[]
+        },
+        ets:insert(orgs, Org),
         ets:insert(org_names, {OrgID, OrgName})
     end, ok, Orgs),
 
-    ets:new(teams, [named_table, bag, public, {keypos, #org.name}]),
-    ets:new(team_names, [named_table, bag, public]),
+    ets:new(teams, [named_table, public, {keypos, #team.key}]),
+    ets:new(team_names, [named_table, public]),
     {ok, _, AllTeams} = oscilloscope_metadata_sql:named(get_teams, []),
     lists:foldl(fun({{OrgID, TeamID, TeamName}}, _) ->
-        ets:insert(teams, #team{id=TeamID, org_id=OrgID, name=TeamName}),
-        ets:insert(team_names, {{OrgID, TeamID}, TeamName})
+        Team = #team{
+            id=TeamID,
+            key={OrgID, TeamName},
+            members=[]
+        },
+        ets:insert(teams, Team),
+        ets:insert(team_names, {{OrgID, TeamID}, {OrgID, TeamName}})
     end, ok, AllTeams),
 
     % Populate orgs field in user record of users ets table
     {ok, _, UserTeams} = oscilloscope_metadata_sql:named(get_all_user_teams, []),
-    AggregatedUTs = lists:foldl(fun({UserID, OrgID, TeamID}, Acc) ->
+    {LastUserID, LastTeam, AggregatedUTs0} = lists:foldl(fun(IDs, Acc) ->
+        {UserID, OrgID, TeamID} = IDs,
         case Acc of
             {UserID, Teams, TotalAcc} ->
                 {UserID, dict:append(OrgID, TeamID, Teams), TotalAcc};
             {PrevUserID, Teams, TotalAcc} ->
                 NewTeams = dict:append(OrgID, TeamID, dict:new()),
-                {UserID, NewTeams, [{PrevUserID, Teams}|TotalAcc]}
+                case {PrevUserID, Teams} of
+                    {undefined, undefined} ->
+                        {UserID, NewTeams, TotalAcc};
+                    _ ->
+                        {UserID, NewTeams, [{PrevUserID, Teams}|TotalAcc]}
+                end
         end
     end, {undefined, undefined, []}, UserTeams),
 
+    AggregatedUTs = case LastUserID of
+        undefined -> AggregatedUTs0;
+        _ -> [{LastUserID, LastTeam}|AggregatedUTs0]
+    end,
+
+
     lists:foldl(fun({UserID, Teams}, _) ->
-        [UserName] = ets:lookup(user_names, UserID),
+        [{_,UserName}] = ets:lookup(user_names, UserID),
         [User] = ets:lookup(users, UserName),
         ets:insert(users, User#user{orgs=Teams})
     end, ok, AggregatedUTs),
@@ -106,11 +138,10 @@ populate_ets_records(KVs, IDToNameTab, RecordTab, RecordElement) ->
         dict:append(Key, Value, Dict)
     end, dict:new(), KVs),
     dict:fold(fun(Key, Values, _) ->
-        [Name] = ets:lookup(IDToNameTab, Key),
+        [{_,Name}] = ets:lookup(IDToNameTab, Key),
         [Record] = ets:lookup(RecordTab, Name),
         ets:insert(RecordTab, setelement(RecordElement, Record, Values))
     end, ok, AggregatedKVs).
-
 
 
 handle_call({grant_perms, OrgID, TeamID, Tags, Level}, _From, State) ->

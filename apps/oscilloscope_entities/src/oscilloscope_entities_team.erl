@@ -4,31 +4,40 @@
     create/2,
     delete/2,
     lookup/2,
-    members/2,
-    add_member/3,
-    remove_member/3,
-    is_member/3
+    members/1,
+    add_member/2,
+    remove_member/2,
+    is_member/2
 ]).
 
 -include("oscilloscope_entities.hrl").
 
 
--spec create(#org{}, binary()) -> {ok, tuple()}.
+-spec create(#org{}, binary()) -> {ok, #org{}, #team{}}.
 create(Org, Name) ->
     #org{id=OrgID} = Org,
     {ok, 1, _, [{ID}]} = oscilloscope_metadata_sql:named(insert_team, [Name, OrgID]),
-    Team = #team{name=Name, id=ID, org_id=OrgID},
+    Team = #team{key={OrgID, Name}, id=ID, members=[]},
+    NewOrg = Org#org{teams=[ID|Org#org.teams]},
+    true = ets:insert(orgs, NewOrg),
     true = ets:insert(teams, Team),
-    {ok, Team}.
+    true = ets:insert(team_names, {ID, Name}),
+    {ok, NewOrg, Team}.
 
--spec delete(#org{}, #team{}) -> ok.
-delete(Org, Team) ->
-    #org{id=OrgID} = Org,
-    #team{id=TeamID, name=TeamName} = Team,
-    {ok, _} = oscilloscope_metadata_sql:named(delete_team, [OrgID, TeamID]),
-    true = ets:delete(teams, TeamName),
-    true = ets:match_delete(team_members, {OrgID, TeamID, '_'}),
-    ok.
+-spec delete(#org{}, #team{}) -> {ok, #org{}}.
+delete(#org{id=OrgID}=Org, #team{key={OrgID,_}}=Team) ->
+    #team{id=TeamID, key={_, TeamName}} = Team,
+    true = ets:delete(teams, {OrgID, TeamName}),
+    true = ets:delete(team_names, {OrgID, TeamID}),
+    lists:foldl(fun(User, TeamAcc) ->
+        {ok, TeamAcc1, _User} = remove_member(TeamAcc, User),
+        TeamAcc1
+    end, Team, members(Team)),
+    NewOrg = Org#org{teams=lists:delete(TeamID, Org#org.teams)},
+    true = ets:insert(orgs, NewOrg),
+    {ok, _} = oscilloscope_metadata_sql:named(delete_team, [TeamID]),
+    {ok, _} = oscilloscope_metadata_sql:named(delete_team_members, [TeamID]),
+    {ok, NewOrg}.
 
 -spec lookup(#org{}, binary()) -> {ok, integer()} | not_found.
 lookup(Org, TeamName) ->
@@ -36,44 +45,54 @@ lookup(Org, TeamName) ->
         [] ->
             not_found;
         [#team{}=Team] ->
-            Team
+            {ok, Team}
     end.
 
--spec members(#org{}, #team{}) -> [#user{}].
-members(Org, Team) ->
-    UserIDs = ets:match(team_members, {Org#org.id, Team#team.id, '$1'}),
-    lists:foldl(fun([UserID], Acc) ->
-        case ets:lookup(users, UserID) of
-            [#user{}=User] ->
+-spec members(#team{}) -> [#user{}].
+members(Team) ->
+    lists:foldl(fun(UserID, Acc) ->
+        case oscilloscope_entities_user:lookup(UserID) of
+            {ok, User} ->
                 [User|Acc];
-            [] ->
-                lager:error(
-                    "UserID ~p in team_members ets table but not users table",
-                    [UserID]
-                ),
+            not_found ->
                 Acc
         end
-    end, [], UserIDs).
+    end, [], Team#team.members).
 
 
--spec add_member(#org{}, #team{}, #user{}) -> ok.
-add_member(Org, Team, User) ->
-    ets:insert(team_members, {Org#org.id, Team#team.id, User#user.id}),
+-spec add_member(#team{}, #user{}) -> {ok, #team{}, #user{}}.
+add_member(Team, User) ->
+    #team{id=TeamID, key={OrgID,_}, members=Members} = Team,
+    #user{id=UserID, orgs=Orgs} = User,
+    NewTeam = Team#team{members=[UserID|Members]},
+    NewUser = User#user{orgs=dict:append(OrgID, TeamID, Orgs)},
+    ets:insert(users, NewUser),
+    ets:insert(teams, NewTeam),
     {ok, _} = oscilloscope_metadata_sql:named(
         add_user_to_team,
-        [Org#org.id, Team#team.id, User#user.id]
+        [OrgID, TeamID, UserID]
     ),
-    ok.
+    {ok, NewTeam, NewUser}.
 
--spec remove_member(#org{}, #team{}, #user{}) -> ok.
-remove_member(Org, Team, User) ->
-    ets:delete(team_members, {Org#org.id, Team#team.id, User#user.id}),
-    {ok, _, _} = oscilloscope_metadata_sql:named(
+-spec remove_member(#team{}, #user{}) -> {ok, #team{}, #user{}}.
+remove_member(Team, User) ->
+    #team{id=TeamID, key={OrgID,_}, members=Members} = Team,
+    #user{id=UserID, orgs=Orgs} = User,
+    NewOrgs = dict:update(
+        OrgID,
+        fun(Teams) -> lists:delete(TeamID, Teams) end,
+        Orgs
+    ),
+    NewUser = User#user{orgs=NewOrgs},
+    NewTeam = Team#team{members=lists:delete(UserID, Members)},
+    ets:insert(users, NewUser),
+    ets:insert(teams, NewTeam),
+    {ok, _} = oscilloscope_metadata_sql:named(
         remove_user_from_team,
-        [Team#team.id, User#user.id]
+        [TeamID, UserID]
     ),
-    ok.
+    {ok, NewTeam, NewUser}.
 
--spec is_member(#org{}, #team{}, #user{}) -> boolean().
-is_member(Org, Team, User) ->
-    ets:member(team_members, {Org#org.id, Team#team.id, User#user.id}).
+-spec is_member(#team{}, #user{}) -> boolean().
+is_member(Team, User) ->
+    lists:member(User#user.id, Team#team.members).
