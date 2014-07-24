@@ -3,7 +3,7 @@
     owner_id :: integer(),
     password :: binary(),
     name :: binary(),
-    email :: binary(),
+    emails :: [binary()],
     created_at :: integer(),
     updated_at :: integer(),
     orgs :: dict()
@@ -19,7 +19,6 @@
 
 -record(team, {
     id :: integer(),
-    org_id :: integer(),
-    name :: binary(),
+    key :: {integer(), binary()},
     members :: [integer()]
 }).
