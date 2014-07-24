@@ -1,11 +1,8 @@
 {application, oscilloscope_auth, [
-    {description, ""},
+    {description, "Functions for checking auth"},
     {vsn, git},
-    {registered, []},
     {applications, [
         kernel,
         stdlib
-    ]},
-    {mod, {oscilloscope_auth_app, []}},
-    {env, []}
+    ]}
 ]}.
