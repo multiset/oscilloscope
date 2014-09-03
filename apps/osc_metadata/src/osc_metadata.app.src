@@ -1,0 +1,27 @@
+{application, osc_metadata, [
+    {description, "App for handling metric-related metadata"},
+    {vsn, git},
+    {registered, [osc_metadata_sup]},
+    {applications, [
+        kernel,
+        stdlib
+    ]},
+    {mod, {osc_metadata_app, []}},
+    {env, [
+        {default_resolutions, [
+            {10, 1000},
+            {60, 1000},
+            {3600, 1000}
+        ]},
+        {default_aggregation_fun, avg},
+        {pools, [
+            {pgsql, [{size, 10}, {max_overflow, 20}], []}
+        ]},
+        {hostname, {127, 0, 0, 1}},
+        {port, 5432},
+        {database, "osc"},
+        {username, "osc"},
+        {password, ""},
+        {statements, "statements.config"}
+    ]}
+]}.

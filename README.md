@@ -88,26 +88,26 @@ extraneous queries to DynamoDB.
 Applications
 ------------
 
-### oscilloscope
+### osc
 
-The `oscilloscope` application is a stub for code shares across the various
-other applications. Nothing very exciting.
+The `osc` application is a stub for code shares across the various other
+applications. Nothing very exciting.
 
-### oscilloscope_http
+### osc_http
 
-`oscilloscope_http` is the human interface to Oscilloscope. It's implemented as
-a series of Webmachine resources. This is the only interface through which users
-can read data, retrieve metadata, and configure their usage.
+`osc_http` is the human interface to Oscilloscope. It's implemented as a series
+of Webmachine resources. This is the only interface through which users can read
+data, retrieve metadata, and configure their usage.
 
-### oscilloscope_net
+### osc_net
 
-`oscilloscope_net` provides the interfaces through which data is inserted to
+`osc_net` provides the interfaces through which data is inserted to
 Oscilloscope. These interfaces are implemented as Cowboy workers.
 
-### oscilloscope_metadata
+### osc_metadata
 
-`oscilloscope_metadata` manages metric metadata persistence in LevelDB.
+`osc_metadata` manages metric metadata persistence in LevelDB.
 
-### oscilloscope_cache
+### osc_cache
 
-`oscilloscope_cache` is the meat of the system.
+`osc_cache` is the meat of the system.

@@ -3,7 +3,7 @@
 -name {{node}}
 
 ## Cookie for distributed erlang
--setcookie oscilloscope
+-setcookie osc
 
 ## Heartbeat management; auto-restarts VM if it dies or becomes unresponsive
 ## (Disabled by default..use with caution!)
