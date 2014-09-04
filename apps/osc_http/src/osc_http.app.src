@@ -1,0 +1,23 @@
+%% -*- mode: erlang -*-
+%% -*- tab-width: 4;erlang-indent-level: 4;indent-tabs-mode: nil -*-
+
+{application, osc_http, [
+    {description, "HTTP interface for Oscilloscope"},
+    {vsn, git},
+    {registered, [osc_http_sup]},
+    {applications, [
+        kernel,
+        stdlib,
+        inets,
+        crypto,
+        mochiweb,
+        webmachine,
+        osc
+    ]},
+    {mod, {osc_http_app, []}},
+    {env, [
+        {dispatch_apps, [
+            osc_http
+        ]}
+    ]}
+]}.

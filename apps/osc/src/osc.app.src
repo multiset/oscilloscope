@@ -1,0 +1,14 @@
+{application, osc, [
+    {description, "A distributed time-series data store"},
+    {vsn, git},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib,
+        riak_core
+    ]},
+    {mod, {osc_app, []}},
+    {env, [
+        {min_persist_age, 300}
+    ]}
+]}.

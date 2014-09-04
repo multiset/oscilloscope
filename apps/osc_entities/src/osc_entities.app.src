@@ -1,0 +1,11 @@
+{application, osc_entities, [
+    {description, ""},
+    {vsn, git},
+    {registered, [osc_entities_sup]},
+    {applications, [
+        kernel,
+        stdlib
+    ]},
+    {mod, {osc_entities_app, []}},
+    {env, []}
+]}.

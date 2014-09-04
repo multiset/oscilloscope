@@ -2,7 +2,7 @@ apps/*/ebin
 deps
 erl_crash.dump
 apps/*/.eunit
-rel/oscilloscope
+rel/osc
 log
 sql_data
 dump.rdb

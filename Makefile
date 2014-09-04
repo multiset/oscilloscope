@@ -21,13 +21,13 @@ devclean:
 	rm -rf dev
 
 relclean:
-	rm -rf rel/oscilloscope
+	rm -rf rel/osc
 
 clean:
 	@./rebar clean
 
 console:
-	@rel/oscilloscope/bin/oscilloscope console
+	@rel/osc/bin/osc console
 
 test: eunit dialyze
 
@@ -35,11 +35,11 @@ eunit:
 	@./rebar skip_deps=true eunit
 
 dialyze:
-	@dialyzer --src apps/*/src/ -pa apps/oscilloscope_persistence/ebin -pa apps/oscilloscope_metadata/ebin -pa apps/oscilloscope/ebin -pa deps/lager/ebin -pa deps/riak_core/ebin
+	@dialyzer --src apps/*/src/ -pa apps/osc_persistence/ebin -pa apps/osc_metadata/ebin -pa apps/osc/ebin -pa deps/lager/ebin -pa deps/riak_core/ebin
 
 release: deps compile
 	@./rebar generate
-	@cd rel; tar -cvzf oscilloscope.tar.gz oscilloscope
+	@cd rel; tar -cvzf osc.tar.gz osc
 
 fuck-it-all:
 	@echo -n "Killing all the postgres... "
@@ -65,12 +65,12 @@ cluster:
 	@echo ""
 
 sql: 
-	@echo "Creating oscilloscope user... "
-	@createuser -d -h 127.0.0.1 oscilloscope
+	@echo "Creating osc user... "
+	@createuser -d -h 127.0.0.1 osc
 	@echo "Done."
-	@echo "Creating oscilloscope database... "
-	@createdb -h 127.0.0.1 -U oscilloscope oscilloscope
+	@echo "Creating osc database... "
+	@createdb -h 127.0.0.1 -U osc osc
 	@echo "Done."
-	@echo "Popluating database with apps/oscilloscope_metadata/priv/schema.sql"
-	@psql -U oscilloscope -h 127.0.0.1 oscilloscope < apps/oscilloscope_metadata/priv/schema.sql
+	@echo "Popluating database with apps/osc_metadata/priv/schema.sql"
+	@psql -U osc -h 127.0.0.1 osc < apps/osc_metadata/priv/schema.sql
 	@echo "Done. You're set!"

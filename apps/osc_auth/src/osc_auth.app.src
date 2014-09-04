@@ -1,0 +1,8 @@
+{application, osc_auth, [
+    {description, "Functions for checking auth"},
+    {vsn, git},
+    {applications, [
+        kernel,
+        stdlib
+    ]}
+]}.
