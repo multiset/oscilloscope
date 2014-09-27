@@ -1,4 +1,4 @@
--module(osc_metadata).
+-module(osc_meta).
 
 -export([
     start/0,
@@ -19,10 +19,10 @@
 -type meta() :: [{atom(), any()}].
 
 start() ->
-    application:start(osc_metadata).
+    application:start(osc_meta).
 
 stop() ->
-    application:stop(osc_metadata).
+    application:stop(osc_meta).
 
 %% TODO: consider storing this all in ETS and returning a pointer/ID
 
@@ -99,13 +99,13 @@ resolutions(Meta) ->
 get_aggregation_configuration(_) ->
     %% TODO
     application:get_env(
-        osc_metadata,
+        osc_meta,
         default_aggregation_fun
     ).
 
 get_resolution_configuration(_) ->
     %% TODO
     application:get_env(
-        osc_metadata,
+        osc_meta,
         default_resolutions
     ).

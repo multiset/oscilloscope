@@ -15,7 +15,7 @@
 -type read() :: {timestamp(), timestamp(), [value()]} | not_found.
 
 -type cache_read() :: {
-    osc_metadata:meta(),
-    osc_metadata_resolution:resolution(),
+    osc_meta:meta(),
+    osc_meta_resolution:resolution(),
     read()
 }.

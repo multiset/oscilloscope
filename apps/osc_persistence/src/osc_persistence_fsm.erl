@@ -40,7 +40,7 @@
     r :: pos_integer(),
     refresh_replies = [] :: [ok | {error, any()}],
     req_id :: integer(),
-    resolution :: osc_metadata_resolution:resolution(),
+    resolution :: osc_meta_resolution:resolution(),
     sender :: pid(),
     to_persist :: [{timestamp(), wrapped_value()}],
     to_vacuum :: [timestamp()]
@@ -229,7 +229,7 @@ terminate(_Reason, _SN, _SD) ->
     Metric :: metric(),
     Cache :: osc_cache:cache(),
     Acc :: {Metric, Cache, R, TP, TV, S} | nil,
-    R :: osc_metadata_resolution:resolution(),
+    R :: osc_meta_resolution:resolution(),
     TP :: [{timestamp(), wrapped_value()}],
     TV :: [timestamp()],
     S :: pos_integer().
@@ -249,7 +249,7 @@ vnode_fold(Metric, Cache, Acc) ->
     Cache :: osc_cache:cache(),
     Resolution :: osc_cache:resolution(),
     Acc :: {Metric, Cache, R, TP, TV, S} | nil,
-    R :: osc_metadata_resolution:resolution(),
+    R :: osc_meta_resolution:resolution(),
     TP :: [{timestamp(), wrapped_value()}],
     TV :: [timestamp()],
     S :: pos_integer().
@@ -260,9 +260,9 @@ cache_fold(Metric, Cache, Resolution, Acc) ->
         [] ->
             Acc;
         _ ->
-            Interval = osc_metadata_resolution:interval(Meta),
-            Count = osc_metadata_resolution:count(Meta),
-            Persisted = osc_metadata_resolution:persisted(Meta),
+            Interval = osc_meta_resolution:interval(Meta),
+            Count = osc_meta_resolution:count(Meta),
+            Persisted = osc_meta_resolution:persisted(Meta),
             {ok, MinPersistAge} = application:get_env(
                 osc_persistence,
                 min_persist_age

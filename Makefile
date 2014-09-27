@@ -35,7 +35,7 @@ eunit:
 	@./rebar skip_deps=true eunit
 
 dialyze:
-	@dialyzer --src apps/*/src/ -pa apps/osc_persistence/ebin -pa apps/osc_sql/ebin -pa apps/osc_metadata/ebin -pa apps/osc/ebin -pa deps/lager/ebin -pa deps/riak_core/ebin
+	@dialyzer --src apps/*/src/ -pa apps/osc_persistence/ebin -pa apps/osc_sql/ebin -pa apps/osc_meta/ebin -pa apps/osc/ebin -pa deps/lager/ebin -pa deps/riak_core/ebin
 
 release: deps compile
 	@./rebar generate

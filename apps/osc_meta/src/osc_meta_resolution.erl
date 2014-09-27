@@ -1,4 +1,4 @@
--module(osc_metadata_resolution).
+-module(osc_meta_resolution).
 
 -export([
     id/1,

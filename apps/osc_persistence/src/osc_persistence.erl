@@ -19,13 +19,13 @@
 
 
 -spec persist(Resolution, Points) -> {ok, Persisted} when
-    Resolution :: osc_metadata_resolution:resolution(),
+    Resolution :: osc_meta_resolution:resolution(),
     Points :: [{timestamp(), value()}],
     Persisted :: [{timestamp(), number()}].
 
 persist(Resolution, Points) ->
     Commutator = commutator(),
-    ResolutionID = osc_metadata_resolution:id(Resolution),
+    ResolutionID = osc_meta_resolution:id(Resolution),
     {ok, MinChunkSize} = application:get_env(
         osc_persistence,
         min_chunk_size
@@ -45,7 +45,7 @@ persist(Resolution, Points) ->
                 Commutator,
                 [ResolutionID, Timestamp, Value]
             ),
-            ok = osc_metadata_resolution:insert_persist(
+            ok = osc_meta_resolution:insert_persist(
                 Resolution,
                 Timestamp,
                 Size
@@ -62,16 +62,16 @@ persist(Resolution, Points) ->
 
 
 -spec vacuum(Resolution, Timestamps) -> {ok, Timestamps} when
-    Resolution :: osc_metadata_resolution:resolution(),
+    Resolution :: osc_meta_resolution:resolution(),
     Timestamps :: [timestamp()].
 
 vacuum(Resolution, Timestamps) ->
     Commutator = commutator(),
-    ResolutionID = osc_metadata_resolution:id(Resolution),
+    ResolutionID = osc_meta_resolution:id(Resolution),
     Vacuumed = lists:map(
         fun(T) ->
             {ok, true} = commutator:delete_item(Commutator, [ResolutionID, T]),
-            ok = osc_metadata_resolution:delete_persist(Resolution, T),
+            ok = osc_meta_resolution:delete_persist(Resolution, T),
             T
         end,
         Timestamps
@@ -80,16 +80,16 @@ vacuum(Resolution, Timestamps) ->
 
 
 -spec read(Resolution, From, Until) -> {ok, Read} when
-    Resolution :: osc_metadata_resolution:resolution(),
+    Resolution :: osc_meta_resolution:resolution(),
     From :: timestamp(),
     Until :: timestamp(),
     Read :: read().
 
 read(Resolution, From0, Until0) ->
     Commutator = commutator(),
-    ID = osc_metadata_resolution:id(Resolution),
-    Interval = osc_metadata_resolution:interval(Resolution),
-    Persisted = osc_metadata_resolution:persisted(Resolution),
+    ID = osc_meta_resolution:id(Resolution),
+    Interval = osc_meta_resolution:interval(Resolution),
+    Persisted = osc_meta_resolution:persisted(Resolution),
     {From1, Until1} = osc_util:adjust_query_range(
         From0,
         Until0,
