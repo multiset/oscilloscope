@@ -1,4 +1,4 @@
--module(osc_metadata_worker).
+-module(osc_sql_worker).
 -behaviour(gen_server).
 -behaviour(poolboy_worker).
 
@@ -21,21 +21,21 @@ start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
 
 init(_) ->
-    folsom_metrics:notify({osc_metadata, worker_inits}, {inc, 1}),
-    {ok, Hostname} = application:get_env(osc_metadata, hostname),
-    {ok, Port} = application:get_env(osc_metadata, port),
-    {ok, Database} = application:get_env(osc_metadata, database),
-    {ok, Username} = application:get_env(osc_metadata, username),
-    {ok, Password} = application:get_env(osc_metadata, password),
+    folsom_metrics:notify({osc_sql, worker_inits}, {inc, 1}),
+    {ok, Hostname} = application:get_env(osc_sql, hostname),
+    {ok, Port} = application:get_env(osc_sql, port),
+    {ok, Database} = application:get_env(osc_sql, database),
+    {ok, Username} = application:get_env(osc_sql, username),
+    {ok, Password} = application:get_env(osc_sql, password),
     {ok, C} = pgsql:connect(
         Hostname,
         Username,
         Password,
         [{port, Port}, {database, Database}]
     ),
-    {ok, StatementFile} = application:get_env(osc_metadata, statements),
+    {ok, StatementFile} = application:get_env(osc_sql, statements),
     StatementPath = filename:join([
-        code:lib_dir(osc_metadata),
+        code:lib_dir(osc_sql),
         "priv",
         StatementFile
     ]),

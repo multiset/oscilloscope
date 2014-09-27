@@ -1,0 +1,22 @@
+{application, osc_sql, [
+    {description, "Wrapper around Postgres"},
+    {vsn, git},
+    {registered, [osc_sql_sup]},
+    {applications, [
+        kernel,
+        stdlib,
+        epgsql
+    ]},
+    {mod, {osc_sql_app, []}},
+    {env, [
+        {pools, [
+            {pgsql, [{size, 10}, {max_overflow, 20}], []}
+        ]},
+        {hostname, {127, 0, 0, 1}},
+        {port, 5432},
+        {database, "osc"},
+        {username, "osc"},
+        {password, ""},
+        {statements, "statements.config"}
+    ]}
+]}.

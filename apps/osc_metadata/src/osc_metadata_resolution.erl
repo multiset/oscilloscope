@@ -42,14 +42,14 @@ latest_persist_time({_, Interval, _, Persisted}) ->
 
 insert_persist(Resolution, Timestamp, Count) ->
     {ID, _, _, _} = Resolution,
-    {ok, _Count} = osc_metadata_sql:named(
+    {ok, _Count} = osc_sql:named(
         insert_persist, [ID, Timestamp, Count]
     ),
     ok.
 
 delete_persist(Resolution, Timestamp) ->
     {ID, _, _, _} = Resolution,
-    {ok, _Count} = osc_metadata_sql:named(
+    {ok, _Count} = osc_sql:named(
         delete_persist, [ID, Timestamp]
     ),
     ok.

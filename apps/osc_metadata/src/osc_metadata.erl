@@ -28,22 +28,22 @@ stop() ->
 
 create({OwnerID, Props}=Metric) ->
     EncodedProps = term_to_binary(lists:sort(Props)),
-    {ok, _, Rows} = osc_metadata_sql:named(
+    {ok, _, Rows} = osc_sql:named(
         select_metric, [OwnerID, EncodedProps]
     ),
     case Rows of
         [] ->
             {ok, AggFun} = get_aggregation_configuration(Metric),
             {ok, Resolutions} = get_resolution_configuration(Metric),
-            {ok, 1} = osc_metadata_sql:named(
+            {ok, 1} = osc_sql:named(
                 insert_metric, [OwnerID, EncodedProps, term_to_binary(AggFun)]
             ),
-            {ok, _, [{MetricID}]} = osc_metadata_sql:named(
+            {ok, _, [{MetricID}]} = osc_sql:named(
                 select_metric_id, [OwnerID, EncodedProps]
             ),
             lists:foreach(
                 fun({Interval, Count}) ->
-                    {ok, 1} = osc_metadata_sql:named(
+                    {ok, 1} = osc_sql:named(
                         insert_resolution,
                         [MetricID, Interval, Count]
                     )
@@ -58,7 +58,7 @@ create({OwnerID, Props}=Metric) ->
 
 find({OwnerID, Props}) ->
     EncodedProps = term_to_binary(lists:sort(Props)),
-    {ok, _, Rows} = osc_metadata_sql:named(
+    {ok, _, Rows} = osc_sql:named(
         select_metric, [OwnerID, EncodedProps]
     ),
     case Rows of
@@ -67,7 +67,7 @@ find({OwnerID, Props}) ->
         [{MetricID, AggBin, _, _, _}|_] ->
             Resolutions = lists:foldl(
                 fun({_, _, ResolutionID, Interval, Count}, Acc) ->
-                    {ok, _, Persists} = osc_metadata_sql:named(
+                    {ok, _, Persists} = osc_sql:named(
                         select_persists, [ResolutionID]
                     ),
                     [{ResolutionID, Interval, Count, Persists}|Acc]
