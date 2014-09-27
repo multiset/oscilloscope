@@ -41,10 +41,6 @@ create({OwnerID, Props}=Metric) ->
             {ok, _, [{MetricID}]} = osc_metadata_sql:named(
                 select_metric_id, [OwnerID, EncodedProps]
             ),
-            gen_server:cast(
-                osc_auth_server,
-                {create_metric, OwnerID, MetricID, Props}
-            ),
             lists:foreach(
                 fun({Interval, Count}) ->
                     {ok, 1} = osc_metadata_sql:named(
