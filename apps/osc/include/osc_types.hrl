@@ -19,3 +19,7 @@
     osc_meta_resolution:resolution(),
     read()
 }.
+
+-type org_id() :: pos_integer().
+-type user_id() :: pos_integer().
+-type team_id() :: pos_integer().
