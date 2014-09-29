@@ -19,7 +19,7 @@ CREATE TABLE owners (
 CREATE TABLE users (
     id serial PRIMARY KEY,
     owner_id integer NOT NULL REFERENCES owners(id),
-    name bytea NOT NULL,
+    name bytea UNIQUE NOT NULL,
     password bytea NOT NULL,
     active boolean DEFAULT TRUE NOT NULL
 );
