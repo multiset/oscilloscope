@@ -7,7 +7,6 @@
         stdlib,
         osc_sql
     ]},
-    {mod, {osc_meta_app, []}},
     {env, [
         {default_resolutions, [
             {10, 1000},
