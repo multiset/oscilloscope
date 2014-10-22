@@ -47,6 +47,15 @@ handle_call({adhoc, SQL, Fields}, _From, #st{conn=C}=State) ->
 handle_call({named, Smt, Fields}, _From, #st{conn=C, statements=Smts}=State) ->
     SQL = proplists:get_value(Smt, Smts),
     {reply, pgsql:equery(C, SQL, Fields), State};
+handle_call({batch, SmtFields}, _From, #st{conn=C, statements=Smts}=State) ->
+    pgsql:equery(C, <<"BEGIN;">>, []),
+    Response = lists:foldl(fun({Smt, Fields}, Acc) ->
+        SQL = proplists:get_value(Smt, Smts),
+        QueryResult = pgsql:equery(C, SQL, Fields),
+        [QueryResult|Acc]
+    end, [], SmtFields),
+    pgsql:equery(C, <<"COMMIT;">>, []),
+    {reply, lists:reverse(Response), State};
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
 
