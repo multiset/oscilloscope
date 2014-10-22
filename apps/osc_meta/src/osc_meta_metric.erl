@@ -3,6 +3,7 @@
 -export([create/1, lookup/1]).
 
 -include_lib("osc/include/osc_types.hrl").
+-include("osc_meta.hrl").
 
 -spec create({owner_id(), [{binary(), binary()}]}) -> metric_id().
 create({OwnerID, Props}=Metric) ->
