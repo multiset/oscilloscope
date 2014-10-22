@@ -14,3 +14,5 @@
     timestamp,
     count
 }).
+
+-type meta() :: [{binary(), term()}].
