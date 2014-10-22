@@ -11,20 +11,23 @@
 
 -include_lib("osc/include/osc_types.hrl").
 
--spec create(org_id(), binary()) -> ok.
+-spec create(org_id(), binary()) -> {ok, team_id()}.
 create(OrgID, Name) ->
-    osc_sql:named(create_team, [OrgID, Name]),
-    ok.
+    {ok, 1, _, [{TeamID}]} = osc_sql:named(create_team, [OrgID, Name]),
+    {ok, TeamID}.
 
 -spec delete(org_id(), team_id()) -> ok.
 delete(OrgID, TeamID) ->
-    osc_sql:named(delete_team, [OrgID, TeamID]),
+    osc_sql:batch([
+        {delete_team, [OrgID, TeamID]},
+        {delete_team_members, [OrgID, TeamID]}
+    ]),
     ok.
 
 -spec members(org_id(), team_id()) -> [user_id()].
 members(OrgID, TeamID) ->
     {ok, _, Members} = osc_sql:named(get_team_members, [OrgID, TeamID]),
-    Members.
+    lists:map(fun({{UserID}}) -> UserID end, Members).
 
 -spec add_member(org_id(), team_id(), user_id()) -> ok.
 add_member(OrgID, TeamID, UserID) ->
