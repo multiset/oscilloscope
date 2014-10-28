@@ -10,14 +10,18 @@
         stdlib,
         inets,
         crypto,
-        mochiweb,
-        webmachine,
+        cowboy,
         osc
     ]},
     {mod, {osc_http_app, []}},
     {env, [
-        {dispatch_apps, [
-            osc_http
+        {routes, []},
+        {cors, [
+            {<<"access-control-allow-origin">>, <<"*">>},
+            {
+                <<"access-control-allow-methods">>,
+                <<"POST, GET, PUT, PATCH, DELETE, OPTIONS">>
+            }
         ]}
     ]}
 ]}.
