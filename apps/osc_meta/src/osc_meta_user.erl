@@ -36,7 +36,7 @@ lookup(NameOrID) ->
                 {owner_id, OwnerID},
                 {name, Name},
                 {password, Pass},
-                {emails, Emails}
+                {emails, [E || {E} <- Emails]}
             ]}
     end.
 
