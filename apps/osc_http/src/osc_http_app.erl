@@ -10,7 +10,8 @@ start(_StartType, _StartArgs) ->
         [{port, 9000}],
         [
             {env, [{dispatch, cowboy_router:compile([])}]},
-            {middlewares, [cowboy_router, osc_http_cors, cowboy_handler]}
+            {middlewares, [cowboy_router, osc_http_cors, cowboy_handler]},
+            {onresponse, fun osc_http:error_hook/4}
         ]
     ),
     osc_http:load_routes(osc_http),

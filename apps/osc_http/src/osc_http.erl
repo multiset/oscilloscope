@@ -4,6 +4,7 @@
     routes/0,
     load_routes/1,
     parse_json_patch/1,
+    error_hook/4,
     start/0,
     stop/0
 ]).
@@ -29,6 +30,25 @@ parse_json_patch(JSON) ->
     [_|Path] = binary:split(RawPath, <<"/">>, [global]),
     Value = proplists:get_value(<<"value">>, Patch),
     {ok, {Operation, Path, Value}}.
+
+error_hook(500, Headers0, <<>>, Req0) ->
+    Body = jiffy:encode({[{error, <<"An unknown error occurred.">>}]}),
+    Headers1 = lists:keyreplace(
+        <<"content-length">>,
+        1,
+        Headers0,
+        {<<"content-length">>, integer_to_list(erlang:byte_size(Body))}
+    ),
+    Headers2 = lists:keyreplace(
+        <<"content-type">>,
+        1,
+        Headers1,
+        {<<"content-type">>, <<"application/json">>}
+    ),
+    {ok, Req1} = cowboy_req:reply(500, Headers2, Body, Req0),
+    Req1;
+error_hook(_, _, _, Req) ->
+    Req.
 
 start() ->
     application:start(osc_http).
