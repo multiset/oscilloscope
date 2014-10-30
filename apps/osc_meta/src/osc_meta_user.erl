@@ -78,7 +78,8 @@ teams(OrgID, UserID) ->
 
 -spec orgs(user_id()) -> [org_id()].
 orgs(UserID) ->
-    {ok,_} = osc_sql:named(get_user_orgs, [UserID]).
+    {ok, _, Rows} = osc_sql:named(get_user_orgs, [UserID]),
+    Rows.
 
 -spec hash_password(binary()) -> binary().
 hash_password(Pass) ->
