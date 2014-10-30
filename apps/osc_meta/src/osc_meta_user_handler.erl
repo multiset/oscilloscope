@@ -77,4 +77,12 @@ apply_patch(<<"add">>, [<<"emails">>], Email, UserProps) ->
 apply_patch(<<"remove">>, [<<"emails">>], Email, UserProps) ->
     ok = osc_meta_user:remove_email(proplists:get_value(id, UserProps), Email),
     Emails = lists:delete(Email, proplists:get_value(emails, UserProps)),
-    {ok, [{emails, Emails}|proplists:delete(emails, UserProps)]}.
+    {ok, [{emails, Emails}|proplists:delete(emails, UserProps)]};
+apply_patch(<<"replace">>, [<<"password">>], {Passwords}, UserProps) ->
+    %% TODO: verify that old password is valid
+    ok = osc_meta_user:change_password(
+        proplists:get_value(id, UserProps),
+        proplists:get_value(<<"new">>, Passwords)
+    ),
+    NewProp = {password, {[{last_modified, osc_util:now()}]}},
+    {ok, [NewProp|proplists:delete(password, UserProps)]}.
