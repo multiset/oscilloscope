@@ -21,6 +21,10 @@
             {
                 <<"access-control-allow-methods">>,
                 <<"POST, GET, PUT, PATCH, DELETE, OPTIONS">>
+            },
+            {
+                <<"access-control-allow-headers">>,
+                <<"Origin, X-Requested-With, Content-Type, Accept">>
             }
         ]}
     ]}
