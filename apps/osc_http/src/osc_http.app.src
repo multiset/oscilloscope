@@ -25,6 +25,10 @@
             {
                 <<"access-control-allow-headers">>,
                 <<"Origin, X-Requested-With, Content-Type, Accept">>
+            },
+            {
+                <<"access-control-expose-headers">>,
+                <<"Location">>
             }
         ]}
     ]}
