@@ -73,17 +73,17 @@ change_password(UserID, NewPass) ->
     {ok,_} = osc_sql:named(change_password, [UserID, Hash]),
     ok.
 
--spec teams(user_id()) -> [team_id()].
+-spec teams(user_id()) -> [{team_id(), binary(), non_neg_integer()}].
 teams(UserID) ->
     {ok, _, Rows} = osc_sql:named(get_user_teams, [UserID]),
     Rows.
 
--spec teams(org_id(), user_id()) -> [team_id()].
+-spec teams(org_id(), user_id()) -> [{team_id(), binary(), non_neg_integer()}].
 teams(OrgID, UserID) ->
     {ok, _, Rows} = osc_sql:named(get_user_org_teams, [OrgID, UserID]),
     Rows.
 
--spec orgs(user_id()) -> [org_id()].
+-spec orgs(user_id()) -> [{org_id(), binary()}].
 orgs(UserID) ->
     {ok, _, Rows} = osc_sql:named(get_user_orgs, [UserID]),
     Rows.
