@@ -79,7 +79,7 @@ CREATE TABLE certs (
 CREATE TABLE ports (
     id serial PRIMARY KEY,
     port integer NOT NULL,
-    host integer NOT NULL,
+    host bytea NOT NULL,
     owner_id integer NOT NULL REFERENCES owners(id),
     cert_id integer REFERENCES certs(id),
     UNIQUE(port, host)
