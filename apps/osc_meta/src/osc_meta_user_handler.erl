@@ -85,4 +85,6 @@ apply_patch(<<"replace">>, [<<"password">>], {Passwords}, UserProps) ->
         proplists:get_value(<<"new">>, Passwords)
     ),
     NewProp = {password, {[{last_modified, osc_util:now()}]}},
-    {ok, [NewProp|proplists:delete(password, UserProps)]}.
+    {ok, [NewProp|proplists:delete(password, UserProps)]};
+apply_patch(_, _, _, _) ->
+    error.
