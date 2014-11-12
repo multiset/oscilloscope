@@ -11,6 +11,7 @@ start(_StartType, _StartArgs) ->
         [
             {env, [{dispatch, cowboy_router:compile([])}]},
             {middlewares, [cowboy_router, osc_http_cors, cowboy_handler]},
+            {onrequest, fun osc_http:session/1},
             {onresponse, fun osc_http:error_hook/4}
         ]
     ),
