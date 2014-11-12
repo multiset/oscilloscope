@@ -1,0 +1,12 @@
+{application, osc_auth, [
+    {description, "App for handling auth"},
+    {vsn, git},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib,
+        osc_meta
+    ]},
+    {env, [
+    ]}
+]}.
