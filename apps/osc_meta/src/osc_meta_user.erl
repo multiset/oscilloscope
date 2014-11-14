@@ -8,7 +8,8 @@
     orgs/1,
     add_email/2,
     remove_email/2,
-    change_password/2
+    change_password/2,
+    is_authorized/2
 ]).
 
 -include_lib("osc/include/osc_types.hrl").
@@ -84,3 +85,14 @@ hash_password(Pass) ->
     {ok, Salt} = bcrypt:gen_salt(),
     {ok, LHash} = bcrypt:hashpw(Pass, Salt),
     list_to_binary(LHash).
+
+-spec is_authorized(binary(), binary()) -> boolean().
+is_authorized(Name, Pass) ->
+    case lookup(Name) of
+        {ok, User} ->
+            Hash = proplists:get_value(password, User),
+            {ok, LHash} = bcrypt:hashpw(Pass, Hash),
+            Hash =:= list_to_binary(LHash);
+        _ ->
+            false
+    end.
