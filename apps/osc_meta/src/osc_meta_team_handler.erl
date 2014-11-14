@@ -121,7 +121,7 @@ apply_patch(<<"remove">>, [<<"members">>], UserID, TeamProps) ->
         UserID
     ),
     Members = lists:filter(
-        fun({ID, Name}) -> ID =/= UserID end,
+        fun({ID, _Name}) -> ID =/= UserID end,
         proplists:get_value(members, TeamProps)
     ),
     {ok, [{members, Members}|proplists:delete(members, TeamProps)]};
