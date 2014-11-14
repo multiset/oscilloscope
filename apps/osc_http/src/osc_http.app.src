@@ -18,6 +18,7 @@
         {cookie_name, <<"session">>},
         %% This should include {secure, true} in production
         {cookie_opts, [{http_only, true}]},
+        {default_cookie_lifetime, 86400},
         {routes, []},
         {cors, [
             {<<"access-control-allow-origin">>, <<"*">>},

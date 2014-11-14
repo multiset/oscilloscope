@@ -36,6 +36,8 @@ outbound(Data, Lifetime) ->
     )),
     {ok, Encoded}.
 
+inbound(undefined) ->
+    undefined;
 inbound(Cookie) ->
     {Encrypted, ETime, TID, IV, Tag0} = binary_to_term(base64:decode(Cookie)),
     {Block, Mac} = ciphers(TID),

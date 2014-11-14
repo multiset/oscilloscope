@@ -8,6 +8,7 @@
     session/1,
     set_session/3,
     get_session/1,
+    delete_session/1,
     start/0,
     stop/0
 ]).
@@ -61,6 +62,8 @@ session(Req0) ->
             Req0;
         {Cookie, Req1} ->
             case osc_http_auth:inbound(Cookie) of
+                undefined ->
+                    Req1;
                 {error, Error} ->
                     lager:warning("Got error ~p when parsing cookie", [Error]),
                     Req1;
@@ -83,6 +86,16 @@ set_session(Data, Lifetime, Req0) ->
 
 get_session(Req) ->
     cowboy_req:meta(session, Req).
+
+delete_session(Req) ->
+    {ok, CookieName} = application:get_env(osc_http, cookie_name),
+    {ok, CookieOpts} = application:get_env(osc_http, cookie_opts),
+    cowboy_req:set_resp_cookie(
+        CookieName,
+        <<>>,
+        [{max_age, 0}|CookieOpts],
+        Req
+    ).
 
 start() ->
     application:start(osc_http).
