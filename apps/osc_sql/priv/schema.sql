@@ -69,22 +69,6 @@ CREATE TABLE tags (
     metric_id integer NOT NULL REFERENCES metrics(id)
 );
 
-CREATE TABLE certs (
-    id serial PRIMARY KEY,
-    owner_id integer NOT NULL REFERENCES owners(id),
-    cert bytea NOT NULL,
-    active boolean NOT NULL
-);
-
-CREATE TABLE ports (
-    id serial PRIMARY KEY,
-    port integer NOT NULL,
-    host bytea NOT NULL,
-    owner_id integer NOT NULL REFERENCES owners(id),
-    cert_id integer REFERENCES certs(id),
-    UNIQUE(port, host)
-);
-
 CREATE TABLE resolutions (
     id serial PRIMARY KEY,
     metric_id integer NOT NULL REFERENCES metrics(id),
@@ -112,7 +96,5 @@ ALTER TABLE public.teams OWNER TO osc;
 ALTER TABLE public.team_members OWNER TO osc;
 ALTER TABLE public.metrics OWNER TO osc;
 ALTER TABLE public.tags OWNER TO osc;
-ALTER TABLE public.certs OWNER TO osc;
-ALTER TABLE public.ports OWNER TO osc;
 ALTER TABLE public.resolutions OWNER TO osc;
 ALTER TABLE public.persists OWNER TO osc;
