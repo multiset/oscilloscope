@@ -13,8 +13,6 @@
             {60, 1000},
             {3600, 1000}
         ]},
-        {default_aggregation_fun, avg},
-        {use_stunnel, false},
-        {port_server, "http://localhost:8008"}
+        {default_aggregation_fun, avg}
     ]}
 ]}.
