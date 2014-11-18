@@ -19,7 +19,7 @@ CREATE TABLE owners (
 CREATE TABLE users (
     id serial PRIMARY KEY,
     owner_id integer NOT NULL REFERENCES owners(id),
-    name bytea UNIQUE NOT NULL,
+    name text UNIQUE NOT NULL,
     password bytea NOT NULL,
     active boolean DEFAULT TRUE NOT NULL
 );
@@ -27,19 +27,19 @@ CREATE TABLE users (
 CREATE TABLE emails (
     id serial PRIMARY KEY,
     user_id integer NOT NULL REFERENCES users(id),
-    email bytea NOT NULL
+    email text NOT NULL
 );
 
 CREATE TABLE orgs (
     id serial PRIMARY KEY,
     owner_id integer NOT NULL REFERENCES owners(id),
-    name bytea UNIQUE NOT NULL,
+    name text UNIQUE NOT NULL,
     active boolean DEFAULT TRUE NOT NULL
 );
 
 CREATE TABLE teams (
     id serial PRIMARY KEY,
-    name bytea NOT NULL,
+    name text NOT NULL,
     org_id integer NOT NULL REFERENCES orgs(id)
 );
 
@@ -64,8 +64,8 @@ CREATE TABLE metrics (
 
 CREATE TABLE tags (
     owner_id integer NOT NULL REFERENCES owners(id),
-    name bytea NOT NULL,
-    value bytea NOT NULL,
+    key text NOT NULL,
+    value text NOT NULL,
     metric_id integer NOT NULL REFERENCES metrics(id)
 );
 
