@@ -35,7 +35,7 @@ eunit:
 	@./rebar skip_deps=true eunit
 
 dialyze:
-	@dialyzer --src apps/*/src/ -pa apps/osc_persistence/ebin -pa apps/osc_metadata/ebin -pa apps/osc/ebin -pa deps/lager/ebin -pa deps/riak_core/ebin
+	@dialyzer --src apps/*/src/ -pa apps/osc_persistence/ebin -pa apps/osc_sql/ebin -pa apps/osc_meta/ebin -pa apps/osc/ebin -pa deps/lager/ebin -pa deps/riak_core/ebin
 
 release: deps compile
 	@./rebar generate
@@ -71,6 +71,6 @@ sql:
 	@echo "Creating osc database... "
 	@createdb -h 127.0.0.1 -U osc osc
 	@echo "Done."
-	@echo "Popluating database with apps/osc_metadata/priv/schema.sql"
-	@psql -U osc -h 127.0.0.1 osc < apps/osc_metadata/priv/schema.sql
+	@echo "Popluating database with apps/osc_sql/priv/schema.sql"
+	@psql -U osc -h 127.0.0.1 osc < apps/osc_sql/priv/schema.sql
 	@echo "Done. You're set!"

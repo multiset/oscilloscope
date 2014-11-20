@@ -30,7 +30,7 @@
     bucket :: riak_core_bucket_type:bucket_type_props(),
     cache_read :: read(),
     from :: timestamp(),
-    meta :: oscilllscope_metadata:meta(),
+    meta :: oscilllscope_meta:meta(),
     metric :: metric(),
     persistent_read :: read() | not_found,
     preflist :: riak_core_apl:preflist(),
@@ -38,7 +38,7 @@
     replies :: [{ok, cache_read()} | {error, atom()}],
     reply :: any(),
     req_id :: integer(),
-    resolution :: osc_metadata_resolution:resolution(),
+    resolution :: osc_meta_resolution:resolution(),
     sender :: pid(),
     until :: timestamp(),
     timeout :: pos_integer()
@@ -160,7 +160,7 @@ merge_reads(timeout, State) ->
         from=From0,
         until=Until0
     } = State,
-    Interval = osc_metadata_resolution:interval(Resolution),
+    Interval = osc_meta_resolution:interval(Resolution),
     {From1, Until1} = osc_util:adjust_query_range(
         From0,
         Until0,

@@ -19,13 +19,13 @@
 
 -record(cache, {
     metric :: metric(),
-    meta :: osc_metadata:meta(),
+    meta :: osc_meta:meta(),
     aggregation :: fun((wrapped_value()) -> value()),
     resolutions :: [resolution()]
 }).
 
 -record(resolution, {
-    meta :: osc_metadata_resolution:resolution(),
+    meta :: osc_meta_resolution:resolution(),
     t :: timestamp(), %% Earliest point in array
     points :: array() %% Array of points
 }).
@@ -36,11 +36,11 @@
 
 -spec new(Metric, Meta) -> Cache when
     Metric :: metric(),
-    Meta :: osc_metadata:meta(),
+    Meta :: osc_meta:meta(),
     Cache :: cache().
 
 new(Metric, Meta) ->
-    AggregationAtom = osc_metadata:aggregation(Meta),
+    AggregationAtom = osc_meta:aggregation(Meta),
     AggregationFun = fun(Vals) ->
         erlang:apply(osc_aggregations, AggregationAtom, [Vals])
     end,
@@ -52,7 +52,7 @@ new(Metric, Meta) ->
                 points=array:new({default, null})
             }
         end,
-        osc_metadata:resolutions(Meta)
+        osc_meta:resolutions(Meta)
     ),
     #cache{
         metric=Metric,
@@ -72,9 +72,9 @@ refresh(Cache) ->
         aggregation=AF0,
         resolutions=Resolutions0
     } = Cache,
-    {ok, Meta1} = osc_metadata:find(Metric),
-    Aggregation0 = osc_metadata:aggregation(Meta0),
-    Aggregation1 = osc_metadata:aggregation(Meta1),
+    {ok, Meta1} = osc_meta:find(Metric),
+    Aggregation0 = osc_meta:aggregation(Meta0),
+    Aggregation1 = osc_meta:aggregation(Meta1),
     AF1 = case Aggregation0 == Aggregation1 of
         true ->
             AF0;
@@ -83,7 +83,7 @@ refresh(Cache) ->
                 erlang:apply(osc_aggregations, Aggregation1, [Vals])
             end
     end,
-    NewResolutions = osc_metadata:resolutions(Meta1),
+    NewResolutions = osc_meta:resolutions(Meta1),
     %% TODO: Handle addition or removal of resolutions
     Resolutions1 = lists:map(
         fun(R) -> refresh_resolution(R, NewResolutions) end,
@@ -120,7 +120,7 @@ read(From0, Until0, Cache) ->
         From0,
         Resolutions
     ),
-    Interval = osc_metadata_resolution:interval(Resolution),
+    Interval = osc_meta_resolution:interval(Resolution),
     Read = read_int(
         From0,
         Until0,
@@ -136,12 +136,12 @@ read(From0, Until0, Cache) ->
     Cache :: cache(),
     Resolution :: resolution(),
     Points :: [{timestamp(), number()}],
-    Meta :: osc_metadata_resolution:resolution().
+    Meta :: osc_meta_resolution:resolution().
 
 cached(Cache, Resolution) ->
     #cache{aggregation=AF} = Cache,
     #resolution{meta=Meta, t=T, points=PointsArray} = Resolution,
-    Interval = osc_metadata_resolution:interval(Meta),
+    Interval = osc_meta_resolution:interval(Meta),
     Points = array:foldr(
         fun(Idx, Values, Acc) -> [{T + (Idx * Interval), AF(Values)}|Acc] end,
         [],
@@ -162,18 +162,18 @@ fold(Fun, Acc, Cache) ->
 
 -spec refresh_resolution(Resolution, Metas) -> Resolution when
     Resolution :: resolution(),
-    Metas :: [osc_metadata_resolution:resolution()].
+    Metas :: [osc_meta_resolution:resolution()].
 
 refresh_resolution(Resolution, Metas) ->
     %% TODO: This only handles persistence updates
     #resolution{meta=Meta0, t=T0, points=Points0} = Resolution,
-    ID = osc_metadata_resolution:id(Meta0),
-    Interval = osc_metadata_resolution:interval(Meta0),
+    ID = osc_meta_resolution:id(Meta0),
+    Interval = osc_meta_resolution:interval(Meta0),
     [Meta1] = lists:filter(
-        fun(R) -> osc_metadata_resolution:id(R) == ID end,
+        fun(R) -> osc_meta_resolution:id(R) == ID end,
         Metas
     ),
-    LatestPersist = osc_metadata_resolution:latest_persist_time(Meta1),
+    LatestPersist = osc_meta_resolution:latest_persist_time(Meta1),
     {T1, Points1} = case LatestPersist of
         undefined ->
             {T0, Points0};
@@ -194,9 +194,9 @@ refresh_resolution(Resolution, Metas) ->
 
 update_int(Points, Resolution) ->
     #resolution{meta=Meta, t=T0, points=Points0} = Resolution,
-    Interval = osc_metadata_resolution:interval(Meta),
-    Count = osc_metadata_resolution:count(Meta),
-    Persisted = osc_metadata_resolution:persisted(Meta),
+    Interval = osc_meta_resolution:interval(Meta),
+    Count = osc_meta_resolution:count(Meta),
+    Persisted = osc_meta_resolution:persisted(Meta),
     {T1, Points1} = append(Points, T0, Points0, Interval, Persisted),
     {T2, Points2} = maybe_trim(T1, Points1, Interval, Count),
     Resolution#resolution{t=T2, points=Points2}.
@@ -306,8 +306,8 @@ divide_array(Arr, DivIdx) ->
 select_resolution(From, Resolutions) ->
     [R|Rs] = lists:sort(
         fun(#resolution{meta=MetaA}, #resolution{meta=MetaB}) ->
-            IntervalA = osc_metadata_resolution:interval(MetaA),
-            IntervalB = osc_metadata_resolution:interval(MetaB),
+            IntervalA = osc_meta_resolution:interval(MetaA),
+            IntervalB = osc_meta_resolution:interval(MetaB),
             IntervalA >= IntervalB
         end,
         Resolutions
@@ -330,7 +330,7 @@ select_resolution(From, Resolutions) ->
 
 earliest_timestamp(Resolution) ->
     #resolution{meta=Meta, t=T} = Resolution,
-    case osc_metadata_resolution:earliest_persist_time(Meta) of
+    case osc_meta_resolution:earliest_persist_time(Meta) of
         undefined -> T;
         Timestamp -> Timestamp
     end.

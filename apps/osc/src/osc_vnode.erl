@@ -129,7 +129,7 @@ handle_command({read, ReqID, Metric, From, Until}, _From, State) ->
             Read = osc_cache:read(From, Until, Cache),
             {reply, {ok, ReqID, Read}, State};
         error ->
-            case osc_metadata:find(Metric) of
+            case osc_meta:find(Metric) of
                 {ok, Meta} ->
                     Cache = osc_cache:new(Metric, Meta),
                     Metrics1 = dict:store(
@@ -150,11 +150,11 @@ handle_command({update, ReqID, Metric, Points}, _From, State) ->
             Cache1 = osc_cache:update(Points, Cache0),
             dict:store(Metric, Stored#metric{cache=Cache1}, Metrics0);
         error ->
-            Meta = case osc_metadata:find(Metric) of
+            Meta = case osc_meta:find(Metric) of
                 {ok, M} ->
                     M;
                 {error, not_found} ->
-                    {ok, M} = osc_metadata:create(Metric),
+                    {ok, M} = osc_meta:create(Metric),
                     M
             end,
             Cache = osc_cache:update(

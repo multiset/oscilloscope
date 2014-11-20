@@ -15,7 +15,11 @@
 -type read() :: {timestamp(), timestamp(), [value()]} | not_found.
 
 -type cache_read() :: {
-    osc_metadata:meta(),
-    osc_metadata_resolution:resolution(),
+    osc_meta:meta(),
+    osc_meta_resolution:resolution(),
     read()
 }.
+
+-type org_id() :: pos_integer().
+-type user_id() :: pos_integer().
+-type team_id() :: pos_integer().
