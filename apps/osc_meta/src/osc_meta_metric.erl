@@ -1,6 +1,12 @@
 -module(osc_meta_metric).
 
--export([create/1, lookup/1, search/1]).
+-export([
+    create/1,
+    lookup/1,
+    search/1,
+    aggregation/1,
+    resolutions/1
+]).
 
 -include_lib("osc/include/osc_types.hrl").
 -include("osc_meta.hrl").

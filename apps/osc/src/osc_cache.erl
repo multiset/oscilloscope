@@ -40,7 +40,7 @@
     Cache :: cache().
 
 new(Metric, Meta) ->
-    AggregationAtom = osc_meta:aggregation(Meta),
+    AggregationAtom = osc_meta_metric:aggregation(Meta),
     AggregationFun = fun(Vals) ->
         erlang:apply(osc_aggregations, AggregationAtom, [Vals])
     end,
@@ -52,7 +52,7 @@ new(Metric, Meta) ->
                 points=array:new({default, null})
             }
         end,
-        osc_meta:resolutions(Meta)
+        osc_meta_metric:resolutions(Meta)
     ),
     #cache{
         metric=Metric,
@@ -72,9 +72,9 @@ refresh(Cache) ->
         aggregation=AF0,
         resolutions=Resolutions0
     } = Cache,
-    {ok, Meta1} = osc_meta:find(Metric),
-    Aggregation0 = osc_meta:aggregation(Meta0),
-    Aggregation1 = osc_meta:aggregation(Meta1),
+    {ok, Meta1} = osc_meta_metric:lookup(Metric),
+    Aggregation0 = osc_meta_metric:aggregation(Meta0),
+    Aggregation1 = osc_meta_metric:aggregation(Meta1),
     AF1 = case Aggregation0 == Aggregation1 of
         true ->
             AF0;
@@ -83,7 +83,7 @@ refresh(Cache) ->
                 erlang:apply(osc_aggregations, Aggregation1, [Vals])
             end
     end,
-    NewResolutions = osc_meta:resolutions(Meta1),
+    NewResolutions = osc_meta_metric:resolutions(Meta1),
     %% TODO: Handle addition or removal of resolutions
     Resolutions1 = lists:map(
         fun(R) -> refresh_resolution(R, NewResolutions) end,
