@@ -30,7 +30,7 @@
     bucket :: riak_core_bucket_type:bucket_type_props(),
     cache_read :: read(),
     from :: timestamp(),
-    meta :: oscilllscope_meta:meta(),
+    meta :: osc_meta:meta(),
     metric :: metric(),
     persistent_read :: read() | not_found,
     preflist :: riak_core_apl:preflist(),
