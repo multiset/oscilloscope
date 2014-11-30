@@ -26,6 +26,7 @@ dispatch(<<"login">>, Req0) ->
             ),
             case Authorized of
                 true ->
+                    {ok, UserProps} = osc_meta_user:lookup(Username),
                     {ok, DefaultLifetime} = application:get_env(
                         osc_http,
                         default_cookie_lifetime
@@ -36,7 +37,7 @@ dispatch(<<"login">>, Req0) ->
                         DefaultLifetime
                     ),
                     Req3 = osc_http:set_session(
-                        [{username, Username}],
+                        [lists:keyfind(id, 1, UserProps)],
                         Lifetime,
                         Req2
                     ),
@@ -52,15 +53,11 @@ dispatch(<<"logout">>, Req0) ->
     {ok, Req1};
 dispatch(<<"whoami">>, Req0) ->
     {Meta, Req1} = osc_http:get_session(Req0),
-    Body = case Meta of
+    case Meta of
         undefined ->
-            [{error, unknown}];
+            cowboy_req:reply(404, [], <<>>, Req1);
         _ ->
-            [{username, proplists:get_value(username, Meta)}]
-    end,
-    cowboy_req:reply(
-        200,
-        [{<<"content-type">>, <<"application/json">>}],
-        jiffy:encode({Body}),
-        Req1
-    ).
+            Id = proplists:get_value(id, Meta),
+            Headers = [{<<"location">>, [<<"/users/">>, integer_to_list(Id)]}],
+            cowboy_req:reply(303, Headers, <<>>, Req1)
+    end.
