@@ -16,12 +16,20 @@
     {mod, {osc_http_app, []}},
     {env, [
         {cookie_name, <<"session">>},
-        %% This should include {secure, true} in production
+        %% TODO: This should include {secure, true} in production
         {cookie_opts, [{http_only, true}]},
         {default_cookie_lifetime, 86400},
         {routes, []},
         {cors, [
-            {<<"access-control-allow-origin">>, <<"*">>},
+            {
+                %% TODO: This shouldn't be localhost:8000 in production!
+                <<"access-control-allow-origin">>,
+                <<"http://localhost:8000">>
+            },
+            {
+                <<"access-control-allow-credentials">>,
+                <<"true">>
+            },
             {
                 <<"access-control-allow-methods">>,
                 <<"POST, GET, PUT, PATCH, DELETE, OPTIONS">>
@@ -32,7 +40,7 @@
             },
             {
                 <<"access-control-expose-headers">>,
-                <<"Location">>
+                <<"Location, Set-Cookie">>
             }
         ]}
     ]}
