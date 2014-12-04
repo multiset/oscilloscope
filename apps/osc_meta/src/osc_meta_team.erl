@@ -50,13 +50,20 @@ create(OrgID, Name) ->
     {ok, 1, _, [{TeamID}]} = osc_sql:named(create_team, [OrgID, Name]),
     {ok, TeamID}.
 
--spec delete(org_id(), team_id()) -> ok.
+-spec delete(org_id(), team_id()) -> ok | error.
 delete(OrgID, TeamID) ->
-    osc_sql:batch([
+    Commands = [
         {delete_team, [OrgID, TeamID]},
         {delete_team_members, [OrgID, TeamID]}
-    ]),
-    ok.
+    ],
+    Batch = osc_sql:batch(Commands),
+    case lists:usort([Status || {Status, _} <- Batch]) of
+        [ok] ->
+            ok;
+        _ ->
+            lager:error("Team delete SQL encountered an error: ~p", [Batch]),
+            error
+    end.
 
 -spec members(org_id(), team_id()) -> [user_id()].
 members(OrgID, TeamID) ->

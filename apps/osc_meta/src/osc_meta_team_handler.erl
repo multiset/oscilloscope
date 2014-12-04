@@ -7,6 +7,7 @@
     rest_init/2,
     allowed_methods/2,
     resource_exists/2,
+    delete_resource/2,
     content_types_accepted/2,
     content_types_provided/2,
     from_json_patch/2,
@@ -27,7 +28,7 @@ rest_init(Req, _State) ->
     {ok, Req, #st{}}.
 
 allowed_methods(Req, State) ->
-    {[<<"GET">>, <<"PATCH">>], Req, State}.
+    {[<<"GET">>, <<"DELETE">>, <<"PATCH">>], Req, State}.
 
 resource_exists(Req0, State) ->
     {Bindings, Req1} = cowboy_req:bindings(Req0),
@@ -54,6 +55,20 @@ resource_exists(Req0, State) ->
                             {false, Req1, State}
                     end
             end
+    end.
+
+delete_resource(Req, #st{team_props=TeamProps}=State) ->
+    TeamID = proplists:get_value(id, TeamProps),
+    OrgID = proplists:get_value(orgid, TeamProps),
+    case proplists:get_value(name, TeamProps) of
+        <<"owners">> ->
+            lager:notice(
+                "User attempted to DELETE owner team from org ~p", [OrgID]
+            ),
+            {false, Req, State};
+        _ ->
+            ok = osc_meta_team:delete(OrgID, TeamID),
+            {true, Req, State}
     end.
 
 content_types_accepted(Req, State) ->
