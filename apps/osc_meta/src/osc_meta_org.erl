@@ -50,10 +50,16 @@ delete(OrgID) ->
     ]),
     ok.
 
--spec teams(user_id()) -> [team_id()].
+-spec teams(user_id()) -> [].
 teams(OrgID) ->
-    {ok, _, Teams} = osc_sql:named(get_org_teams, [OrgID]),
-    lists:map(fun({TeamID}) -> TeamID end, Teams).
+    SQL = <<
+        "SELECT teams.id, teams.name,"
+        " (SELECT COUNT(*) FROM team_members WHERE team_id = teams.id)"
+        " FROM teams"
+        " WHERE teams.org_id = $1"
+    >>,
+    {ok, _, Teams} = osc_sql:adhoc(SQL, [OrgID]),
+    Teams.
 
 -spec members(org_id()) -> [binary()].
 members(OrgID) ->
