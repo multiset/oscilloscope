@@ -48,17 +48,17 @@ from_json(Req0, State) ->
     {true, Req3, State}.
 
 to_json(Req0, State) ->
-    UserID = 1, %% TODO
     {OrgIDBin, Req1} = cowboy_req:binding(orgid, Req0),
     OrgID = list_to_integer(binary_to_list(OrgIDBin)),
-    %% TODO: does this show all org teams, or just ones that the current
-    %% user is a member of?
-    Teams = lists:map(fun({ID, Name, Members}) ->
-        {[
-            {id, ID},
-            {name, Name},
-            {members, Members},
-            {metrics, 0} %% TODO
-        ]}
-    end, osc_meta_user:teams(OrgID, UserID)),
+    Teams = lists:map(
+        fun({ID, Name, Members}) ->
+            {[
+                {id, ID},
+                {name, Name},
+                {members, Members},
+                {metrics, 0} %% TODO
+            ]}
+        end,
+        osc_meta_org:teams(OrgID)
+    ),
     {jiffy:encode(Teams), Req1, State}.
