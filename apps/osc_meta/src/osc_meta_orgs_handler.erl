@@ -36,9 +36,14 @@ from_json(Req0, State) ->
     %% TODO
     {{true, [<<"/orgs/">>, 1]}, Req0, State}.
 
-to_json(Req, State) ->
-   UserID = 1, %% TODO
-   Orgs = lists:map(fun({ID, Name}) ->
-       {[{id, ID}, {name, Name}]}
-   end, osc_meta_user:orgs(UserID)),
-   {jiffy:encode(Orgs), Req, State}.
+to_json(Req0, State) ->
+    {Meta, Req1} = osc_http:get_session(Req0),
+    UserID = proplists:get_value(id, Meta),
+    Orgs = lists:map(
+        fun({ID, Name}) ->
+            Owner = osc_meta_org:is_owner(ID, UserID),
+            {[{id, ID}, {name, Name}, {owner, Owner}]}
+        end,
+        osc_meta_user:orgs(UserID)
+    ),
+    {jiffy:encode(Orgs), Req1, State}.
