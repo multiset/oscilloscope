@@ -17,7 +17,7 @@
     {env, [
         {cookie_name, <<"session">>},
         %% TODO: This should include {secure, true} in production
-        {cookie_opts, [{http_only, true}]},
+        {cookie_opts, [{http_only, true}, {path, "/"}]},
         {default_cookie_lifetime, 86400},
         {routes, []},
         {cors, [
