@@ -13,6 +13,32 @@ handle(Req0, State) ->
 terminate(_Reason, _Req, _State) ->
     ok.
 
+dispatch(<<"register">>, Req0) ->
+    case cowboy_req:method(Req0) of
+        {<<"POST">>, Req1} ->
+            {ok, Data, Req2} = cowboy_req:body(Req1),
+            {Props} = jiffy:decode(Data),
+            Username = proplists:get_value(<<"username">>, Props, <<>>),
+            Password = proplists:get_value(<<"password">>, Props, <<>>),
+            {ok, UserID} = osc_meta_user:create(Username, Password),
+            {ok, DefaultLifetime} = application:get_env(
+                osc_http,
+                default_cookie_lifetime
+            ),
+            Lifetime = proplists:get_value(
+                <<"lifetime">>,
+                Props,
+                DefaultLifetime
+            ),
+            Req3 = osc_http:set_session(
+                [{id, UserID}],
+                Lifetime,
+                Req2
+            ),
+            cowboy_req:reply(204, [], <<>>, Req3);
+        {_, Req1} ->
+            cowboy_req:reply(405, [{<<"allow">>, [<<"POST">>]}], <<>>, Req1)
+    end;
 dispatch(<<"login">>, Req0) ->
     case cowboy_req:method(Req0) of
         {<<"POST">>, Req1} ->
