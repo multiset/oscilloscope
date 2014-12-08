@@ -33,8 +33,19 @@ content_types_provided(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, to_json}], Req, State}.
 
 from_json(Req0, State) ->
-    %% TODO
-    {{true, [<<"/orgs/">>, 1]}, Req0, State}.
+    {ok, JSONBody, Req1} = cowboy_req:body(Req0),
+    {Body} = jiffy:decode(JSONBody),
+    OrgName = proplists:get_value(<<"name">>, Body),
+    true = OrgName =/= <<>>,
+    {Meta, Req2} = osc_http:get_session(Req1),
+    UserID = proplists:get_value(id, Meta),
+    {ok, OrgID} = osc_meta_org:create(OrgName, UserID),
+    Req3 = cowboy_req:set_resp_header(
+        <<"Location">>,
+        [<<"/orgs/">>, integer_to_list(OrgID)],
+        Req2
+    ),
+    {true, Req3, State}.
 
 to_json(Req0, State) ->
     {Meta, Req1} = osc_http:get_session(Req0),
