@@ -25,10 +25,13 @@ outbound(Data, Lifetime) ->
     MACKey = ?MAC_KEY,
     Packed = pack({Data, Lifetime}),
     Encrypted = crypto:block_encrypt(Block, BlockKey, IV, Packed),
-    Tag = crypto:hmac(
+    Tag = mac(
         Mac,
         MACKey,
-        <<Encrypted/binary, ETime:64/integer, TID/integer, IV/binary>>
+        Encrypted,
+        ETime,
+        TID,
+        IV
     ),
     Encoded = base64:encode(term_to_binary(
         {Encrypted, ETime, TID, IV, Tag},
@@ -49,10 +52,13 @@ inbound(Cookie) ->
     %% {ok, HMACKey} = application:get_env(osc_http, Mac),
     BlockKey = ?BLOCK_KEY,
     MACKey = ?MAC_KEY,
-    Tag1 = crypto:hmac(
+    Tag1 = mac(
         Mac,
         MACKey,
-        <<Encrypted/binary, ETime:64/integer, TID/integer, IV/binary>>
+        Encrypted,
+        ETime,
+        TID,
+        IV
     ),
     case {Tag0 == Tag1, osc_util:now() < ETime} of
         {false, _} ->
@@ -64,6 +70,27 @@ inbound(Cookie) ->
             {Data, Lifetime} = unpack(Binary),
             {ok, Data, Lifetime}
     end.
+
+mac(Mac, MacKey, Encrypted, Time, TID, IV) ->
+    %% Base64 encode everything because specs
+    Encrypted64 = base64:encode(Encrypted),
+    Time64 = base64:encode(integer_to_list(Time)),
+    TID64 = base64:encode(integer_to_list(TID)),
+    IV64 = base64:encode(IV),
+    Pipe = <<"|">>,
+    crypto:hmac(
+        Mac,
+        MacKey,
+        <<
+            Encrypted64/binary,
+            Pipe/binary,
+            Time64/binary,
+            Pipe/binary,
+            TID64/binary,
+            Pipe/binary,
+            IV64/binary
+        >>
+    ).
 
 pack(Data) ->
     Unpadded = term_to_binary(Data, [compressed]),
