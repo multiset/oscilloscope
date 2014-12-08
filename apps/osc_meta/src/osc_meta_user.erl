@@ -4,6 +4,7 @@
     lookup/1,
     create/2,
     delete/1,
+    teams/1,
     teams/2,
     orgs/1,
     add_email/2,
@@ -36,7 +37,7 @@ lookup(NameOrID) ->
                 {owner_id, OwnerID},
                 {name, Name},
                 {password, Pass},
-                {emails, Emails}
+                {emails, [E || {E} <- Emails]}
             ]}
     end.
 
@@ -72,13 +73,20 @@ change_password(UserID, NewPass) ->
     {ok,_} = osc_sql:named(change_password, [UserID, Hash]),
     ok.
 
--spec teams(org_id(), user_id()) -> [team_id()].
-teams(OrgID, UserID) ->
-    {ok,_} = osc_sql:named(get_user_teams, [OrgID, UserID]).
+-spec teams(user_id()) -> [{team_id(), binary(), non_neg_integer()}].
+teams(UserID) ->
+    {ok, _, Rows} = osc_sql:named(get_user_teams, [UserID]),
+    Rows.
 
--spec orgs(user_id()) -> [org_id()].
+-spec teams(org_id(), user_id()) -> [{team_id(), binary(), non_neg_integer()}].
+teams(OrgID, UserID) ->
+    {ok, _, Rows} = osc_sql:named(get_user_org_teams, [OrgID, UserID]),
+    Rows.
+
+-spec orgs(user_id()) -> [{org_id(), binary()}].
 orgs(UserID) ->
-    {ok,_} = osc_sql:named(get_user_orgs, [UserID]).
+    {ok, _, Rows} = osc_sql:named(get_user_orgs, [UserID]),
+    Rows.
 
 -spec hash_password(binary()) -> binary().
 hash_password(Pass) ->

@@ -10,14 +10,38 @@
         stdlib,
         inets,
         crypto,
-        mochiweb,
-        webmachine,
+        cowboy,
         osc
     ]},
     {mod, {osc_http_app, []}},
     {env, [
-        {dispatch_apps, [
-            osc_http
+        {cookie_name, <<"session">>},
+        %% TODO: This should include {secure, true} in production
+        {cookie_opts, [{http_only, true}, {path, "/"}]},
+        {default_cookie_lifetime, 86400},
+        {routes, []},
+        {cors, [
+            {
+                %% TODO: This shouldn't be localhost:8000 in production!
+                <<"access-control-allow-origin">>,
+                <<"http://localhost:8000">>
+            },
+            {
+                <<"access-control-allow-credentials">>,
+                <<"true">>
+            },
+            {
+                <<"access-control-allow-methods">>,
+                <<"POST, GET, PUT, PATCH, DELETE, OPTIONS">>
+            },
+            {
+                <<"access-control-allow-headers">>,
+                <<"Origin, X-Requested-With, Content-Type, Accept">>
+            },
+            {
+                <<"access-control-expose-headers">>,
+                <<"Location, Set-Cookie">>
+            }
         ]}
     ]}
 ]}.

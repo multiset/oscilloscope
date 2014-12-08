@@ -1,12 +1,14 @@
 {application, osc_meta, [
     {description, "App for handling metric-related metadata"},
     {vsn, git},
-    {registered, []},
+    {registered, [osc_meta_sup]},
     {applications, [
         kernel,
         stdlib,
-        osc_sql
+        osc_sql,
+        osc_http
     ]},
+    {mod, {osc_meta_app, []}},
     {env, [
         {default_resolutions, [
             {10, 1000},

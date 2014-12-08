@@ -33,14 +33,7 @@ init(_) ->
         Password,
         [{port, Port}, {database, Database}]
     ),
-    {ok, StatementFile} = application:get_env(osc_sql, statements),
-    StatementPath = filename:join([
-        code:lib_dir(osc_sql),
-        "priv",
-        StatementFile
-    ]),
-    {ok, Statements} = file:consult(StatementPath),
-    {ok, #st{conn=C, statements=Statements}}.
+    {ok, #st{conn=C, statements=load_statements()}}.
 
 handle_call({adhoc, SQL, Fields}, _From, #st{conn=C}=State) ->
     {reply, pgsql:equery(C, SQL, Fields), State};
@@ -56,6 +49,8 @@ handle_call({batch, SmtFields}, _From, #st{conn=C, statements=Smts}=State) ->
     end, [], SmtFields),
     pgsql:equery(C, <<"COMMIT;">>, []),
     {reply, lists:reverse(Response), State};
+handle_call(reload_statements, _From, State) ->
+    {reply, ok, State#st{statements=load_statements()}};
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
 
@@ -71,3 +66,13 @@ terminate(_Reason, #st{conn = Conn}) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+load_statements() ->
+    {ok, StatementFile} = application:get_env(osc_sql, statements),
+    StatementPath = filename:join([
+        code:lib_dir(osc_sql),
+        "priv",
+        StatementFile
+    ]),
+    {ok, Statements} = file:consult(StatementPath),
+    Statements.

@@ -1,4 +1,4 @@
--module(osc_http_sup).
+-module(osc_meta_sup).
 -behaviour(supervisor).
 
 -export([start_link/0, init/1]).
