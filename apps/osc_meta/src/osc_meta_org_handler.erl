@@ -69,5 +69,9 @@ to_json(Req, #st{org_props=OrgProps}=State) ->
     ]},
     {jiffy:encode(Body), Req, State}.
 
-apply_patch(_, _, _, _) ->
+apply_patch(Op, Path, _, OrgProps) ->
+    lager:error(
+        "Got an unknown patch attempt: ~p, ~p for org ~p",
+        [Op, Path, OrgProps]
+    ),
     error.

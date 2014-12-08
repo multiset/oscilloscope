@@ -140,5 +140,9 @@ apply_patch(<<"remove">>, [<<"members">>], UserID, TeamProps) ->
         proplists:get_value(members, TeamProps)
     ),
     {ok, [{members, Members}|proplists:delete(members, TeamProps)]};
-apply_patch(_, _, _, _) ->
+apply_patch(Op, Path, _, TeamProps) ->
+    lager:error(
+        "Got an unknown patch attempt: ~p, ~p for team ~p",
+        [Op, Path, TeamProps]
+    ),
     error.

@@ -86,5 +86,9 @@ apply_patch(<<"replace">>, [<<"password">>], {Passwords}, UserProps) ->
     ),
     NewProp = {password, {[{last_modified, osc_util:now()}]}},
     {ok, [NewProp|proplists:delete(password, UserProps)]};
-apply_patch(_, _, _, _) ->
+apply_patch(Op, Path, _, UserProps) ->
+    lager:error(
+        "Got an unknown patch attempt: ~p, ~p for user ~p",
+        [Op, Path, UserProps]
+    ),
     error.
