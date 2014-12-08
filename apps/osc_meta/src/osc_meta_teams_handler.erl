@@ -36,6 +36,7 @@ from_json(Req0, State) ->
     {ok, JSONBody, Req1} = cowboy_req:body(Req0),
     {Body} = jiffy:decode(JSONBody),
     TeamName = proplists:get_value(<<"name">>, Body),
+    true = TeamName =/= <<>>,
     {OrgIDBin, Req2} = cowboy_req:binding(orgid, Req1),
     OrgID = list_to_integer(binary_to_list(OrgIDBin)),
     {ok, TeamID} = osc_meta_team:create(OrgID, TeamName),
