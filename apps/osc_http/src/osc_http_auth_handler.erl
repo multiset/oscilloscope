@@ -20,6 +20,8 @@ dispatch(<<"register">>, Req0) ->
             {Props} = jiffy:decode(Data),
             Username = proplists:get_value(<<"username">>, Props, <<>>),
             Password = proplists:get_value(<<"password">>, Props, <<>>),
+            %% TODO: Make this not blow up entirely
+            true = Username =/= <<>> andalso Password =/= <<>>,
             {ok, UserID} = osc_meta_user:create(Username, Password),
             {ok, DefaultLifetime} = application:get_env(
                 osc_http,
