@@ -39,7 +39,10 @@ outbound(Data, Lifetime) ->
 inbound(undefined) ->
     undefined;
 inbound(Cookie) ->
-    {Encrypted, ETime, TID, IV, Tag0} = binary_to_term(base64:decode(Cookie)),
+    {Encrypted, ETime, TID, IV, Tag0} = binary_to_term(
+        base64:decode(Cookie),
+        [safe]
+    ),
     {Block, Mac} = ciphers(TID),
     %% TODO
     %% {ok, BlockKey} = application:get_env(osc_http, Block),
