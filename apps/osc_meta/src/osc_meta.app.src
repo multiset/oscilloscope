@@ -10,11 +10,10 @@
     ]},
     {mod, {osc_meta_app, []}},
     {env, [
-        {default_resolutions, [
-            {10, 1000},
-            {60, 1000},
-            {3600, 1000}
-        ]},
-        {default_aggregation_fun, avg}
+        {default_window_configuration, [
+            {rectangular, avg, 10, 1000},
+            {rectangular, avg, 60, 1000},
+            {rectangular, avg, 3600, 1000}
+        ]}
     ]}
 ]}.

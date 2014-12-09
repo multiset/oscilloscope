@@ -4,38 +4,44 @@
     create/1,
     lookup/1,
     search/1,
-    aggregation/1,
-    resolutions/1
+    windows/1
 ]).
 
 -include_lib("osc/include/osc_types.hrl").
--include("osc_meta.hrl").
 
--spec create({owner_id(), meta()}) -> {ok, meta()} | not_found.
+-record(metricmeta, {
+    id :: metric_id(),
+    owner_id :: owner_id(),
+    props :: any(), %% TODO
+    encoded_props :: binary(),
+    windows :: [osc_meta_window:windowmeta()]
+}).
+
+-opaque metricmeta() :: #metricmeta{}.
+-export_type([metricmeta/0]).
+
+-spec create({owner_id(), meta()}) -> {ok, metricmeta()} | not_found.
 create({OwnerID, Props}=Metric) ->
     EncodedProps = term_to_binary(lists:sort(Props)),
-
-    {ok, _, Rows} = osc_sql:named(
-        get_metric, [OwnerID, EncodedProps]
+    GetMetricSQL = <<
+        "SELECT id FROM metrics"
+        " WHERE owner_id = $1 AND hash = $2;"
+    >>,
+    {ok, _, Rows} = osc_sql:adhoc(
+        GetMetricSQL, [OwnerID, EncodedProps]
     ),
     case Rows of
         [] ->
-            {ok, AggFun} = get_aggregation_configuration(Metric),
-            {ok, Resolutions} = get_resolution_configuration(Metric),
             {ok, 1, _, [{MetricID}]} = osc_sql:named(
-                add_metric, [OwnerID, EncodedProps, term_to_binary(AggFun)]
+                add_metric, [OwnerID, EncodedProps]
             ),
             lists:map(fun({Key, Value}) ->
                 {ok, 1} = osc_sql:named(add_tag, [OwnerID, MetricID, Key, Value])
             end, Props),
+            {ok, Windows} = get_window_configuration(Metric),
             lists:foreach(
-                fun({Interval, Count}) ->
-                    {ok, 1} = osc_sql:named(
-                        add_resolution,
-                        [MetricID, Interval, Count]
-                    )
-                end,
-                Resolutions
+                fun(W) -> osc_meta_window:create(MetricID, W) end,
+                Windows
             );
         _ ->
             %% TODO: Log
@@ -43,36 +49,28 @@ create({OwnerID, Props}=Metric) ->
     end,
     lookup(Metric).
 
--spec lookup({owner_id(), meta()}) -> {ok, meta()} | not_found.
+
+-spec lookup({owner_id(), meta()}) -> {ok, metricmeta()} | not_found.
 lookup({OwnerID, Props}) ->
     EncodedProps = term_to_binary(lists:sort(Props)),
-    {ok, _, ResoInfo} = osc_sql:named(
-        get_metric_resolutions, [OwnerID, EncodedProps]
+    SQL = <<"SELECT id FROM metrics WHERE owner_id = $1 AND hash = $2">>,
+    {ok, _, IDs} = osc_sql:adhoc(
+        SQL, [OwnerID, EncodedProps]
     ),
-    case ResoInfo of
+    case IDs of
         [] ->
             not_found;
-        [{MetricID, AggBin, _, _, _}|_] ->
-            Resolutions = lists:foldl(
-                fun({_, _, ResolutionID, Interval, Count}, Acc) ->
-                    {ok, _, Persists} = osc_sql:named(
-                        get_persists, [ResolutionID]
-                    ),
-                    [{ResolutionID, Interval, Count, Persists}|Acc]
-                end,
-                [],
-                ResoInfo
-            ),
-            Meta = [
-                {owner, OwnerID},
-                {props, Props},
-                {encoded_props, EncodedProps},
-                {id, MetricID},
-                {aggregation, binary_to_term(AggBin)},
-                {resolutions, Resolutions}
-            ],
-            {ok, Meta}
+        [{MetricID}] ->
+            Windows = osc_meta_window:lookup(MetricID),
+            {ok, #metricmeta{
+                id = MetricID,
+                owner_id = OwnerID,
+                props = Props,
+                encoded_props = EncodedProps,
+                windows = Windows
+            }}
     end.
+
 
 -spec search({owner_id(), meta()}) -> [].
 search({OwnerID, [{Key, Value}]}) ->
@@ -83,26 +81,13 @@ search({OwnerID, [{Key, Value}]}) ->
     ),
     [MetricID || {MetricID} <- Resp].
 
--spec aggregation(Meta) -> Aggregation when
-    Meta :: meta(),
-    Aggregation :: aggregation().
 
-aggregation(Meta) ->
-    proplists:get_value(aggregation, Meta).
+windows(#metricmeta{windows=Windows}) ->
+    Windows.
 
-resolutions(Meta) ->
-    proplists:get_value(resolutions, Meta).
 
-get_aggregation_configuration(_) ->
-    %% TODO
+get_window_configuration(_) ->
     application:get_env(
         osc_meta,
-        default_aggregation_fun
-    ).
-
-get_resolution_configuration(_) ->
-    %% TODO
-    application:get_env(
-        osc_meta,
-        default_resolutions
+        default_window_configuration
     ).

@@ -13,7 +13,6 @@
 ]).
 
 -include_lib("osc/include/osc_types.hrl").
--include("osc_meta.hrl").
 
 -spec lookup(org_id() | binary()) -> {ok, meta()} | not_found.
 lookup(NameOrID) ->

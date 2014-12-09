@@ -58,8 +58,7 @@ CREATE TABLE metrics (
     id serial PRIMARY KEY,
     owner_id integer NOT NULL REFERENCES owners(id),
     hash bytea NOT NULL,
-    aggregation bytea NOT NULL,
-    UNIQUE(owner_id, hash, aggregation)
+    UNIQUE(owner_id, hash)
 );
 
 CREATE TABLE tags (
@@ -69,25 +68,25 @@ CREATE TABLE tags (
     metric_id integer NOT NULL REFERENCES metrics(id)
 );
 
-CREATE TABLE resolutions (
+CREATE TABLE windows (
     id serial PRIMARY KEY,
     metric_id integer NOT NULL REFERENCES metrics(id),
+    type bytea NOT NULL,
+    aggregation bytea,
     "interval" integer,
-    count integer,
-    UNIQUE(metric_id, "interval", count)
+    count integer
 );
 
 CREATE TABLE persists (
     id serial PRIMARY KEY,
-    resolution_id integer NOT NULL REFERENCES resolutions(id),
+    window_id integer NOT NULL REFERENCES windows(id),
     "timestamp" integer NOT NULL,
     count integer NOT NULL,
-    UNIQUE(resolution_id, "timestamp")
+    UNIQUE(window_id, "timestamp")
 );
 
 
 ALTER TABLE public.metrics OWNER TO osc;
-ALTER TABLE public.resolutions OWNER TO osc;
 ALTER TABLE public.users OWNER TO osc;
 ALTER TABLE public.owners OWNER TO osc;
 ALTER TABLE public.users OWNER TO osc;
@@ -96,5 +95,5 @@ ALTER TABLE public.teams OWNER TO osc;
 ALTER TABLE public.team_members OWNER TO osc;
 ALTER TABLE public.metrics OWNER TO osc;
 ALTER TABLE public.tags OWNER TO osc;
-ALTER TABLE public.resolutions OWNER TO osc;
+ALTER TABLE public.windows OWNER TO osc;
 ALTER TABLE public.persists OWNER TO osc;

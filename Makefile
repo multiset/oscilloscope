@@ -11,15 +11,6 @@ compile:
 rel: deps compile
 	./rebar generate
 
-devrel: dev1 dev2 dev3
-
-dev1 dev2 dev3:
-	mkdir -p dev
-	(cd rel && ../rebar generate target_dir=../dev/$@ overlay_vars=vars/$@.config)
-
-devclean:
-	rm -rf dev
-
 relclean:
 	rm -rf rel/osc
 
@@ -35,7 +26,7 @@ eunit:
 	@./rebar skip_deps=true eunit
 
 dialyze:
-	@dialyzer --src apps/*/src/ -pa apps/osc_persistence/ebin -pa apps/osc_sql/ebin -pa apps/osc_meta/ebin -pa apps/osc/ebin -pa deps/lager/ebin -pa deps/riak_core/ebin
+	@dialyzer --src apps/*/src/ -pa apps/osc_persistence/ebin -pa apps/osc_sql/ebin -pa apps/osc_meta/ebin -pa apps/osc/ebin -pa deps/lager/ebin
 
 release: deps compile
 	@./rebar generate
