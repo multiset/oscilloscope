@@ -15,9 +15,11 @@ batch(SmtFields) ->
     transact({batch, SmtFields}).
 
 reload_statements() ->
-    Workers = poolboy:get_all_workers(pgsql),
-    lists:foreach(fun(W) ->
-        ok = gen_server:call(W, reload_statements)
+    %% Poolboy doesn't expose get_all_workers, so hack it in here
+    %% Return type matches supervisor:which_children/1
+    Workers = gen_server:call(pgsql, get_all_workers),
+    lists:foreach(fun({undefined, Pid, worker, [osc_sql_worker]}) ->
+        ok = gen_server:call(Pid, reload_statements)
     end, Workers).
 
 transact(Msg) ->
