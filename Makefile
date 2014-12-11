@@ -26,7 +26,7 @@ eunit:
 	@./rebar skip_deps=true eunit
 
 dialyze:
-	@dialyzer --src apps/*/src/ -pa apps/osc_persistence/ebin -pa apps/osc_sql/ebin -pa apps/osc_meta/ebin -pa apps/osc/ebin -pa deps/lager/ebin
+	@dialyzer --plt dialyzer.plt --src apps/*/src/ -pa apps/osc/ebin | grep -F -v -f ./dialyzer.ignore-warnings
 
 release: deps compile
 	@./rebar generate
