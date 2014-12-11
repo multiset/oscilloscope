@@ -58,8 +58,8 @@ error_hook(_, _, _, Req) ->
 session(Req0) ->
     {ok, CookieName} = application:get_env(osc_http, cookie_name),
     case cowboy_req:cookie(CookieName, Req0) of
-        undefined ->
-            Req0;
+        {undefined, Req1} ->
+            Req1;
         {Cookie, Req1} ->
             case osc_http_auth:inbound(Cookie) of
                 undefined ->
