@@ -14,7 +14,7 @@
 
 -include_lib("osc/include/osc_types.hrl").
 
--spec lookup(org_id() | binary()) -> {ok, meta()} | not_found.
+-spec lookup(org_id() | binary()) -> {ok, proplists:proplist()} | not_found.
 lookup(NameOrID) ->
     {ok, Org} = if is_binary(NameOrID) ->
         {ok, _, Org0} = osc_sql:named(get_org_by_name, [NameOrID]),

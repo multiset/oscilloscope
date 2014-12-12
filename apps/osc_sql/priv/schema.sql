@@ -85,6 +85,21 @@ CREATE TABLE persists (
     UNIQUE(window_id, "timestamp")
 );
 
+CREATE TABLE window_configuration_groups (
+    id serial PRIMARY KEY,
+    owner_id integer NOT NULL REFERENCES owners(id),
+    priority integer NOT NULL,
+    tags text[][] NOT NULL
+);
+
+CREATE TABLE window_configurations (
+    id serial PRIMARY KEY,
+    group_id integer NOT NULL REFERENCES window_configuration_groups(id),
+    type bytea NOT NULL,
+    aggregation bytea,
+    "interval" integer,
+    count integer
+);
 
 ALTER TABLE public.metrics OWNER TO osc;
 ALTER TABLE public.users OWNER TO osc;

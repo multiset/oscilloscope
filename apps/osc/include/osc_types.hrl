@@ -1,6 +1,3 @@
--type meta() :: proplists:proplist().
--type owner_id() :: pos_integer().
--type metric() :: {owner_id(), meta()}.
 -type metric_id() :: pos_integer().
 
 -type aggregation() :: atom().
