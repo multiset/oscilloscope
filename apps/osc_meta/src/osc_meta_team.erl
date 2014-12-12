@@ -53,8 +53,8 @@ create(OrgID, Name) ->
 -spec delete(org_id(), team_id()) -> ok | error.
 delete(OrgID, TeamID) ->
     Commands = [
-        {delete_team, [OrgID, TeamID]},
-        {delete_team_members, [OrgID, TeamID]}
+        {delete_team_members, [OrgID, TeamID]},
+        {delete_team, [OrgID, TeamID]}
     ],
     Batch = osc_sql:batch(Commands),
     case lists:usort([Status || {Status, _} <- Batch]) of
