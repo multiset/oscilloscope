@@ -1,11 +1,11 @@
 -module(osc_meta_team_handler).
 
-%% TODO: This is still for users!
-
 -export([init/3, terminate/3]).
 -export([
     rest_init/2,
     allowed_methods/2,
+    is_authorized/2,
+    forbidden/2,
     resource_exists/2,
     delete_resource/2,
     content_types_accepted/2,
@@ -15,6 +15,8 @@
 ]).
 
 -record(st, {
+    user_id,
+    org_id,
     team_props
 }).
 
@@ -24,52 +26,92 @@ init({tcp, http}, _Req, _Opts) ->
 terminate(_Reason, _Req, _State) ->
     ok.
 
-rest_init(Req, _State) ->
-    {ok, Req, #st{}}.
-
-allowed_methods(Req, State) ->
-    {[<<"GET">>, <<"DELETE">>, <<"PATCH">>], Req, State}.
-
-resource_exists(Req0, State) ->
+rest_init(Req0, _) ->
+    State0 = #st{},
     {Bindings, Req1} = cowboy_req:bindings(Req0),
     IDs = {
-        proplists:get_value(orgid, Bindings),
-        proplists:get_value(teamid, Bindings)
+        proplists:get_value(org_id, Bindings),
+        proplists:get_value(team_id, Bindings)
     },
     case IDs of
         {undefined, _} ->
-            {false, Req1, State};
+            {ok, Req1, State0};
         {_, undefined} ->
-            {false, Req1, State};
+            {ok, Req1, State0};
         {OrgIDBin, TeamIDBin} ->
             OrgID = list_to_integer(binary_to_list(OrgIDBin)),
             TeamID = list_to_integer(binary_to_list(TeamIDBin)),
             case osc_meta_team:lookup(TeamID) of
                 not_found ->
-                    {false, Req1, State};
+                    {ok, Req1, State0};
                 {ok, TeamProps} ->
                     case proplists:get_value(orgid, TeamProps) of
                         OrgID ->
-                            {true, Req1, State#st{team_props=TeamProps}};
+                            State1 = State0#st{
+                                team_props=TeamProps,
+                                org_id=OrgID
+                            },
+                            {ok, Req1, State1};
                         _ ->
-                            {false, Req1, State}
+                            {ok, Req1, State0}
                     end
             end
     end.
 
+
+allowed_methods(Req, State) ->
+    {[<<"GET">>, <<"DELETE">>, <<"PATCH">>], Req, State}.
+
+is_authorized(Req, State) ->
+    osc_http:is_authorized(
+        Req,
+        fun(UserID) -> State#st{user_id=UserID} end,
+        fun() -> State end
+    ).
+
+forbidden(Req0, State) ->
+    #st{
+        user_id=UserID,
+        org_id=OrgID,
+        team_props=TeamProps
+    } = State,
+    case OrgID =:= undefined orelse TeamProps =:= undefined of
+        true ->
+            {false, Req0, State};
+        false ->
+            {Method, Req1} = cowboy_req:method(Req0),
+            IsOwner = osc_meta_org:is_owner(OrgID, UserID),
+            Forbidden = case Method of
+                <<"DELETE">> ->
+                    %% The "owners" team cannot be deleted; only org owners can
+                    %% delete teams within that org.
+                    TeamName = proplists:get_value(name, TeamProps),
+                    TeamName == <<"owners">> orelse not IsOwner;
+                <<"PATCH">> ->
+                    %% Only org owners can patch
+                    not IsOwner;
+                <<"GET">> ->
+                    %% Only *team* members and org owners can view
+                    IsMember = osc_meta_team:is_member(
+                        OrgID,
+                        proplists:get_value(id, TeamProps),
+                        UserID
+                    ),
+                    not IsMember andalso not IsOwner
+            end,
+            {Forbidden, Req1, State}
+    end.
+
+resource_exists(Req, #st{team_props=undefined}=State) ->
+    {false, Req, State};
+resource_exists(Req, State) ->
+    {true, Req, State}.
+
 delete_resource(Req, #st{team_props=TeamProps}=State) ->
     TeamID = proplists:get_value(id, TeamProps),
     OrgID = proplists:get_value(orgid, TeamProps),
-    case proplists:get_value(name, TeamProps) of
-        <<"owners">> ->
-            lager:notice(
-                "User attempted to DELETE owner team from org ~p", [OrgID]
-            ),
-            {false, Req, State};
-        _ ->
-            ok = osc_meta_team:delete(OrgID, TeamID),
-            {true, Req, State}
-    end.
+    ok = osc_meta_team:delete(OrgID, TeamID),
+    {true, Req, State}.
 
 content_types_accepted(Req, State) ->
     {
