@@ -37,7 +37,7 @@ is_authorized(Req, State) ->
     ).
 
 forbidden(Req0, State0) ->
-    {OrgIDBin, Req1} = cowboy_req:binding(orgid, Req0),
+    {OrgIDBin, Req1} = cowboy_req:binding(org_id, Req0),
     OrgID = list_to_integer(binary_to_list(OrgIDBin)),
     State1 = State0#st{org_id=OrgID},
     {Method, Req2} = cowboy_req:method(Req1),
