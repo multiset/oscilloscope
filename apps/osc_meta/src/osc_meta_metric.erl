@@ -32,7 +32,7 @@ create({OwnerID, Props}=Metric) ->
             lists:map(fun({Key, Value}) ->
                 {ok, 1} = osc_sql:named(add_tag, [OwnerID, MetricID, Key, Value])
             end, Props),
-            {ok, Windows} = osc_meta_window_configuration:lookup(Metric),
+            {ok, Windows} = osc_meta_window_configuration:for_metric(Metric),
             lists:foreach(
                 fun(W) -> osc_meta_window:create(MetricID, W) end,
                 Windows

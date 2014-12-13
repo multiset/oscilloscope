@@ -6,7 +6,10 @@
 
 -export([
     create/4,
-    lookup/1
+    list/1,
+    lookup/1,
+    delete/1,
+    for_metric/1
 ]).
 
 -include_lib("osc/include/osc_types.hrl").
@@ -26,7 +29,10 @@ create(OwnerID, Priority, GroupProps, WindowConfigs) ->
                "(owner_id, priority, tags) VALUES ($1, $2, $3)"
                "RETURNING id;",
     Tags = lists:map(fun tuple_to_list/1, GroupProps),
-    {ok, _, {GroupID}} = osc_sql:adhoc(GroupSQL, [OwnerID, Priority, Tags]),
+    {ok, _, _, [{GroupID}]} = osc_sql:adhoc(
+        GroupSQL,
+        [OwnerID, Priority, Tags]
+    ),
     WindowSQL = "INSERT INTO window_configurations"
                 "(group_id, type, aggregation, interval, count)"
                 "VALUES ($1, $2, $3, $4, $5);",
@@ -39,17 +45,127 @@ create(OwnerID, Priority, GroupProps, WindowConfigs) ->
                 Interval,
                 Count
             ],
-            {ok, _, _} = osc_sql:adhoc(WindowSQL, Args)
+            {ok, _} = osc_sql:adhoc(WindowSQL, Args)
         end,
         WindowConfigs
     ),
     {ok, GroupID}.
 
--spec lookup(Metric) -> {ok, Windows} when
+
+-spec list(OwnerID) -> {ok, WindowConfigs} when
+    OwnerID :: owner_id(),
+    WindowConfigs :: proplists:proplist().
+
+list(OwnerID) ->
+    SQL = "SELECT groups.id, groups.priority, groups.tags,"
+          " windows.type, windows.aggregation, windows.interval, windows.count"
+          " FROM window_configuration_groups AS groups,"
+          " window_configurations AS windows"
+          " WHERE owner_id = $1 AND windows.group_id = groups.id;",
+    {ok, _, Rows} = osc_sql:adhoc(SQL, [OwnerID]),
+    %% Aggregate window configurations by group
+    GroupedConfigs = lists:foldl(
+        fun({GroupID, Priority, Tags, Type, Agg, Interval, Count}, Acc0) ->
+            Window = [
+                {type, binary_to_term(Type)},
+                {aggregation, binary_to_term(Agg)},
+                {interval, Interval},
+                {count, Count}
+            ],
+            case lists:keytake(GroupID, 1, Acc0) of
+                false ->
+                    Value = [
+                        {id, GroupID},
+                        {priority, Priority},
+                        {tags, lists:map(fun list_to_tuple/1, Tags)},
+                        {windows, [Window]}
+                    ],
+                    [{GroupID, Value}|Acc0];
+                {value, {GroupID, Value0}, Acc1} ->
+                    {value, {windows, Windows}, Value1} = lists:keytake(
+                        windows,
+                        1,
+                        Value0
+                    ),
+                    [{GroupID, [{windows, [Window|Windows]}|Value1]}|Acc1]
+            end
+        end,
+        [],
+        Rows
+    ),
+    Configs = [Props || {_ID, Props} <- GroupedConfigs],
+    %% Sort by descending priority
+    SortedConfigs = lists:sort(
+        fun(PropsA, PropsB) ->
+            PriorityA = proplists:get_value(priority, PropsA),
+            PriorityB = proplists:get_value(priority, PropsB),
+            PriorityA =< PriorityB
+        end,
+        Configs
+    ),
+    {ok, SortedConfigs}.
+
+
+-spec lookup(GroupID) -> {ok, any()} | not_found when
+    GroupID :: group_id().
+
+lookup(GroupID) ->
+    SQL = "SELECT groups.owner_id, groups.priority, groups.tags,"
+          " windows.type, windows.aggregation, windows.interval, windows.count"
+          " FROM window_configuration_groups AS groups,"
+          " window_configurations AS windows"
+          " WHERE windows.group_id = groups.id AND groups.id = $1;",
+    {ok, _, Rows} = osc_sql:adhoc(SQL, [GroupID]),
+    case Rows of
+        [] ->
+            not_found;
+        [{OwnerID, Priority, Tags, _, _, _, _}|_] ->
+            Windows = lists:map(
+                fun({_, _, _, Type, Agg, Interval, Count}) ->
+                    [
+                        {type, binary_to_term(Type)},
+                        {aggregation, binary_to_term(Agg)},
+                        {interval, Interval},
+                        {count, Count}
+                    ]
+                end,
+                Rows
+            ),
+            {ok, [
+                {id, GroupID},
+                {owner_id, OwnerID},
+                {priority, Priority},
+                {tags, lists:map(fun list_to_tuple/1, Tags)},
+                {windows, Windows}
+            ]}
+    end.
+
+
+-spec delete(GroupID) -> ok | error when
+    GroupID :: group_id().
+
+delete(GroupID) ->
+    Commands = [
+        {delete_window_configurations, [GroupID]},
+        {delete_window_group_configurations, [GroupID]}
+    ],
+    Batch = osc_sql:batch(Commands),
+    case lists:usort([Status || {Status, _} <- Batch]) of
+        [ok] ->
+            ok;
+        _ ->
+            lager:error(
+                "Window configuration deletion encountered an error: ~p",
+                [Batch]
+            ),
+            error
+    end.
+
+-spec for_metric(Metric) -> {ok, Windows} when
     Metric :: metric(),
     Windows :: [window_config()].
 
-lookup({OwnerID, Props}) ->
+for_metric({OwnerID, Props}) ->
     SQL = <<
         "SELECT id, tags"
         " FROM window_configuration_groups"
