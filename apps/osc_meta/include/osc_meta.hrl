@@ -9,7 +9,13 @@
 
 -type window_id() :: pos_integer().
 -type window_type() :: rectangular.
--type window_config() :: {window_type(), aggregation(), interval(), count()}.
+-type window_config() :: {
+    window_id(),
+    window_type(),
+    aggregation(),
+    interval(),
+    count()
+}.
 
 -record(metricmeta, {
     id :: metric_id(),

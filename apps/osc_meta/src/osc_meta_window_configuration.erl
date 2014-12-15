@@ -10,6 +10,7 @@
     lookup/1,
     delete/1,
     add_window/2,
+    delete_window/2,
     for_metric/1
 ]).
 
@@ -59,15 +60,17 @@ create(OwnerID, Priority, GroupProps, WindowConfigs) ->
 
 list(OwnerID) ->
     SQL = "SELECT groups.id, groups.priority, groups.tags,"
-          " windows.type, windows.aggregation, windows.interval, windows.count"
+          " windows.id, windows.type, windows.aggregation,"
+          " windows.interval, windows.count"
           " FROM window_configuration_groups AS groups,"
           " window_configurations AS windows"
           " WHERE owner_id = $1 AND windows.group_id = groups.id;",
     {ok, _, Rows} = osc_sql:adhoc(SQL, [OwnerID]),
     %% Aggregate window configurations by group
     GroupedConfigs = lists:foldl(
-        fun({GroupID, Priority, Tags, Type, Agg, Interval, Count}, Acc0) ->
+        fun({GroupID, Priority, Tags, ID, Type, Agg, Interval, Count}, Acc0) ->
             Window = [
+                {id, ID},
                 {type, binary_to_term(Type)},
                 {aggregation, binary_to_term(Agg)},
                 {interval, Interval},
@@ -112,7 +115,8 @@ list(OwnerID) ->
 
 lookup(GroupID) ->
     SQL = "SELECT groups.owner_id, groups.priority, groups.tags,"
-          " windows.type, windows.aggregation, windows.interval, windows.count"
+          " windows.id, windows.type, windows.aggregation,"
+          " windows.interval, windows.count"
           " FROM window_configuration_groups AS groups,"
           " window_configurations AS windows"
           " WHERE windows.group_id = groups.id AND groups.id = $1;",
@@ -120,10 +124,11 @@ lookup(GroupID) ->
     case Rows of
         [] ->
             not_found;
-        [{OwnerID, Priority, Tags, _, _, _, _}|_] ->
+        [{OwnerID, Priority, Tags, _, _, _, _, _}|_] ->
             Windows = lists:map(
-                fun({_, _, _, Type, Agg, Interval, Count}) ->
+                fun({_, _, _, ID, Type, Agg, Interval, Count}) ->
                     [
+                        {id, ID},
                         {type, binary_to_term(Type)},
                         {aggregation, binary_to_term(Agg)},
                         {interval, Interval},
@@ -184,6 +189,16 @@ add_window(GroupID, WindowConfig) ->
         Count
     ],
     {ok, 1} = osc_sql:adhoc(SQL, Args),
+    ok.
+
+-spec delete_window(GroupID, WindowID) -> ok when
+    GroupID :: group_id(),
+    WindowID :: window_id().
+
+delete_window(GroupID, WindowID) ->
+    SQL = " DELETE FROM window_configurations"
+          " WHERE group_id = $1 AND id = $2;",
+    {ok, 1} = osc_sql:adhoc(SQL, [GroupID, WindowID]),
     ok.
 
 -spec for_metric(Metric) -> {ok, Windows} when

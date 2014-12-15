@@ -168,6 +168,12 @@ apply_patch(<<"add">>, [<<"windows">>], {WindowProps}, GroupProps0) ->
     ok = osc_meta_window_configuration:add_window(GroupID, WindowConfig),
     {ok, GroupProps1} = osc_meta_window_configuration:lookup(GroupID),
     {ok, GroupProps1};
+apply_patch(<<"remove">>, [<<"windows">>], {WindowProps}, GroupProps0) ->
+    GroupID = proplists:get_value(id, GroupProps0),
+    WindowID = proplists:get_value(<<"id">>, WindowProps),
+    ok = osc_meta_window_configuration:delete_window(GroupID, WindowID),
+    {ok, GroupProps1} = osc_meta_window_configuration:lookup(GroupID),
+    {ok, GroupProps1};
 apply_patch(Op, Path, _, Props) ->
     lager:error(
         "Got an unknown patch attempt: ~p, ~p for window group ~p",
