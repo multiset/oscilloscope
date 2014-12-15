@@ -9,6 +9,7 @@
     list/1,
     lookup/1,
     delete/1,
+    add_window/2,
     for_metric/1
 ]).
 
@@ -160,6 +161,30 @@ delete(GroupID) ->
             ),
             error
     end.
+
+-spec add_window(GroupID, WindowConfig) -> ok when
+    GroupID :: group_id(),
+    WindowConfig :: window_config().
+
+add_window(GroupID, WindowConfig) ->
+    {
+        Type,
+        Aggregation,
+        Interval,
+        Count
+    } = WindowConfig,
+    SQL = " INSERT INTO window_configurations"
+          " (group_id, type, aggregation, interval, count)"
+          " VALUES ($1, $2, $3, $4, $5);",
+    Args = [
+        GroupID,
+        term_to_binary(Type),
+        term_to_binary(Aggregation),
+        Interval,
+        Count
+    ],
+    {ok, 1} = osc_sql:adhoc(SQL, Args),
+    ok.
 
 -spec for_metric(Metric) -> {ok, Windows} when
     Metric :: metric(),

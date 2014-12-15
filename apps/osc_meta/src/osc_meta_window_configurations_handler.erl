@@ -87,9 +87,15 @@ from_json(Req0, State) ->
     {Tags} = proplists:get_value(<<"tags">>, Body),
     Windows = lists:map(
         fun({Window}) ->
+            Type = osc_meta_util:parse_window_type(
+                proplists:get_value(<<"type">>, Window)
+            ),
+            Aggregation = osc_meta_util:parse_window_aggregation(
+                proplists:get_value(<<"aggregation">>, Window)
+            ),
             {
-                parse_type(proplists:get_value(<<"type">>, Window)),
-                parse_agg(proplists:get_value(<<"aggregation">>, Window)),
+                Type,
+                Aggregation,
                 proplists:get_value(<<"interval">>, Window),
                 proplists:get_value(<<"count">>, Window)
             }
@@ -127,7 +133,3 @@ to_json(Req, State) ->
         Configs
     ),
     {jiffy:encode(EJSON), Req, State}.
-
-parse_type(<<"rectangular">>) -> rectangular.
-
-parse_agg(<<"avg">>) -> avg.

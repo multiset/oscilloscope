@@ -8,7 +8,9 @@
     forbidden/2,
     resource_exists/2,
     delete_resource/2,
+    content_types_accepted/2,
     content_types_provided/2,
+    from_json_patch/2,
     to_json/2
 ]).
 
@@ -28,7 +30,7 @@ rest_init(Req, Opts) ->
     {ok, Req, #st{owner_class=proplists:get_value(owner_class, Opts)}}.
 
 allowed_methods(Req, State) ->
-    {[<<"GET">>, <<"DELETE">>], Req, State}.
+    {[<<"GET">>, <<"DELETE">>, <<"PATCH">>], Req, State}.
 
 is_authorized(Req, State) ->
     osc_http:is_authorized(
@@ -58,6 +60,9 @@ forbidden(Req0, State0) ->
                     {ok, OrgProps} = osc_meta_org:lookup(OrgID),
                     {Method, ReqB} = cowboy_req:method(ReqA),
                     MethodAuthorized = case Method of
+                        <<"PATCH">> ->
+                            %% Only owners can modify window configurations
+                            osc_meta_org:is_owner(OrgID, AuthUserID);
                         <<"DELETE">> ->
                             %% Only owners can modify window configurations
                             osc_meta_org:is_owner(OrgID, AuthUserID);
@@ -96,6 +101,24 @@ delete_resource(Req, #st{props=Props}=State) ->
     ok = osc_meta_window_configuration:delete(proplists:get_value(id, Props)),
     {true, Req, State}.
 
+content_types_accepted(Req, State) ->
+    {
+        [{{<<"application">>, <<"json-patch+json">>, '*'}, from_json_patch}],
+        Req,
+        State
+    }.
+
+from_json_patch(Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:body(Req0),
+    {ok, {Operation, Path, Value}} = osc_http:parse_json_patch(Body),
+    #st{props=Props0} = State,
+    case apply_patch(Operation, Path, Value, Props0) of
+        {ok, Props1} ->
+            {true, Req1, State#st{props=Props1}};
+        error ->
+            {false, Req1, State}
+    end.
+
 content_types_provided(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, to_json}], Req, State}.
 
@@ -120,3 +143,34 @@ fetch(Req0, State) ->
         {ok, WindowProps} ->
             {Req1, State#st{props=WindowProps}}
     end.
+
+apply_patch(<<"add">>, [<<"windows">>], {WindowProps}, GroupProps0) ->
+    GroupID = proplists:get_value(id, GroupProps0),
+    Type = osc_meta_util:parse_window_type(
+        proplists:get_value(<<"type">>, WindowProps)
+    ),
+    Aggregation = osc_meta_util:parse_window_aggregation(
+        proplists:get_value(<<"aggregation">>, WindowProps)
+    ),
+    Interval = proplists:get_value(<<"interval">>, WindowProps),
+    Count = proplists:get_value(<<"count">>, WindowProps),
+    %% Validation!
+    true = is_integer(Interval),
+    true = is_integer(Count),
+    true = Type =:= rectangular,
+    true = lists:member(Aggregation, [avg]),
+    WindowConfig = {
+        Type,
+        Aggregation,
+        Interval,
+        Count
+    },
+    ok = osc_meta_window_configuration:add_window(GroupID, WindowConfig),
+    {ok, GroupProps1} = osc_meta_window_configuration:lookup(GroupID),
+    {ok, GroupProps1};
+apply_patch(Op, Path, _, Props) ->
+    lager:error(
+        "Got an unknown patch attempt: ~p, ~p for window group ~p",
+        [Op, Path, Props]
+    ),
+    error.
