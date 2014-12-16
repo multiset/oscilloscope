@@ -174,6 +174,12 @@ apply_patch(<<"remove">>, [<<"windows">>], {WindowProps}, GroupProps0) ->
     ok = osc_meta_window_configuration:delete_window(GroupID, WindowID),
     {ok, GroupProps1} = osc_meta_window_configuration:lookup(GroupID),
     {ok, GroupProps1};
+apply_patch(<<"replace">>, [<<"priority">>], Priority, GroupProps0) ->
+    true = is_integer(Priority),
+    GroupID = proplists:get_value(id, GroupProps0),
+    ok = osc_meta_window_configuration:set_priority(GroupID, Priority),
+    {ok, GroupProps1} = osc_meta_window_configuration:lookup(GroupID),
+    {ok, GroupProps1};
 apply_patch(Op, Path, _, Props) ->
     lager:error(
         "Got an unknown patch attempt: ~p, ~p for window group ~p",

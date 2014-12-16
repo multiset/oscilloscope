@@ -11,6 +11,7 @@
     delete/1,
     add_window/2,
     delete_window/2,
+    set_priority/2,
     for_metric/1
 ]).
 
@@ -146,6 +147,17 @@ delete_window(GroupID, WindowID) ->
     SQL = " DELETE FROM window_configurations"
           " WHERE group_id = $1 AND id = $2;",
     {ok, 1} = osc_sql:adhoc(SQL, [GroupID, WindowID]),
+    ok.
+
+-spec set_priority(GroupID, Priority) -> ok when
+    GroupID :: group_id(),
+    Priority :: pos_integer().
+
+set_priority(GroupID, Priority) ->
+    SQL = " UPDATE window_configuration_groups"
+          " SET priority = $2"
+          " WHERE id = $1;",
+    {ok, 1} = osc_sql:adhoc(SQL, [GroupID, Priority]),
     ok.
 
 -spec for_metric(Metric) -> {ok, Windows} when
