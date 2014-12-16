@@ -100,7 +100,7 @@ from_json(Req0, State) ->
                 proplists:get_value(<<"count">>, Window)
             }
         end,
-        proplists:get_value(<<"windows">>, Body)
+        proplists:get_value(<<"windows">>, Body, [])
     ),
     {ok, GroupID} = osc_meta_window_configuration:create(
         State#st.owner_id,
