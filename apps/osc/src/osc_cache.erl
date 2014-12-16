@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 -export([
-    start_link/1,
+    start_link/2,
     init/1,
     handle_call/3,
     handle_cast/2,
@@ -48,11 +48,11 @@ update(Metric, Points) ->
     gen_server:call(Pid, {update, Points}).
 
 
-start_link(Args) ->
-    gen_server:start_link(?MODULE, Args, []).
+start_link(Metric, Meta) ->
+    gen_server:start_link(?MODULE, {Metric, Meta}, []).
 
 
-init(Meta) ->
+init({Metric, Meta}) ->
     Windows = lists:foldl(
         fun(WindowMeta, Acc) ->
             gb_trees:insert(
@@ -69,6 +69,7 @@ init(Meta) ->
         windows=Windows,
         persisting=gb_trees:empty()
     },
+    gproc:reg({n, l, Metric}, ignored),
     {ok, State, hibernate_timeout()}.
 
 

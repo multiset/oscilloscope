@@ -23,12 +23,10 @@ find(Metric) ->
             end,
             Spec = {
                 Metric,
-                {osc_cache, start_link, [Meta]},
+                {osc_cache, start_link, [Metric, Meta]},
                 temporary, 5000, worker, [osc_cache]
             },
-            {ok, Pid} = supervisor:start_child(?MODULE, Spec),
-            gproc:reg({n, l, Metric}, ignored),
-            {ok, Pid};
+            supervisor:start_child(?MODULE, Spec);
         Pid ->
             {ok, Pid}
     end.
