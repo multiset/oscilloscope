@@ -7,26 +7,24 @@
 
 -include_lib("osc/include/osc_types.hrl").
 
--spec find(Metric) -> {ok, Pid} when
-    Metric :: metric(),
+-spec find(Metric) -> {ok, Pid} | not_found when
+    Metric :: metric_id(),
     Pid :: pid().
 
 find(Metric) ->
     case gproc:where({n, l, Metric}) of
         undefined ->
-            Meta = case osc_meta_metric:lookup(Metric) of
-                {ok, M} ->
-                    M;
+            case osc_meta_metric:lookup(Metric) of
                 not_found ->
-                    {ok, M} = osc_meta_metric:create(Metric),
-                    M
-            end,
-            Spec = {
-                Metric,
-                {osc_cache, start_link, [Metric, Meta]},
-                temporary, 5000, worker, [osc_cache]
-            },
-            supervisor:start_child(?MODULE, Spec);
+                    not_found;
+                {ok, Meta} ->
+                    Spec = {
+                        Metric,
+                        {osc_cache, start_link, [Metric, Meta]},
+                        temporary, 5000, worker, [osc_cache]
+                    },
+                    supervisor:start_child(?MODULE, Spec)
+            end;
         Pid ->
             {ok, Pid}
     end.

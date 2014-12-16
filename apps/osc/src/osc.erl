@@ -17,38 +17,42 @@ stop() ->
     ok.
 
 
--spec update(Metric, Points) -> ok when
-    Metric :: metric(),
+-spec update(Metric, Points) -> ok | not_found when
+    Metric :: metric_id(),
     Points :: [{timestamp(), value()}].
 
 update(Metric, Points) ->
     osc_cache:update(Metric, Points).
 
 
--spec read(Metric, From, Until) -> {ok, MetricMeta, WindowMeta, Read} when
-    Metric :: metric(),
+-spec read(Metric, From, Until) -> {ok, MMeta, WMeta, Read} | not_found when
+    Metric :: metric_id(),
     From :: timestamp(),
     Until :: timestamp(),
-    MetricMeta :: osc_meta_metric:metricmeta(),
-    WindowMeta :: osc_meta_window:windowmeta(),
+    MMeta :: osc_meta_metric:metricmeta(),
+    WMeta :: osc_meta_window:windowmeta(),
     Read :: {timestamp(), timestamp(), [value()]}.
 
 read(Metric, From, Until) ->
-    {ok, MetricMeta, WindowMeta, CacheRead} = osc_cache:read(
-        Metric,
-        From,
-        Until
-    ),
-    {ok, PersistentRead} = osc_persistence:read(WindowMeta, From, Until),
-    Interval = osc_meta_window:interval(WindowMeta),
-    MergedRead = merge_reads(
-        From,
-        Until,
-        Interval,
-        CacheRead,
-        PersistentRead
-    ),
-    {ok, MetricMeta, WindowMeta, MergedRead}.
+    case osc_cache:read(Metric, From, Until) of
+        not_found ->
+            not_found;
+        {ok, MetricMeta, WindowMeta, CacheRead} ->
+            {ok, PersistentRead} = osc_persistence:read(
+                WindowMeta,
+                From,
+                Until
+            ),
+            Interval = osc_meta_window:interval(WindowMeta),
+            MergedRead = merge_reads(
+                From,
+                Until,
+                Interval,
+                CacheRead,
+                PersistentRead
+            ),
+            {ok, MetricMeta, WindowMeta, MergedRead}
+    end.
 
 
 -spec merge_reads(From, Until, Interval, CRead, PRead) -> Read when

@@ -20,7 +20,12 @@
 -opaque metricmeta() :: #metricmeta{}.
 -export_type([metricmeta/0]).
 
--spec create({owner_id(), meta()}) -> {ok, metricmeta()} | not_found.
+
+-spec create(Metric) -> {ok, MetricID} | {error, Error} when
+    Metric :: metric(),
+    MetricID :: metric_id(),
+    Error :: exists.
+
 create({OwnerID, Props}=Metric) ->
     EncodedProps = term_to_binary(lists:sort(Props)),
     GetMetricSQL = <<
@@ -42,25 +47,26 @@ create({OwnerID, Props}=Metric) ->
             lists:foreach(
                 fun(W) -> osc_meta_window:create(MetricID, W) end,
                 Windows
-            );
+            ),
+            {ok, MetricID};
         _ ->
-            %% TODO: Log
-            ok
-    end,
-    lookup(Metric).
+            {error, exists}
+    end.
 
 
--spec lookup({owner_id(), meta()}) -> {ok, metricmeta()} | not_found.
-lookup({OwnerID, Props}) ->
-    EncodedProps = term_to_binary(lists:sort(Props)),
-    SQL = <<"SELECT id FROM metrics WHERE owner_id = $1 AND hash = $2">>,
-    {ok, _, IDs} = osc_sql:adhoc(
-        SQL, [OwnerID, EncodedProps]
-    ),
-    case IDs of
+-spec lookup(MetricID) -> {ok, Meta} | not_found when
+    MetricID :: metric_id(),
+    Meta :: metricmeta().
+
+lookup(MetricID) ->
+    LookupSQL = "SELECT owner_id, hash FROM metrics WHERE id = $1",
+    {ok, _, ID} = osc_sql:adhoc(LookupSQL, [MetricID]),
+    case ID of
         [] ->
             not_found;
-        [{MetricID}] ->
+        [{OwnerID, EncodedProps}] ->
+            PropSQL = "SELECT key, value FROM tags WHERE metric_id = $1",
+            {ok, _, Props} = osc_sql:adhoc(PropSQL, [MetricID]),
             Windows = osc_meta_window:lookup(MetricID),
             {ok, #metricmeta{
                 id = MetricID,

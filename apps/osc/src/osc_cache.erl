@@ -39,13 +39,17 @@
 
 
 read(Metric, From, Until) ->
-    {ok, Pid} = osc_cache_sup:find(Metric),
-    gen_server:call(Pid, {read, From, Until}).
+    case osc_cache_sup:find(Metric) of
+        not_found -> not_found;
+        {ok, Pid} -> gen_server:call(Pid, {read, From, Until})
+    end.
 
 
 update(Metric, Points) ->
-    {ok, Pid} = osc_cache_sup:find(Metric),
-    gen_server:call(Pid, {update, Points}).
+    case osc_cache_sup:find(Metric) of
+        not_found -> not_found;
+        {ok, Pid} -> gen_server:call(Pid, {update, Points})
+    end.
 
 
 start_link(Metric, Meta) ->
