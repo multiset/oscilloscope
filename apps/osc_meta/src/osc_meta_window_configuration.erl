@@ -59,46 +59,15 @@ create(OwnerID, Priority, GroupProps, WindowConfigs) ->
     WindowConfigs :: proplists:proplist().
 
 list(OwnerID) ->
-    SQL = "SELECT groups.id, groups.priority, groups.tags,"
-          " windows.id, windows.type, windows.aggregation,"
-          " windows.interval, windows.count"
-          " FROM window_configuration_groups AS groups,"
-          " window_configurations AS windows"
-          " WHERE owner_id = $1 AND windows.group_id = groups.id;",
-    {ok, _, Rows} = osc_sql:adhoc(SQL, [OwnerID]),
-    %% Aggregate window configurations by group
-    GroupedConfigs = lists:foldl(
-        fun({GroupID, Priority, Tags, ID, Type, Agg, Interval, Count}, Acc0) ->
-            Window = [
-                {id, ID},
-                {type, binary_to_term(Type)},
-                {aggregation, binary_to_term(Agg)},
-                {interval, Interval},
-                {count, Count}
-            ],
-            case lists:keytake(GroupID, 1, Acc0) of
-                false ->
-                    Value = [
-                        {id, GroupID},
-                        {priority, Priority},
-                        {tags, lists:map(fun list_to_tuple/1, Tags)},
-                        {windows, [Window]}
-                    ],
-                    [{GroupID, Value}|Acc0];
-                {value, {GroupID, Value0}, Acc1} ->
-                    {value, {windows, Windows}, Value1} = lists:keytake(
-                        windows,
-                        1,
-                        Value0
-                    ),
-                    [{GroupID, [{windows, [Window|Windows]}|Value1]}|Acc1]
-            end
+    GroupSQL = " SELECT id, priority, tags FROM window_configuration_groups"
+               " WHERE owner_id = $1",
+    {ok, _, GroupRows} = osc_sql:adhoc(GroupSQL, [OwnerID]),
+    Configs = lists:map(
+        fun({GroupID, Priority, Tags}) ->
+            format_group(GroupID, OwnerID, Priority, Tags)
         end,
-        [],
-        Rows
+        GroupRows
     ),
-    Configs = [Props || {_ID, Props} <- GroupedConfigs],
-    %% Sort by descending priority
     SortedConfigs = lists:sort(
         fun(PropsA, PropsB) ->
             PriorityA = proplists:get_value(priority, PropsA),
@@ -114,38 +83,16 @@ list(OwnerID) ->
     GroupID :: group_id().
 
 lookup(GroupID) ->
-    SQL = "SELECT groups.owner_id, groups.priority, groups.tags,"
-          " windows.id, windows.type, windows.aggregation,"
-          " windows.interval, windows.count"
-          " FROM window_configuration_groups AS groups,"
-          " window_configurations AS windows"
-          " WHERE windows.group_id = groups.id AND groups.id = $1;",
-    {ok, _, Rows} = osc_sql:adhoc(SQL, [GroupID]),
-    case Rows of
+    GroupSQL = " SELECT owner_id, priority, tags"
+               " FROM window_configuration_groups"
+               " WHERE id = $1",
+    {ok, _, GroupRows} = osc_sql:adhoc(GroupSQL, [GroupID]),
+    case GroupRows of
         [] ->
             not_found;
-        [{OwnerID, Priority, Tags, _, _, _, _, _}|_] ->
-            Windows = lists:map(
-                fun({_, _, _, ID, Type, Agg, Interval, Count}) ->
-                    [
-                        {id, ID},
-                        {type, binary_to_term(Type)},
-                        {aggregation, binary_to_term(Agg)},
-                        {interval, Interval},
-                        {count, Count}
-                    ]
-                end,
-                Rows
-            ),
-            {ok, [
-                {id, GroupID},
-                {owner_id, OwnerID},
-                {priority, Priority},
-                {tags, lists:map(fun list_to_tuple/1, Tags)},
-                {windows, Windows}
-            ]}
+        [{OwnerID, Priority, Tags}] ->
+            {ok, format_group(GroupID, OwnerID, Priority, Tags)}
     end.
-
 
 -spec delete(GroupID) -> ok | error when
     GroupID :: group_id().
@@ -283,3 +230,41 @@ match_props([{GroupKey, GroupValue}|KVs], Props) ->
             end
     end.
 
+-spec windows(GroupID) -> Windows when
+    GroupID :: group_id(),
+    Windows :: [window_config()].
+
+windows(GroupID) ->
+    WindowSQL = " SELECT id, type, aggregation, interval, count"
+                " FROM window_configurations WHERE group_id = $1;",
+    {ok, _, Windows} = osc_sql:adhoc(WindowSQL, [GroupID]),
+    Windows.
+
+-spec format_group(GroupID, OwnerID, Priority, Tags) -> Group when
+    GroupID :: group_id(),
+    OwnerID :: owner_id(),
+    Priority :: pos_integer(),
+    Tags :: proplists:proplist(),
+    Group :: proplists:proplist().
+
+format_group(GroupID, OwnerID, Priority, Tags) ->
+    RawWindows = windows(GroupID),
+    Windows = lists:map(
+        fun({WindowID, Type, Aggregation, Interval, Count}) ->
+            [
+                {id, WindowID},
+                {type, binary_to_term(Type)},
+                {aggregation, binary_to_term(Aggregation)},
+                {interval, Interval},
+                {count, Count}
+            ]
+        end,
+        RawWindows
+    ),
+    [
+        {id, GroupID},
+        {owner_id, OwnerID},
+        {priority, Priority},
+        {tags, lists:map(fun list_to_tuple/1, Tags)},
+        {windows, Windows}
+    ].
