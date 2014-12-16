@@ -103,7 +103,7 @@ list(OwnerID) ->
         fun(PropsA, PropsB) ->
             PriorityA = proplists:get_value(priority, PropsA),
             PriorityB = proplists:get_value(priority, PropsB),
-            PriorityA =< PriorityB
+            PriorityA >= PriorityB
         end,
         Configs
     ),
