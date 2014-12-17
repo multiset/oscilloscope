@@ -164,14 +164,20 @@ chunkify(Window) ->
     Binary :: binary(),
     Value :: [value()].
 
-inflate(Binary) -> binary_to_term(zlib:uncompress(Binary)).
+inflate(<<0, Binary/binary>>) -> binary_to_term(zlib:uncompress(Binary));
+inflate(_Binary) -> {error, unknown_tag}.
 
 
 -spec deflate(Values) -> Binary when
     Values :: [value()],
     Binary :: binary().
 
-deflate(Values) -> zlib:compress(term_to_binary(Values)).
+deflate(Values) ->
+    deflate(Values, 0).
+
+deflate(Values, 0) ->
+    Value = zlib:compress(term_to_binary(Values)),
+    <<0, Value/binary>>.
 
 
 -spec now(Window) -> Timestamp when
