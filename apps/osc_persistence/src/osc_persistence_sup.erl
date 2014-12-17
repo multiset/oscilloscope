@@ -7,14 +7,13 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init([]) ->
-    PersistenceManager = {
-        osc_persistence_manager_fsm,
-        {osc_persistence_manager_fsm, start_link, []},
-        permanent, 5000, worker, [osc_persistence_manager_fsm]
-    },
-    PersistFsmSup = {
-        osc_persistence_fsm_sup,
-        {osc_persistence_fsm_sup, start_link, []},
-        permanent, infinity, supervisor, [osc_persistence_fsm_sup]
-    },
-    {ok, {{one_for_one, 5, 10}, [PersistenceManager, PersistFsmSup]}}.
+    {ok, Size} = application:get_env(osc_persistence, worker_pool_size),
+    {ok, Overflow} = application:get_env(osc_persistence, worker_pool_overflow),
+    Args = [
+        {name, {local, osc_persistence_pool}},
+        {worker_module, osc_persistence_worker},
+        {size, Size},
+        {max_overflow, Overflow}
+    ],
+    WorkerPool = poolboy:child_spec(osc_persistence_pool, Args, []),
+    {ok, {{one_for_one, 5, 10}, [WorkerPool]}}.

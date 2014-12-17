@@ -4,39 +4,93 @@
     start/0,
     stop/0,
     update/2,
-    update/3,
-    read/3,
-    read/4
+    read/3
 ]).
 
--include("osc.hrl").
 -include("osc_types.hrl").
 
 start() ->
     application:start(osc).
 
+
 stop() ->
     ok.
 
-update(Metric, Points) ->
-    update(Metric, Points, []).
 
-update(Metric, Points, Opts) ->
-    Timeout = proplists:get_value(timeout, Opts, ?DEFAULT_TIMEOUT),
-    {ok, ReqID} = osc_update_fsm:update(Metric, Points, Opts),
-    wait_and_reply(ReqID, Timeout).
+-spec update(Metric, Points) -> ok | not_found when
+    Metric :: metric_id(),
+    Points :: [{timestamp(), value()}].
+
+update(Metric, Points) ->
+    osc_cache:update(Metric, Points).
+
+
+-spec read(Metric, From, Until) -> {ok, MMeta, WMeta, Read} | not_found when
+    Metric :: metric_id(),
+    From :: timestamp(),
+    Until :: timestamp(),
+    MMeta :: osc_meta_metric:metricmeta(),
+    WMeta :: osc_meta_window:windowmeta(),
+    Read :: {timestamp(), timestamp(), [value()]}.
 
 read(Metric, From, Until) ->
-    read(Metric, From, Until, []).
-
-read(Metric, From, Until, Opts) ->
-    Timeout = proplists:get_value(timeout, Opts, ?DEFAULT_TIMEOUT),
-    {ok, ReqID} = osc_read_fsm:read(Metric, From, Until, Opts),
-    wait_and_reply(ReqID, Timeout).
-
-wait_and_reply(ReqID, Timeout) ->
-    receive {ReqID, Response} ->
-        Response
-    after Timeout ->
-        {error, timeout}
+    case osc_cache:read(Metric, From, Until) of
+        not_found ->
+            not_found;
+        {ok, MetricMeta, WindowMeta, CacheRead} ->
+            {ok, PersistentRead} = osc_persistence:read(
+                WindowMeta,
+                From,
+                Until
+            ),
+            Interval = osc_meta_window:interval(WindowMeta),
+            MergedRead = merge_reads(
+                From,
+                Until,
+                Interval,
+                CacheRead,
+                PersistentRead
+            ),
+            {ok, MetricMeta, WindowMeta, MergedRead}
     end.
+
+
+-spec merge_reads(From, Until, Interval, CRead, PRead) -> Read when
+    From :: timestamp(),
+    Until :: timestamp(),
+    Interval :: interval(),
+    CRead :: {timestamp(), timestamp(), [value()]} | no_data,
+    PRead :: {timestamp(), timestamp(), [value()]} | no_data,
+    Read :: {timestamp(), timestamp(), [value()]}.
+
+merge_reads(From0, Until0, Interval, CRead, PRead) ->
+    {From1, Until1} = osc_util:adjust_query_range(
+        From0,
+        Until0,
+        Interval
+    ),
+    Points = case {PRead, CRead} of
+        {no_data, no_data} ->
+            lists:duplicate((Until1 - From1) div Interval, null);
+        {{PFrom, PUntil, PData}, no_data} ->
+            lists:append([
+                lists:duplicate((PFrom - From1) div Interval, null),
+                PData,
+                lists:duplicate((Until1 - PUntil) div Interval, null)
+            ]);
+        {no_data, {CFrom, CUntil, CData}} ->
+            lists:append([
+                lists:duplicate((CFrom - From1) div Interval, null),
+                CData,
+                lists:duplicate((Until1 - CUntil) div Interval, null)
+            ]);
+        {{_, PUntil, PData}, {CFrom, CUntil, CData}} ->
+            lists:append([
+                lists:duplicate((CFrom - From1) div Interval, null),
+                PData,
+                lists:duplicate((CFrom - PUntil) div Interval, null),
+                CData,
+                lists:duplicate((Until1 - CUntil) div Interval, null)
+            ])
+    end,
+    {From1, Until1, Points}.

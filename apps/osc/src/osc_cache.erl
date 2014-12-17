@@ -1,407 +1,254 @@
 -module(osc_cache).
-
--ifdef(TEST).
--compile(export_all).
--endif.
+-behaviour(gen_server).
 
 -export([
-    new/2,
-    refresh/1,
-    update/2,
-    read/3,
-    cached/2,
-    fold/3
+    start_link/2,
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
 ]).
 
--export_type([cache/0, resolution/0]).
+-export([
+    read/3,
+    update/2
+]).
 
 -include_lib("osc/include/osc_types.hrl").
 
--record(cache, {
-    metric :: metric(),
-    meta :: osc_meta:meta(),
-    aggregation :: fun((wrapped_value()) -> value()),
-    resolutions :: [resolution()]
+%% This data structure is a gb_tree to ensure stable sorting when selecting
+%% a window for querying. It also has values/1, and dict doesn't.
+-type window_map() :: gb_trees:tree(
+    osc_meta_window:window_id(),
+    {osc_meta_window:windowmeta(), osc_window:window()}
+).
+
+%% This data structure is a gb_tree simply because the previous one is, too.
+-type persisting_map() :: gb_trees:tree(
+    osc_meta_window:window_id(),
+    {pid(), reference()}
+).
+
+-record(st, {
+    meta :: osc_meta_metric:metricmeta(),
+    windows :: window_map(),
+    persisting :: persisting_map()
 }).
 
--record(resolution, {
-    meta :: osc_meta_resolution:resolution(),
-    t :: timestamp(), %% Earliest point in array
-    points :: array() %% Array of points
-}).
 
--opaque cache() :: #cache{}.
--opaque resolution() :: #resolution{}.
+read(Metric, From, Until) ->
+    case osc_cache_sup:find(Metric) of
+        not_found -> not_found;
+        {ok, Pid} -> gen_server:call(Pid, {read, From, Until})
+    end.
 
 
--spec new(Metric, Meta) -> Cache when
-    Metric :: metric(),
-    Meta :: osc_meta:meta(),
-    Cache :: cache().
+update(Metric, Points) ->
+    case osc_cache_sup:find(Metric) of
+        not_found -> not_found;
+        {ok, Pid} -> gen_server:call(Pid, {update, Points})
+    end.
 
-new(Metric, Meta) ->
-    AggregationAtom = osc_meta_metric:aggregation(Meta),
-    AggregationFun = fun(Vals) ->
-        erlang:apply(osc_aggregations, AggregationAtom, [Vals])
-    end,
-    Resolutions = lists:map(
-        fun(R) ->
-            #resolution{
-                meta=R,
-                t=undefined,
-                points=array:new({default, null})
-            }
+
+start_link(Metric, Meta) ->
+    gen_server:start_link(?MODULE, {Metric, Meta}, []).
+
+
+init({Metric, Meta}) ->
+    Windows = lists:foldl(
+        fun(WindowMeta, Acc) ->
+            gb_trees:insert(
+                osc_meta_window:id(WindowMeta),
+                {WindowMeta, osc_window:new(WindowMeta)},
+                Acc
+            )
         end,
-        osc_meta_metric:resolutions(Meta)
+        gb_trees:empty(),
+        osc_meta_metric:windows(Meta)
     ),
-    #cache{
-        metric=Metric,
+    State = #st{
         meta=Meta,
-        aggregation=AggregationFun,
-        resolutions=Resolutions
-    }.
+        windows=Windows,
+        persisting=gb_trees:empty()
+    },
+    gproc:reg({n, l, Metric}, ignored),
+    {ok, State, hibernate_timeout()}.
 
 
--spec refresh(Cache) -> Cache when
-    Cache :: cache().
-
-refresh(Cache) ->
-    #cache{
-        metric=Metric,
-        meta=Meta0,
-        aggregation=AF0,
-        resolutions=Resolutions0
-    } = Cache,
-    {ok, Meta1} = osc_meta_metric:lookup(Metric),
-    Aggregation0 = osc_meta_metric:aggregation(Meta0),
-    Aggregation1 = osc_meta_metric:aggregation(Meta1),
-    AF1 = case Aggregation0 == Aggregation1 of
-        true ->
-            AF0;
-        false ->
-            fun(Vals) ->
-                erlang:apply(osc_aggregations, Aggregation1, [Vals])
-            end
-    end,
-    NewResolutions = osc_meta_metric:resolutions(Meta1),
-    %% TODO: Handle addition or removal of resolutions
-    Resolutions1 = lists:map(
-        fun(R) -> refresh_resolution(R, NewResolutions) end,
-        Resolutions0
-    ),
-    Cache#cache{aggregation=AF1, resolutions=Resolutions1}.
-
-
--spec update(Points, Cache) -> Cache when
-    Points :: [{timestamp(), value()}],
-    Cache :: cache().
-
-update(Points, Cache) ->
-    #cache{resolutions=Resolutions0} = Cache,
-    Resolutions1 = lists:map(
-        fun(Resolution) -> update_int(Points, Resolution) end,
-        Resolutions0
-    ),
-    Cache#cache{resolutions=Resolutions1}.
-
-
--spec read(From, Until, Cache) -> {ok, Read} | {error, Error} when
-    From :: timestamp(),
-    Until :: timestamp(),
-    Cache :: cache(),
-    Read :: cache_read(),
-    Error :: atom().
-
-read(From, Until, _Cache) when From > Until ->
-    {error, temporal_inversion};
-read(From0, Until0, Cache) ->
-    #cache{meta=Meta, resolutions=Resolutions, aggregation=Aggregation} = Cache,
-    #resolution{meta=Resolution, t=T, points=Points} = select_resolution(
-        From0,
-        Resolutions
-    ),
-    Interval = osc_meta_resolution:interval(Resolution),
-    Read = read_int(
-        From0,
-        Until0,
-        Interval,
-        Aggregation,
-        T,
-        Points
-    ),
-    {ok, {Meta, Resolution, Read}}.
-
-
--spec cached(Cache, Resolution) -> {Points, Meta} when
-    Cache :: cache(),
-    Resolution :: resolution(),
-    Points :: [{timestamp(), number()}],
-    Meta :: osc_meta_resolution:resolution().
-
-cached(Cache, Resolution) ->
-    #cache{aggregation=AF} = Cache,
-    #resolution{meta=Meta, t=T, points=PointsArray} = Resolution,
-    Interval = osc_meta_resolution:interval(Meta),
-    Points = array:foldr(
-        fun(Idx, Values, Acc) -> [{T + (Idx * Interval), AF(Values)}|Acc] end,
-        [],
-        PointsArray
-    ),
-    {Points, Meta}.
-
-
--spec fold(Fun, Acc, Cache) -> Acc when
-    Fun :: fun((Cache, resolution(), Acc) -> Acc),
-    Acc :: any(),
-    Cache :: cache().
-
-fold(Fun, Acc, Cache) ->
-    #cache{resolutions=Resolutions} = Cache,
-    lists:foldl(fun(R, A) -> Fun(Cache, R, A) end, Acc, Resolutions).
-
-
--spec refresh_resolution(Resolution, Metas) -> Resolution when
-    Resolution :: resolution(),
-    Metas :: [osc_meta_resolution:resolution()].
-
-refresh_resolution(Resolution, Metas) ->
-    %% TODO: This only handles persistence updates
-    #resolution{meta=Meta0, t=T0, points=Points0} = Resolution,
-    ID = osc_meta_resolution:id(Meta0),
-    Interval = osc_meta_resolution:interval(Meta0),
-    [Meta1] = lists:filter(
-        fun(R) -> osc_meta_resolution:id(R) == ID end,
-        Metas
-    ),
-    LatestPersist = osc_meta_resolution:latest_persist_time(Meta1),
-    {T1, Points1} = case LatestPersist of
-        undefined ->
-            {T0, Points0};
-        T0 ->
-            {T0, Points0};
-        Else ->
-            %% TODO: probably an off-by-one here
-            Index = (Else - T0) div Interval,
-            {_, PointsList} = divide_array(Points0, Index),
-            {Else + Interval, array:from_list(PointsList, null)}
-    end,
-    #resolution{meta=Meta1, t=T1, points=Points1}.
-
-
--spec update_int(Points, Resolution) -> Resolution when
-    Points :: [{timestamp(), value()}],
-    Resolution :: resolution().
-
-update_int(Points, Resolution) ->
-    #resolution{meta=Meta, t=T0, points=Points0} = Resolution,
-    Interval = osc_meta_resolution:interval(Meta),
-    Count = osc_meta_resolution:count(Meta),
-    Persisted = osc_meta_resolution:persisted(Meta),
-    {T1, Points1} = append(Points, T0, Points0, Interval, Persisted),
-    {T2, Points2} = maybe_trim(T1, Points1, Interval, Count),
-    Resolution#resolution{t=T2, points=Points2}.
-
--spec append(ToAppend, T, Points, Interval, Persisted) -> {T, Points} when
-    ToAppend :: [{timestamp(), value()}],
-    T :: timestamp(),
-    Points :: array(),
-    Interval :: interval(),
-    Persisted :: persisted().
-
-append([], T, Points, _Interval, _Persisted) ->
-    {T, Points};
-append([{Timestamp0, Value}|Ps], T0, Points0, Interval, Persisted) ->
-    %% Timestamps are always floored to fit intervals exactly
-    Timestamp1 = Timestamp0 - (Timestamp0 rem Interval),
-    %% Any point that's newer than the last persist time is acceptable, but
-    %% we'll never try to overwrite a previously-persisted index.
-    LastPersist = last_persisted_time(Persisted, Interval),
-    {T1, Points1} = case {Timestamp1 > LastPersist, T0} of
-        {false, _} ->
-            {T0, Points0};
-        {true, undefined} ->
-            {Timestamp1, append_point(0, Value, Points0)};
-        {true, T0} when T0 =< Timestamp1 ->
-            Index = (Timestamp1 - T0) div Interval,
-            {T0, append_point(Index, Value, Points0)};
-        {true, _} ->
-            %% Need to slide the window backwards - this is a legal
-            %% point that's at a negative index in the current array.
-            IndexesToAdd = (T0 - Timestamp1) div Interval,
-            {Timestamp1, prepend_point(IndexesToAdd, Value, Points0)}
-    end,
-    append(Ps, T1, Points1, Interval, Persisted).
-
-
--spec maybe_trim(Timestamp, Points, Interval, Count) -> {Timestamp, Points} when
-    Timestamp :: timestamp(),
-    Points :: array:array(wrapped_value()),
-    Interval :: interval(),
-    Count :: pos_integer().
-
-maybe_trim(undefined, Points, _Interval, _Count) ->
-    {undefined, Points};
-maybe_trim(T, Points0, Interval, Count) ->
-    LatestTime = T + (array:size(Points0) - 1) * Interval,
-    EarliestTime = LatestTime - Interval * (Count - 1), % Inclusive
-    SplitIndex = (EarliestTime - T) / Interval,
-    case SplitIndex > 0 of
-        false ->
-            {T, Points0};
-        true ->
-            {_, Points1} = divide_array(Points0, SplitIndex),
-            {EarliestTime, array:from_list(Points1, null)}
-    end.
-
-
--spec prepend_point(Index, Value, Points) -> Points when
-    Index :: array:array_indx(),
-    Value :: value(),
-    Points :: array:array(wrapped_value()).
-
-prepend_point(Index, Value, Points) ->
-    ListPoints = array:to_list(Points),
-    Prepend = lists:duplicate(Index, null),
-    Points1 = array:from_list(Prepend ++ ListPoints, null),
-    append_point(0, Value, Points1).
-
-
--spec append_point(Index, Value, Points) -> Points when
-    Index :: array:array_indx(),
-    Value :: value(),
-    Points :: array:array(wrapped_value()).
-
-append_point(Index, Value, Points) when Index >= 0 ->
-    case array:get(Index, Points) of
-        null ->
-            array:set(Index, [Value], Points);
-        Vs when is_list(Vs) ->
-            array:set(Index, [Value|Vs], Points)
-    end.
-
-
--spec divide_array(Array, Index) -> Divided when
-    Array :: array:array(wrapped_value()),
-    Index :: array:array_indx(),
-    Divided :: {[wrapped_value()], [wrapped_value()]}.
-
-divide_array(Arr, DivIdx) ->
-    array:foldr(
-        fun(Idx, Value, {L, R}) ->
-            case Idx < DivIdx of
-                true -> {[Value|L], R};
-                false -> {L, [Value|R]}
-            end
+handle_call({read, From, Until}, _From, State) ->
+    #st{windows=Windows, meta=Meta}=State,
+    {WindowMeta, Window} = select_window(From, gb_trees:values(Windows)),
+    {ok, Read} = osc_window:read(From, Until, Window),
+    {reply, {ok, Meta, WindowMeta, Read}, State, hibernate_timeout()};
+handle_call({update, Points}, _From, State0) ->
+    #st{windows=Windows0, persisting=Persisting0}=State0,
+    Windows1 = gb_trees:map(
+        fun(_ID, {WindowMeta, Window}) ->
+            {WindowMeta, osc_window:update(Points, Window)}
         end,
-        {[], []},
-        Arr
-    ).
+        Windows0
+    ),
+    Persisting1 = maybe_persist(Windows1, Persisting0),
+    State1 = State0#st{windows=Windows1, persisting=Persisting1},
+    {reply, ok, State1, hibernate_timeout()};
+handle_call(Msg, _From, State) ->
+    {stop, {unknown_call, Msg}, error, State}.
 
 
--spec select_resolution(From, Resolutions) -> Resolution when
-    From :: timestamp(),
-    Resolutions :: [resolution()],
-    Resolution :: resolution().
+handle_cast(Msg, State) ->
+    {stop, {unknown_cast, Msg}, State}.
 
-select_resolution(From, Resolutions) ->
-    [R|Rs] = lists:sort(
-        fun(#resolution{meta=MetaA}, #resolution{meta=MetaB}) ->
-            IntervalA = osc_meta_resolution:interval(MetaA),
-            IntervalB = osc_meta_resolution:interval(MetaB),
+
+handle_info(timeout, State) ->
+    #st{windows=Windows, persisting=Persisting0} = State,
+    Persisting1 = maybe_persist(Windows, Persisting0),
+    case gb_trees:is_empty(Persisting1) of
+        true ->
+            %% No windows are currently persisting, and nothing is worth trying
+            %% to persist, so go to sleep.
+            case Persisting0 =/= Persisting1 of
+                true ->
+                    %% This should never happen - maybe_persist should only be
+                    %% able to add items to the list.
+                    lager:critical(
+                        "Bad persist mutation; old was ~p, new is ~p",
+                        [Persisting0, Persisting1]
+                    );
+                false ->
+                    ok
+            end,
+            {noreply, State#st{persisting=Persisting1}, hibernate};
+        false ->
+            %% Some persist attempts are in-progress; don't hibernate.
+            {noreply, State#st{persisting=Persisting1}}
+    end;
+handle_info({'DOWN', Ref, process, Pid, Reason}=Msg, State0) ->
+    #st{windows=Windows0, persisting=Persisting0} = State0,
+    Key = {Pid, Ref},
+    case gb_trees:lookup(Key, Persisting0) of
+        none ->
+            %% Log a critical message, but don't crash - it's somewhat expensive
+            %% to recreate the state of this server.
+            lager:critical(
+                "Cache received DOWN message from unknown pid: ~p",
+                [Msg]
+            ),
+            {noreply, State0};
+        {value, WindowID} ->
+            Persisting1 = gb_trees:delete(Key, Persisting0),
+            State1 = case Reason of
+                normal ->
+                    %% Persist was successful - update our internal state
+                    {WindowMeta0, Window0} = gb_trees:get(WindowID, Windows0),
+                    WindowMeta1 = osc_meta_window:refresh(WindowMeta0),
+                    Window1 = osc_window:refresh(WindowMeta1, Window0),
+                    Window2 = osc_window:trim(Window1),
+                    Windows1 = gb_trees:enter(
+                        WindowID,
+                        {WindowMeta1, Window2},
+                        Windows0
+                    ),
+                    State0#st{windows=Windows1, persisting=Persisting1};
+                _ ->
+                    lager:warning(
+                        "Persistence process crashed with reason ~p", [Reason]
+                    ),
+                    State0
+            end,
+            {noreply, State1#st{persisting=Persisting1}, hibernate_timeout()}
+    end;
+handle_info(Msg, State) ->
+    {stop, {unknown_info, Msg}, State}.
+
+
+terminate(_Reason, _State) ->
+    ok.
+
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+
+select_window(From, Windows) ->
+    [W|Ws] = lists:sort(
+        fun({MetaA, _}, {MetaB, _}) ->
+            IntervalA = osc_meta_window:interval(MetaA),
+            IntervalB = osc_meta_window:interval(MetaB),
             IntervalA >= IntervalB
         end,
-        Resolutions
+        Windows
     ),
     lists:foldl(
-        fun(Resolution, Selected) ->
-            case earliest_timestamp(Resolution) =< From of
-                true -> Resolution;
+        fun(Window, Selected) ->
+            EarliestTime = earliest_timestamp(Window),
+            case EarliestTime =/= undefined andalso EarliestTime =< From of
+                true -> Window;
                 false -> Selected
             end
         end,
-        R,
-        Rs
+        W,
+        Ws
     ).
 
 
--spec earliest_timestamp(Resolution) -> Timestamp when
-    Resolution :: resolution(),
-    Timestamp :: timestamp().
+-spec earliest_timestamp({Meta, Window}) -> Timestamp when
+    Meta :: osc_meta_window:window(),
+    Window :: osc_window:window(),
+    Timestamp :: timestamp() | undefined.
 
-earliest_timestamp(Resolution) ->
-    #resolution{meta=Meta, t=T} = Resolution,
-    case osc_meta_resolution:earliest_persist_time(Meta) of
-        undefined -> T;
+earliest_timestamp({Meta, Window}) ->
+    case osc_meta_window:earliest_persisted_time(Meta) of
+        undefined -> osc_window:earliest_time(Window);
         Timestamp -> Timestamp
     end.
 
 
--spec read_int(From, Until, Interval, Aggregation, T, Points) -> Read when
-    From :: timestamp(),
-    Until :: timestamp(),
-    Interval :: interval(),
-    Aggregation :: fun((wrapped_value()) -> value()),
-    T :: timestamp(),
-    Points :: array:array(wrapped_value()),
-    Read :: read().
+hibernate_timeout() ->
+    {ok, Timeout} = application:get_env(osc, cache_hibernate_timeout),
+    Timeout.
 
-read_int(From0, Until0, Interval, Aggregation, T, Points) ->
-    {From1, Until1} = osc_util:adjust_query_range(
-        From0,
-        Until0,
-        Interval
-    ),
-    case T =< Until1 of
-        false ->
-            not_found;
+
+-spec maybe_persist(Windows, Persisting) -> Persisting when
+    Windows :: window_map(),
+    Persisting :: persisting_map().
+
+maybe_persist(Windows, Persisting) ->
+    case gb_trees:is_empty(Persisting) of
         true ->
-            %% At least some of the query is in the cache
-            StartIndex = erlang:max(0, (From1 - T) div Interval),
-            EndIndex = erlang:min(
-                array:size(Points) - 1,
-                (Until1 - T) div Interval
-            ),
-            From2 = T + StartIndex * Interval,
-            Until2 = T + EndIndex * Interval,
-            Read = range_from_array(
-                StartIndex,
-                EndIndex,
-                Aggregation,
-                Points
-            ),
-            {From2, Until2, Read}
+            lists:foldl(
+                fun({WindowID, Thunk}, Acc) ->
+                    Key = spawn_monitor(Thunk),
+                    gb_trees:insert(Key, WindowID, Acc)
+                end,
+                gb_trees:empty(),
+                thunk_persists(Windows)
+            );
+        false ->
+            Persisting
     end.
 
+-spec thunk_persists(Windows) -> Thunks when
+    Windows :: window_map(),
+    Thunks :: [{osc_meta_window:window_id(), fun(() -> ok)}].
 
--spec range_from_array(Start, End, Aggregation, Points) -> Acc when
-    Start :: array:array_indx(),
-    End :: array:array_indx(),
-    Aggregation :: fun((wrapped_value()) -> value()),
-    Acc :: [value()],
-    Points :: array:array(wrapped_value()).
+thunk_persists(Windows) ->
+    {ok, Threshold} = application:get_env(osc, chunkifyability_threshold),
+    Iterator = gb_trees:iterator(Windows),
+    thunk_persists(gb_trees:next(Iterator), Threshold, []).
 
-range_from_array(Start, End, AF, Points) ->
-    lists:reverse(array:foldl(
-        fun(I, Vs, Acc) when I >= Start andalso I =< End ->
-               [AF(Vs)|Acc];
-           (_I, _Vs, Acc) ->
-               Acc
-        end,
-        [],
-        Points
-    )).
-
-
--spec last_persisted_time(Persisted, Interval) -> Timestamp when
-    Persisted :: persisted(),
-    Interval :: interval(),
-    Timestamp :: integer(). %% Not timestamp() because it can be negative!
-
-last_persisted_time(Persisted, Interval) ->
-    case Persisted of
-        [] ->
-            -1 * Interval;
-        Persisted ->
-            {LastPersistTime, LastPersistCount} = lists:last(Persisted),
-            LastPersistTime + Interval * LastPersistCount - 1
-    end.
+thunk_persists(none, _Threshold, Thunks) ->
+    Thunks;
+thunk_persists({WindowID, {WindowMeta, Window}, Iterator}, Threshold, Thunks0) ->
+    Thunks1 = case osc_window:chunkifyability(Window) > Threshold of
+        true ->
+            Thunk = fun() ->
+                ok = osc_persistence:persist(WindowMeta, Window),
+                ok = osc_persistence:vacuum(WindowMeta, Window)
+            end,
+            [{WindowID, Thunk}|Thunks0];
+        false ->
+            Thunks0
+    end,
+    thunk_persists(gb_trees:next(Iterator), Threshold, Thunks1).

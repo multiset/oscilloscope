@@ -1,7 +1,5 @@
 -module(osc_persistence).
 
--compile([{parse_transform, lager_transform}]).
-
 -ifdef(TEST).
 -compile(export_all).
 -endif.
@@ -9,87 +7,154 @@
 -export([
     persist/2,
     vacuum/2,
-    read/3
+    read/3,
+    persist_int/2,
+    vacuum_int/2,
+    read_int/3
 ]).
 
--define(GUESS, 150).
-
--include_lib("osc_persistence/include/osc_persistence.hrl").
 -include_lib("osc/include/osc_types.hrl").
 
+-spec persist(WindowMeta, Window) -> ok when
+    WindowMeta :: osc_meta_window:windowmeta(),
+    Window :: osc_window:window().
 
--spec persist(Resolution, Points) -> {ok, Persisted} when
-    Resolution :: osc_meta_resolution:resolution(),
-    Points :: [{timestamp(), value()}],
-    Persisted :: [{timestamp(), number()}].
-
-persist(Resolution, Points) ->
-    Commutator = commutator(),
-    ResolutionID = osc_meta_resolution:id(Resolution),
-    {ok, MinChunkSize} = application:get_env(
-        osc_persistence,
-        min_chunk_size
-    ),
-    {ok, MaxChunkSize} = application:get_env(
-        osc_persistence,
-        max_chunk_size
-    ),
-    Chunks = chunkify(Points, MinChunkSize, MaxChunkSize),
-    lager:debug(
-        "Got chunks ~p for cache ~p, attempting to persist",
-        [Chunks, ResolutionID]
-    ),
-    Persisted = lists:map(
-        fun({Timestamp, Value, Size}) ->
-            {ok, true} = commutator:put_item(
-                Commutator,
-                [ResolutionID, Timestamp, Value]
-            ),
-            ok = osc_meta_resolution:insert_persist(
-                Resolution,
-                Timestamp,
-                Size
-            ),
-            lager:debug(
-                "Persist attempt successful for resolution ~p",
-                [ResolutionID]
-            ),
-            {Timestamp, Size}
+persist(WindowMeta, Window) ->
+    {ok, Timeout} = application:get_env(osc_persistence, request_timeout),
+    poolboy:transaction(
+        osc_persistence_pool,
+        fun(Worker) ->
+            gen_server:call(Worker, {persist, WindowMeta, Window})
         end,
-        Chunks
-    ),
-    {ok, Persisted}.
+        Timeout
+    ).
 
 
--spec vacuum(Resolution, Timestamps) -> {ok, Timestamps} when
-    Resolution :: osc_meta_resolution:resolution(),
-    Timestamps :: [timestamp()].
+-spec vacuum(WindowMeta, Window) -> ok when
+    WindowMeta :: osc_meta_window:windowmeta(),
+    Window :: osc_window:window().
 
-vacuum(Resolution, Timestamps) ->
-    Commutator = commutator(),
-    ResolutionID = osc_meta_resolution:id(Resolution),
-    Vacuumed = lists:map(
-        fun(T) ->
-            {ok, true} = commutator:delete_item(Commutator, [ResolutionID, T]),
-            ok = osc_meta_resolution:delete_persist(Resolution, T),
-            T
+vacuum(WindowMeta, Window) ->
+    {ok, Timeout} = application:get_env(osc_persistence, request_timeout),
+    poolboy:transaction(
+        osc_persistence_pool,
+        fun(Worker) ->
+            gen_server:call(Worker, {vacuum, WindowMeta, Window})
         end,
-        Timestamps
-    ),
-    {ok, Vacuumed}.
+        Timeout
+    ).
 
 
--spec read(Resolution, From, Until) -> {ok, Read} when
-    Resolution :: osc_meta_resolution:resolution(),
+-spec read(WindowMeta, From, Until) -> {ok, Read | no_data} when
+    WindowMeta :: osc_meta_window:windowmeta(),
     From :: timestamp(),
     Until :: timestamp(),
-    Read :: read().
+    Read :: {timestamp(), timestamp(), [value()]}.
 
-read(Resolution, From0, Until0) ->
-    Commutator = commutator(),
-    ID = osc_meta_resolution:id(Resolution),
-    Interval = osc_meta_resolution:interval(Resolution),
-    Persisted = osc_meta_resolution:persisted(Resolution),
+read(WindowMeta, From, Until) ->
+    {ok, Timeout} = application:get_env(osc_persistence, request_timeout),
+    poolboy:transaction(
+        osc_persistence_pool,
+        fun(Worker) ->
+            gen_server:call(Worker, {read, WindowMeta, From, Until})
+        end,
+        Timeout
+    ).
+
+
+-spec persist_int(WindowMeta, Window) -> ok when
+    WindowMeta :: osc_meta_window:windowmeta(),
+    Window :: osc_window:window().
+
+persist_int(WindowMeta, Window) ->
+    Chunks = osc_window:chunkify(Window),
+    case Chunks of
+        [] ->
+            ok;
+        _ ->
+            Commutator = osc_persistence_util:commutator(),
+            WindowID = osc_meta_window:id(WindowMeta),
+            lager:debug(
+                "Got chunks ~p for window ~p, attempting to persist",
+                [Chunks, WindowID]
+            ),
+            lists:foreach(
+                fun({Timestamp, Value, Size}) ->
+                    {ok, true} = commutator:put_item(
+                        Commutator,
+                        [WindowID, Timestamp, Value]
+                    ),
+                    ok = osc_meta_window:insert_persist(
+                        WindowMeta,
+                        Timestamp,
+                        Size
+                    ),
+                    lager:debug(
+                        "Persist attempt successful for window ~p",
+                        [WindowID]
+                    ),
+                    {Timestamp, Size}
+                end,
+                Chunks
+            )
+    end.
+
+
+-spec vacuum_int(WindowMeta, Window) -> ok when
+    WindowMeta :: osc_meta_window:windowmeta(),
+    Window :: osc_window:window().
+
+vacuum_int(WindowMeta, Window) ->
+    WindowID = osc_meta_window:id(WindowMeta),
+    Interval = osc_meta_window:interval(WindowMeta),
+    Count = osc_meta_window:count(WindowMeta),
+    Persisted = osc_meta_window:persisted(WindowMeta),
+    TNow = osc_window:now(Window),
+    case TNow of
+        undefined ->
+            ok;
+        _ ->
+            TExpired = TNow - Interval * Count,
+            Commutator = osc_persistence_util:commutator(),
+            Vacuumed = lists:filtermap(
+                fun({Time, PersistCount}) ->
+                    LatestTime = Time + (Interval * PersistCount),
+                    case LatestTime < TExpired of
+                        true ->
+                            {ok, true} = commutator:delete_item(
+                                Commutator,
+                                [WindowID, Time]
+                            ),
+                            ok = osc_meta_window:delete_persist(
+                                WindowMeta,
+                                Time
+                            ),
+                            true;
+                        false ->
+                            false
+                    end
+            end,
+            Persisted
+        ),
+        lager:debug(
+            "Vacuumed ~p points for window ~p",
+            [length(Vacuumed), WindowID]
+        ),
+        ok
+    end.
+
+
+-spec read_int(WindowMeta, From, Until) -> {ok, Read | no_data} when
+    WindowMeta :: osc_meta_window:windowmeta(),
+    From :: timestamp(),
+    Until :: timestamp(),
+    Read :: {timestamp(), timestamp(), [value()]}.
+
+read_int(WindowMeta, From0, Until0) ->
+    Commutator = osc_persistence_util:commutator(),
+    ID = osc_meta_window:id(WindowMeta),
+    Interval = osc_meta_window:interval(WindowMeta),
+    Persisted = osc_meta_window:persisted(WindowMeta),
     {From1, Until1} = osc_util:adjust_query_range(
         From0,
         Until0,
@@ -101,9 +166,9 @@ read(Resolution, From0, Until0) ->
         Interval,
         Persisted
     ),
-    Reply = case Bounds of
+    case Bounds of
         not_found ->
-            not_found;
+            {ok, no_data};
         {ReadFrom, ReadUntil} ->
             {ok, Rows} = commutator:query(
                 Commutator,
@@ -112,8 +177,14 @@ read(Resolution, From0, Until0) ->
                     {<<"t">>, between, [ReadFrom, ReadUntil]}
                 ]
             ),
-            Read = lists:flatten(
-                [?VALDECODE(proplists:get_value(<<"v">>, I)) || I <- Rows]
+            Read = lists:foldr(
+                fun(Row, Acc) ->
+                    Bin = proplists:get_value(<<"v">>, Row),
+                    Value = osc_window:inflate(Bin),
+                    [Value|Acc]
+                end,
+                [],
+                Rows
             ),
             {From2, Until2, TrimmedRead} = trim_read(
                 From1,
@@ -122,129 +193,7 @@ read(Resolution, From0, Until0) ->
                 ReadFrom,
                 Read
             ),
-            {From2, Until2, TrimmedRead}
-    end,
-    {ok, Reply}.
-
-
-commutator() ->
-    {ok, Table} = application:get_env(osc_persistence, dynamo_table),
-    {ok, Schema} = application:get_env(osc_persistence, dynamo_schema),
-    {ok, Region} = application:get_env(osc_persistence, dynamo_region),
-    {ok, AccessKey} = application:get_env(
-        osc_persistence,
-        dynamo_access_key
-    ),
-    {ok, SecretKey} = application:get_env(
-        osc_persistence,
-        dynamo_secret_key
-    ),
-    {ok, Commutator} = commutator:init(
-        Table,
-        Schema,
-        Region,
-        AccessKey,
-        SecretKey
-    ),
-    Commutator.
-
-
--spec chunkify(Points, MinChunkSize, MaxChunkSize) -> Chunked when
-    Points :: [{timestamp(), number()}],
-    MinChunkSize :: pos_integer(),
-    MaxChunkSize :: pos_integer(),
-    Chunked :: [{timestamp(), binary(), integer()}].
-
-chunkify(Points, MinChunkSize, MaxChunkSize) ->
-    {Timestamps, Values} = lists:unzip(Points),
-    chunkify(
-        Timestamps,
-        Values,
-        [],
-        MinChunkSize,
-        MaxChunkSize,
-        0,
-        [],
-        length(Values)
-    ).
-
-chunkify(Timestamps, Values, Excess, Min, Max, Count, Chunks, Guess) ->
-    %% N.B.: This will OOM your BEAM if Min < ?VALENCODE([]).
-    %% As of this comment, ?VALENCODE([]) == 11
-    lager:debug("Chunking ~p, ~p with guess ~p", [Values, Excess, Guess]),
-    Chunk = ?VALENCODE(Values),
-    PointsChunked = length(Values),
-    case byte_size(Chunk) of
-        Size when Size > Max ->
-            %% The chunk was too big. Generate a new guess based on the
-            %% average compressed point size, shrink Values as appropriate, and
-            %% try again.
-            BytesPerPoint = Size / PointsChunked,
-            ChunkGuess = Max / BytesPerPoint,
-            %% Always decrement the guess by at least one
-            NewGuess = min(
-                Guess - 1,
-                round(Guess - (Guess - ChunkGuess) / 2)
-            ),
-            %% Never try to split past the end of the list
-            {Left, Right} = lists:split(min(NewGuess, PointsChunked), Values),
-            chunkify(
-                Timestamps,
-                Left,
-                Right ++ Excess,
-                Min,
-                Max,
-                Count,
-                Chunks,
-                NewGuess
-            );
-        Size when Size < Min ->
-            case Excess of
-                [] ->
-                    %% No more points to try - bail out with what we've chunked.
-                    lists:reverse(Chunks);
-                _ ->
-                    %% The chunk was too small. Generate a new guess based on
-                    %% new data, pull points from the front of Excess, and try
-                    %% again.
-                    BytesPerPoint = Size / PointsChunked,
-                    ChunkGuess = Min / BytesPerPoint,
-                    %% Always increment the Guess by at least one
-                    NewGuess = max(
-                        Guess + 1,
-                        round(Guess + (ChunkGuess - Guess) / 2)
-                    ),
-                    %% Never try to split past the end of the list
-                    {Left, Right} = lists:split(
-                        min((NewGuess + 1) - PointsChunked, length(Excess)),
-                        Excess
-                    ),
-                    chunkify(
-                        Timestamps,
-                        Values ++ Left,
-                        Right,
-                        Min,
-                        Max,
-                        Count,
-                        Chunks,
-                        NewGuess
-                    )
-            end;
-        _Size ->
-            {_, Timestamps1} = lists:split(PointsChunked, Timestamps),
-            Chunks1 = [{hd(Timestamps), Chunk, PointsChunked}|Chunks],
-            %% Never try to split past the end of the list
-            {Left, Right} = lists:split(min(Guess, length(Excess)), Excess),
-            chunkify(
-                Timestamps1,
-                Left,
-                Right,
-                Min,
-                Max,
-                Count + PointsChunked,
-                Chunks1,
-                Guess
-            )
+            {ok, {From2, Until2, TrimmedRead}}
     end.
 
 

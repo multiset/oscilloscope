@@ -5,42 +5,60 @@
 
 -include_lib("osc/include/osc_types.hrl").
 
-prop_append() ->
-    ?FORALL(
-        {TKernel, Points0, Interval, {PKTime, PKCounts}, ToAppend},
-        {
-            timestamp(),
-            [[number()]],
-            interval(),
-            {pos_integer(), [pos_integer()]},
-            [{timestamp(), number()}]
-        },
-        begin
-            %% Initialize types based on random values
-            Persisted = lists:reverse(lists:foldl(
+-type kernel() :: {timestamp(), pos_integer(), [pos_integer()]}.
+
+initialize({TimeKernel, PersistKernel, PersistCounts}, Interval) ->
+    Persisted = case PersistCounts of
+        [] ->
+            [];
+        [P|PCs] ->
+            lists:reverse(lists:foldl(
                 fun(Count, [{T, C}|_]=Acc) ->
                     [{T + C * Interval, Count}|Acc]
                 end,
-                [{PKTime - (PKTime rem Interval), hd(PKCounts)}],
-                tl(PKCounts)
-            )),
-            LastPersist = osc_cache:last_persisted_time(
-                Persisted,
-                Interval
-            ),
-            T0 = (LastPersist + Interval) + (TKernel - (TKernel rem Interval)),
-            {T1, Array} = osc_cache:append(
+                [{PersistKernel - (PersistKernel rem Interval), P}],
+                PCs
+            ))
+    end,
+    T0 = TimeKernel - (TimeKernel rem Interval),
+    {LatestPersist, T1} = case Persisted of
+        [] ->
+            {undefined, T0};
+        Persisted ->
+            {LastPersistTime, LastPersistCount} = lists:last(Persisted),
+            LP = LastPersistTime + Interval * (LastPersistCount - 1),
+            {LP, LP + Interval + T0}
+    end,
+    {LatestPersist, T1}.
+
+
+prop_append() ->
+    ?FORALL(
+        {Kernel, Interval, Points0, ToAppend},
+        {
+            kernel(),
+            interval(),
+            [[number()]],
+            [{timestamp(), number()}]
+        },
+        begin
+            {LatestPersist, T0} = initialize(Kernel, Interval),
+            {T1, Array} = osc_window:append(
                 ToAppend,
                 T0,
                 array:from_list(Points0, null),
                 Interval,
-                Persisted
+                LatestPersist
             ),
             Points1 = array:to_list(Array),
             [{EarliestT, _}|_] = lists:sort(ToAppend),
             T = EarliestT - (EarliestT rem Interval),
             %% T1 is set to the smallest sensible value
-            true = T1 == case {T =< LastPersist, T =< T0} of
+            TooOld = case LatestPersist of
+                undefined -> false;
+                LatestPersist -> T < (LatestPersist + Interval)
+            end,
+            true = T1 == case {TooOld, T =< T0} of
                 {true, _} ->
                     T0;
                 {false, true} ->
@@ -54,7 +72,12 @@ prop_append() ->
             %% must be flattened since each array is a list of lists and we
             %% allow multiple entries to the same time range
             PointsActuallyAdded = lists:filter(
-                fun({Time, _Value}) -> Time > LastPersist end,
+                fun({Time, _Value}) ->
+                    case LatestPersist of
+                        undefined -> true;
+                        LatestPersist -> Time >= (LatestPersist + Interval)
+                    end
+                end,
                 ToAppend
             ),
             TotalPoints0 = length(lists:flatten(Points0)) -
@@ -71,7 +94,7 @@ prop_append_point() ->
         {Idx, Value, List},
         {pos_integer(), number(), [value()]},
         begin
-            Array1 = osc_cache:append_point(
+            Array1 = osc_window:append_point(
                 Idx,
                 Value,
                 array:from_list(List, null)
@@ -86,7 +109,7 @@ disabled_prop_read_int() ->
         {timestamp(), timestamp(), interval(), timestamp(), [value()]},
         begin
             Until0 = From0 + Delta,
-            {From1, Until1, Points1} = osc_cache:read_int(
+            {From1, Until1, Points1} = osc_window:read_int(
                 From0,
                 Until0,
                 Interval,
@@ -116,17 +139,18 @@ prop_adjust_query_range() ->
     ).
 
 
-
 prop_maybe_trim() ->
     ?FORALL(
-        {Time0, Points0, Interval, Count},
-        {timestamp(), [any()], interval(), count()},
+        {Kernel, Points0, Interval, Count},
+        {kernel(), [any()], interval(), count()},
         begin
-            {Time1, Array} = osc_cache:maybe_trim(
+            {LatestPersist, Time0} = initialize(Kernel, Interval),
+            {Time1, Array} = osc_window:maybe_trim(
                 Time0,
                 array:from_list(Points0, null),
                 Interval,
-                Count
+                Count,
+                LatestPersist
             ),
             Points1 = array:to_list(Array),
             %% Time never decreases
@@ -135,8 +159,13 @@ prop_maybe_trim() ->
             true = (Time1 - Time0) / Interval == length(Points0) - length(Points1),
             %% We never leave more than Count points in place
             true = length(Points1) =< Count,
-            %% Points are trimmed from the end
-            true = lists:suffix(Points1, Points0)
+            %% Points are trimmed from the beginning
+            true = lists:suffix(Points1, Points0),
+            %% The window's base time is always ahead of the persisted time
+            case LatestPersist of
+                undefined -> true;
+                LatestPersist -> Time1 >= LatestPersist + Interval
+            end
         end
     ).
 

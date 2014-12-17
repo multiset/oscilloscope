@@ -1,19 +1,13 @@
 -module(osc_util).
 -export([
     now/0,
-    ring_ready/0,
     parse_resolution/1,
     adjust_query_range/3
 ]).
 
--include_lib("osc/include/osc.hrl").
-
 now() ->
-    {Megas, Seconds, Micros} = erlang:now(),
+    {Megas, Seconds, _Micros} = erlang:now(),
     Megas * 1000000 + Seconds.
-
-ring_ready() ->
-    riak_core_node_watcher:nodes(?SERVICE) =/= [].
 
 parse_resolution(ResolutionString) ->
     Retentions = re:split(ResolutionString, ","),

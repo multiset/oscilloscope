@@ -1,14 +1,15 @@
 {application, osc, [
     {description, "A distributed time-series data store"},
     {vsn, git},
-    {registered, []},
+    {registered, [osc_sup, osc_cache_sup]},
     {applications, [
         kernel,
-        stdlib,
-        riak_core
+        stdlib
     ]},
     {mod, {osc_app, []}},
     {env, [
-        {min_persist_age, 300}
+        %% Hibernate caches after 30s of inactivity
+        {cache_hibernate_timeout, 30000},
+        {chunkifyability_threshold, 0.9}
     ]}
 ]}.
