@@ -79,13 +79,22 @@ apply_patch(<<"remove">>, [<<"emails">>], Email, UserProps) ->
     Emails = lists:delete(Email, proplists:get_value(emails, UserProps)),
     {ok, [{emails, Emails}|proplists:delete(emails, UserProps)]};
 apply_patch(<<"replace">>, [<<"password">>], {Passwords}, UserProps) ->
-    %% TODO: verify that old password is valid
-    ok = osc_meta_user:change_password(
-        proplists:get_value(id, UserProps),
-        proplists:get_value(<<"new">>, Passwords)
+    OldIsCorrect = osc_meta_user:is_authorized(
+        proplists:get_value(name, UserProps),
+        proplists:get_value(<<"old">>, Passwords)
     ),
-    NewProp = {password, {[{last_modified, osc_util:now()}]}},
-    {ok, [NewProp|proplists:delete(password, UserProps)]};
+    case OldIsCorrect of
+        false ->
+            %% TODO: return a meaningful response here.
+            error;
+        true ->
+            ok = osc_meta_user:change_password(
+                proplists:get_value(id, UserProps),
+                proplists:get_value(<<"new">>, Passwords)
+            ),
+            NewProp = {password, {[{last_modified, osc_util:now()}]}},
+            {ok, [NewProp|proplists:delete(password, UserProps)]}
+    end;
 apply_patch(Op, Path, _, UserProps) ->
     lager:error(
         "Got an unknown patch attempt: ~p, ~p for user ~p",
