@@ -123,7 +123,7 @@ trim(Window) ->
     Chunkifyability :: float().
 
 chunkifyability(_Window) ->
-    1.0.
+    random:uniform().
 
 
 -spec chunkify(Window) -> Chunks when
