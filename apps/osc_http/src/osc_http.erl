@@ -8,6 +8,7 @@
     session/1,
     set_session/3,
     get_session/1,
+    is_authorized/3,
     delete_session/1,
     start/0,
     stop/0
@@ -85,7 +86,17 @@ set_session(Data, Lifetime, Req0) ->
     ).
 
 get_session(Req) ->
-    cowboy_req:meta(session, Req).
+    cowboy_req:meta(session, Req, []).
+
+is_authorized(Req0, SuccessFun, FailureFun) ->
+    {Meta, Req1} = get_session(Req0),
+    case proplists:get_value(id, Meta) of
+        undefined ->
+            {{false, <<"Basic realm=\"oscilloscope\"">>}, Req1, FailureFun()};
+        UserID ->
+            {true, Req1, SuccessFun(UserID)}
+    end.
+
 
 delete_session(Req) ->
     {ok, CookieName} = application:get_env(osc_http, cookie_name),

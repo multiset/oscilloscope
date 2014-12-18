@@ -4,6 +4,7 @@
 -export([
     rest_init/2,
     allowed_methods/2,
+    is_authorized/2,
     content_types_accepted/2,
     content_types_provided/2,
     from_json/2,
@@ -11,7 +12,7 @@
 ]).
 
 -record(st, {
-
+    user_id
 }).
 
 init({tcp, http}, _Req, _Opts) ->
@@ -25,6 +26,13 @@ rest_init(Req, _State) ->
 
 allowed_methods(Req, State) ->
     {[<<"GET">>, <<"POST">>], Req, State}.
+
+is_authorized(Req, State) ->
+    osc_http:is_authorized(
+        Req,
+        fun(UserID) -> State#st{user_id=UserID} end,
+        fun() -> State end
+    ).
 
 content_types_accepted(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, from_json}], Req, State}.

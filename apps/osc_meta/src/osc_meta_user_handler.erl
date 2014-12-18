@@ -4,6 +4,8 @@
 -export([
     rest_init/2,
     allowed_methods/2,
+    is_authorized/2,
+    forbidden/2,
     resource_exists/2,
     content_types_accepted/2,
     content_types_provided/2,
@@ -12,6 +14,7 @@
 ]).
 
 -record(st, {
+    user_id,
     user_props
 }).
 
@@ -21,24 +24,50 @@ init({tcp, http}, _Req, _Opts) ->
 terminate(_Reason, _Req, _State) ->
     ok.
 
-rest_init(Req, _State) ->
-    {ok, Req, #st{}}.
-
-allowed_methods(Req, State) ->
-    {[<<"GET">>, <<"PATCH">>], Req, State}.
-
-resource_exists(Req, State) ->
-    case cowboy_req:binding(userid, Req) of
+rest_init(Req0, _) ->
+    State = #st{},
+    case cowboy_req:binding(user_id, Req0) of
         {undefined, Req1} ->
-            {false, Req1, State};
+            {ok, Req1, State};
         {UserIDBin, Req1} ->
             UserID = list_to_integer(binary_to_list(UserIDBin)),
             case osc_meta_user:lookup(UserID) of
                 not_found ->
-                    {false, Req1, State};
+                    {ok, Req1, State};
                 {ok, UserProps} ->
-                    {true, Req1, State#st{user_props=UserProps}}
+                    {ok, Req1, State#st{user_props=UserProps}}
             end
+    end.
+
+allowed_methods(Req, State) ->
+    {[<<"GET">>, <<"PATCH">>], Req, State}.
+
+is_authorized(Req, State) ->
+    osc_http:is_authorized(
+        Req,
+        fun(UserID) -> State#st{user_id=UserID} end,
+        fun() -> State end
+    ).
+
+forbidden(Req, State) ->
+    #st{
+        user_id=AuthUserID,
+        user_props=UserProps
+    } = State,
+    Forbidden = case UserProps =/= undefined of
+        false ->
+            false;
+        true ->
+            proplists:get_value(id, UserProps) =/= AuthUserID
+    end,
+    {Forbidden, Req, State}.
+
+resource_exists(Req, State) ->
+    case State#st.user_props of
+        undefined ->
+            {false, Req, State};
+        _ ->
+            {true, Req, State}
     end.
 
 content_types_accepted(Req, State) ->

@@ -4,6 +4,8 @@
 -export([
     rest_init/2,
     allowed_methods/2,
+    is_authorized/2,
+    forbidden/2,
     content_types_accepted/2,
     content_types_provided/2,
     from_json/2,
@@ -11,7 +13,8 @@
 ]).
 
 -record(st, {
-
+    user_id,
+    org_id
 }).
 
 init({tcp, http}, _Req, _Opts) ->
@@ -26,6 +29,30 @@ rest_init(Req, _State) ->
 allowed_methods(Req, State) ->
     {[<<"GET">>, <<"POST">>], Req, State}.
 
+is_authorized(Req, State) ->
+    osc_http:is_authorized(
+        Req,
+        fun(UserID) -> State#st{user_id=UserID} end,
+        fun() -> State end
+    ).
+
+forbidden(Req0, State0) ->
+    {OrgIDBin, Req1} = cowboy_req:binding(org_id, Req0),
+    OrgID = list_to_integer(binary_to_list(OrgIDBin)),
+    State1 = State0#st{org_id=OrgID},
+    {Method, Req2} = cowboy_req:method(Req1),
+    Forbidden = case Method of
+        <<"POST">> ->
+            %% Creating a new team requires org ownership
+            IsOwner = osc_meta_org:is_owner(OrgID, State1#st.user_id),
+            not IsOwner;
+        <<"GET">> ->
+            %% Listing teams only requires membership
+            IsMember = osc_meta_org:is_member(OrgID, State1#st.user_id),
+            not IsMember
+    end,
+    {Forbidden, Req2, State1}.
+
 content_types_accepted(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, from_json}], Req, State}.
 
@@ -37,20 +64,16 @@ from_json(Req0, State) ->
     {Body} = jiffy:decode(JSONBody),
     TeamName = proplists:get_value(<<"name">>, Body),
     true = TeamName =/= <<>>,
-    {OrgIDBin, Req2} = cowboy_req:binding(orgid, Req1),
-    OrgID = list_to_integer(binary_to_list(OrgIDBin)),
-    {ok, TeamID} = osc_meta_team:create(OrgID, TeamName),
+    {ok, TeamID} = osc_meta_team:create(State#st.org_id, TeamName),
     %% TODO: Is the user automatically added to the team?
-    Req3 = cowboy_req:set_resp_header(
+    Req2 = cowboy_req:set_resp_header(
         <<"Location">>,
-        [<<"/orgs/">>, OrgIDBin, <<"/teams/">>, integer_to_list(TeamID)],
-        Req2
+        [<<"/orgs/">>, State#st.org_id, <<"/teams/">>, integer_to_list(TeamID)],
+        Req1
     ),
-    {true, Req3, State}.
+    {true, Req2, State}.
 
-to_json(Req0, State) ->
-    {OrgIDBin, Req1} = cowboy_req:binding(orgid, Req0),
-    OrgID = list_to_integer(binary_to_list(OrgIDBin)),
+to_json(Req, State) ->
     Teams = lists:map(
         fun({ID, Name, Members}) ->
             {[
@@ -60,6 +83,6 @@ to_json(Req0, State) ->
                 {metrics, 0} %% TODO
             ]}
         end,
-        osc_meta_org:teams(OrgID)
+        osc_meta_org:teams(State#st.org_id)
     ),
-    {jiffy:encode(Teams), Req1, State}.
+    {jiffy:encode(Teams), Req, State}.
