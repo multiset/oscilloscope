@@ -3,9 +3,12 @@
 -export([
     create/1,
     lookup/1,
-    search/1,
+    name/1,
+    lookup/2,
+    search/2,
+    id/1,
     windows/1,
-    name/1
+    props/1
 ]).
 
 -include_lib("osc/include/osc_types.hrl").
@@ -74,9 +77,33 @@ lookup(Metric) ->
             }}
     end.
 
+-spec lookup(OwnerID, Props) -> {ok, Meta} | not_found when
+    OwnerID :: owner_id(),
+    Props :: any(),
+    Meta :: metricmeta().
 
--spec search(metric()) -> [].
-search({OwnerID, [{Key, Value}]}) ->
+lookup(OwnerID, Props) ->
+    EncodedProps = term_to_binary(lists:sort(Props)),
+    LookupSQL = "SELECT id FROM metrics where owner_id = $1 AND hash = $2",
+    {ok, _, Rows} = osc_sql:adhoc(
+        LookupSQL, [OwnerID, EncodedProps]
+    ),
+    case Rows of
+        [] ->
+            not_found;
+        [{MetricID}] ->
+            Windows = osc_meta_window:lookup(MetricID),
+            {ok, #metricmeta{
+                id = MetricID,
+                owner_id = OwnerID,
+                props = Props,
+                encoded_props = EncodedProps,
+                windows = Windows
+            }}
+    end.
+
+-spec search(owner_id(), [{group_tag_key(), group_tag_value()}]) -> [].
+search(OwnerID, [{Key, Value}]) ->
     % Metrics with only one key-value pair are supported right now
     SQL = "SELECT id FROM metrics "
           "JOIN tags ON metrics.id = tags.metric_id "
@@ -86,10 +113,14 @@ search({OwnerID, [{Key, Value}]}) ->
     {ok, _, Resp} = osc_sql:adhoc(SQL, [OwnerID, Key, Value]),
     [MetricID || {MetricID} <- Resp].
 
+id(#metricmeta{id=ID}) ->
+    ID.
 
 windows(#metricmeta{windows=Windows}) ->
     Windows.
 
-
 name(#metricmeta{owner_id=OwnerID, encoded_props=EncodedProps}) ->
     {OwnerID, EncodedProps}.
+
+props(#metricmeta{props=Props}) ->
+    Props.

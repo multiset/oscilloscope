@@ -9,7 +9,8 @@
     is_owner/2,
     add_member/2,
     remove_member/2,
-    is_member/2
+    is_member/2,
+    team_permissions/2
 ]).
 
 -include_lib("osc/include/osc_types.hrl").
@@ -87,3 +88,20 @@ remove_member(OrgID, UserID) ->
 is_member(OrgID, UserID) ->
     {ok, _, [{IsMember}]} = osc_sql:named(is_org_member, [OrgID, UserID]),
     IsMember.
+
+-spec team_permissions(org_id(), user_id()) -> [{any(), any()}].
+team_permissions(OrgID, UserID) ->
+    SQL = " SELECT tags FROM team_permissions"
+          " WHERE team_id IN ("
+          "   SELECT id FROM teams"
+          "   WHERE org_id = $1"
+          "   AND id IN ("
+          "     SELECT team_id FROM team_members"
+          "     WHERE user_id = $2"
+          "   )"
+          " );",
+    {ok, _, Rows} = osc_sql:adhoc(SQL, [OrgID, UserID]),
+    lists:map(
+        fun({Permissions}) -> lists:map(fun list_to_tuple/1, Permissions) end,
+        Rows
+    ).
