@@ -387,7 +387,7 @@ chunkify(T, Interval, Points, MinChunkSize, MaxChunkSize) ->
 
 chunkify(T0, Interval, Values, Excess, Min, Max, Count, Chunks, Guess) ->
     %% N.B.: This will OOM your BEAM if Min < ?VALENCODE([]).
-    %% As of this comment, ?VALENCODE([]) == 11
+    %% As of this comment, ?VALENCODE([]) == 12
     lager:debug("Chunking ~p, ~p with guess ~p", [Values, Excess, Guess]),
     Chunk = deflate(Values),
     PointsChunked = length(Values),

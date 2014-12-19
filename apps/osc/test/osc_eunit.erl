@@ -228,7 +228,7 @@ chunkify_test() ->
         T,
         Interval,
         Input,
-        11,
+        12,
         1000000
     ),
     Decoded = lists:map(fun({I, V, _}) -> {I, osc_window:inflate(V)} end, Chunked),
