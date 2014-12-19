@@ -8,7 +8,9 @@
     members/1,
     add_member/2,
     remove_member/2,
-    is_member/2
+    is_member/2,
+    remove_permission/2,
+    add_permission/2
 ]).
 
 -include_lib("osc/include/osc_types.hrl").
@@ -26,11 +28,13 @@ lookup(TeamID) ->
             not_found;
         [{TeamName, OrgID}] ->
             {ok, Members} = lookup_members(TeamID),
+            {ok, Permissions} = lookup_permissions(TeamID),
             {ok, [
                 {id, TeamID},
                 {name, TeamName},
                 {orgid, OrgID},
-                {members, Members}
+                {members, Members},
+                {permissions, Permissions}
             ]}
     end.
 
@@ -44,6 +48,16 @@ lookup_members(TeamID) ->
     >>,
     {ok, _Schema, Rows} = osc_sql:adhoc(SQL, [TeamID]),
     {ok, Rows}.
+
+-spec lookup_permissions(team_id()) -> {ok, [any()]}.
+lookup_permissions(TeamID) ->
+    SQL = "SELECT id, tags FROM team_permissions WHERE team_id = $1",
+    {ok, _Schema, Rows} = osc_sql:adhoc(SQL, [TeamID]),
+    Perms = lists:map(
+        fun({ID, Tags}) -> {ID, lists:map(fun list_to_tuple/1, Tags)} end,
+        Rows
+    ),
+    {ok, Perms}.
 
 -spec create(org_id(), binary()) -> {ok, team_id()}.
 create(OrgID, Name) ->
@@ -84,3 +98,21 @@ remove_member(TeamID, UserID) ->
 is_member(TeamID, UserID) ->
     {ok, _, [{IsMember}]} = osc_sql:named(is_team_member, [TeamID, UserID]),
     IsMember.
+
+
+-spec remove_permission(team_id(), any()) -> ok.
+remove_permission(TeamID, PermissionID) ->
+    SQL = "DELETE FROM team_permissions WHERE team_id = $1 AND id = $2",
+    {ok, 1} = osc_sql:adhoc(SQL, [TeamID, PermissionID]),
+    ok.
+
+
+-spec add_permission(team_id(), [{any(), any()}]) -> {ok, any()}.
+add_permission(TeamID, PermissionProps) ->
+    SQL = " INSERT INTO team_permissions (team_id, tags)"
+          " VALUES ($1, $2) RETURNING id;",
+    {ok, _, _, [{ID}]} = osc_sql:adhoc(
+        SQL,
+        [TeamID, lists:map(fun tuple_to_list/1, PermissionProps)]
+    ),
+    {ok, ID}.

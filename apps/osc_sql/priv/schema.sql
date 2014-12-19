@@ -114,6 +114,12 @@ CREATE TABLE ports (
     port integer NOT NULL
 );
 
+CREATE TABLE team_permissions (
+    id serial PRIMARY KEY,
+    team_id integer NOT NULL REFERENCES teams(id),
+    tags text[][] NOT NULL
+);
+
 CREATE INDEX tag_metric_ids_idx ON tags(metric_id);
 
 ALTER TABLE public.metrics OWNER TO osc;
