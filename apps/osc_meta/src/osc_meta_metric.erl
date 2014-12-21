@@ -8,18 +8,7 @@
 ]).
 
 -include_lib("osc/include/osc_types.hrl").
-
--record(metricmeta, {
-    id :: metric_id(),
-    owner_id :: owner_id(),
-    props :: any(), %% TODO
-    encoded_props :: binary(),
-    windows :: [osc_meta_window:windowmeta()]
-}).
-
--opaque metricmeta() :: #metricmeta{}.
--export_type([metricmeta/0]).
-
+-include_lib("osc_meta/include/osc_meta.hrl").
 
 -spec create(Metric) -> {ok, MetricID} | {error, Error} when
     Metric :: metric(),
@@ -43,7 +32,7 @@ create({OwnerID, Props}=Metric) ->
             lists:map(fun({Key, Value}) ->
                 {ok, 1} = osc_sql:named(add_tag, [OwnerID, MetricID, Key, Value])
             end, Props),
-            {ok, Windows} = get_window_configuration(Metric),
+            {ok, Windows} = osc_meta_window_configuration:for_metric(Metric),
             lists:foreach(
                 fun(W) -> osc_meta_window:create(MetricID, W) end,
                 Windows
@@ -78,7 +67,7 @@ lookup(MetricID) ->
     end.
 
 
--spec search({owner_id(), meta()}) -> [].
+-spec search(metric()) -> [].
 search({OwnerID, [{Key, Value}]}) ->
     % Metrics with only one key-value pair are supported right now
     {ok, _, Resp} = osc_sql:adhoc(
@@ -90,10 +79,3 @@ search({OwnerID, [{Key, Value}]}) ->
 
 windows(#metricmeta{windows=Windows}) ->
     Windows.
-
-
-get_window_configuration(_) ->
-    application:get_env(
-        osc_meta,
-        default_window_configuration
-    ).

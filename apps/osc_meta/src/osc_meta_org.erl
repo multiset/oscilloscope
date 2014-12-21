@@ -14,7 +14,7 @@
 
 -include_lib("osc/include/osc_types.hrl").
 
--spec lookup(org_id() | binary()) -> {ok, meta()} | not_found.
+-spec lookup(org_id() | binary()) -> {ok, proplists:proplist()} | not_found.
 lookup(NameOrID) ->
     {ok, Org} = if is_binary(NameOrID) ->
         {ok, _, Org0} = osc_sql:named(get_org_by_name, [NameOrID]),
@@ -33,7 +33,7 @@ lookup(NameOrID) ->
 -spec create(binary(), user_id()) -> {ok, org_id()}.
 create(OrgName, UserID) ->
     [{ok, 1, _, [{OrgID}]}, {ok,1}, {ok,1}] = osc_sql:batch([
-        {create_org, [UserID, OrgName]},
+        {create_org, [OrgName]},
         {add_org_member_by_org_name, [UserID, OrgName]},
         {add_owner_by_org_name, [UserID, OrgName]}
     ]),
