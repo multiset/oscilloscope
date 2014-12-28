@@ -8,3 +8,4 @@ sql_data
 dump.rdb
 erln8.config
 dev
+callgrind.*
