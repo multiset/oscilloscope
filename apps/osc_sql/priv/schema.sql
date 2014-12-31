@@ -101,6 +101,11 @@ CREATE TABLE window_configurations (
     count integer
 );
 
+CREATE TABLE ports (
+    owner_id integer NOT NULL REFERENCES owners(id),
+    port integer NOT NULL
+);
+
 CREATE INDEX tag_metric_ids_idx ON tags(metric_id);
 
 ALTER TABLE public.metrics OWNER TO osc;

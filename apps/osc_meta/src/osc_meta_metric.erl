@@ -38,8 +38,8 @@ create({OwnerID, Props}=Metric) ->
                 Windows
             ),
             {ok, MetricID};
-        _ ->
-            {error, exists}
+        [{MetricID}] ->
+            {error, {exists, MetricID}}
     end.
 
 
