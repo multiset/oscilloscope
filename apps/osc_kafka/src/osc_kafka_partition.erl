@@ -35,31 +35,27 @@ recv(timeout, State) ->
         partition=Partition,
         offset=OldOffset
     } = State,
-    NewState = case kofta:fetch(<<"porter">>, Partition, [{offset, OldOffset}]) of
+    {ok, Topic} = application:get_env(osc_kafka, topic_name),
+    NewState = case kofta:fetch(Topic, Partition, [{offset, OldOffset}]) of
         {ok, []} ->
             State#state{timeout=5000};
         {ok, Messages} ->
-            NewOffset = lists:foldl(fun({Offset, Key, Value}, _Offset) ->
-                <<Time:32/integer, OwnerID:32/integer, Suffix/binary>> = Key,
-                MetricID = case Suffix of
-                    <<1:8/integer, MetricID0:32/integer>> ->
-                        MetricID0;
+            {Batch, NewOffset} = lists:foldl(fun({Offset, Key, BValue}, Acc) ->
+                {BatchAcc, _Offs} = Acc,
+                <<Time:32/integer, OwnerID:32/integer, Rest/binary>> = Key,
+                <<Value:64/float>> = BValue,
+                Message = case Rest of
+                    <<1:8/integer, MetricID:32/integer>> ->
+                        {MetricID, Time, Value};
                     <<0:8/integer, NameBin/binary>> ->
-                        Name = binary_to_term(NameBin),
-                        case osc_meta_metric:create({OwnerID, Name}) of
-                            {ok, MetricID0} ->
-                                MetricID0;
-                            {error, {exists, MetricID0}} ->
-                                MetricID0
-                        end
+                        {OwnerID, binary_to_term(NameBin), Time, Value}
                 end,
-                <<FloatValue:64/float>> = Value,
-                ok = osc:update(MetricID, [{Time, FloatValue}]),
-                Offset
-            end, 0, Messages),
+                {[Message|BatchAcc], Offset}
+            end, {[], 0}, Messages),
+            osc_kafka_router:send(Batch),
             State#state{offset=NewOffset+1, timeout=0};
-        {error, _Reason} ->
-            % TODO: Log
+        {error, Reason} ->
+            lager:error("Error fetching partition ~p: ~p", [Partition, Reason]),
             State#state{timeout=0}
     end,
     {next_state, recv, NewState, NewState#state.timeout}.

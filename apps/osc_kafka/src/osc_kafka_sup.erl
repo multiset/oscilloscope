@@ -6,7 +6,7 @@
 
 -export([init/1]).
 
--define(CHILD(I, Type, A), {I, {I, start_link, A}, permanent, 5000, Type, [I]}).
+-define(CHILD(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, [I]}).
 
 
 start_link() ->
@@ -25,4 +25,16 @@ init([]) ->
             [osc_kafka_partition]
         }
     end, Partitions),
-    {ok, {{one_for_one, 5, 10}, PartitionSpecs}}.
+    PoolArgs = [
+        {name, {local, osc_kafka_router}},
+        {worker_module, osc_kafka_router},
+        {size, 100},
+        {max_overflow, 10}
+    ],
+    MetricCreatorSup = ?CHILD(osc_kafka_metric_creator_sup, supervisor),
+    PoolSpec = poolboy:child_spec(osc_kafka_router, PoolArgs, []),
+    {ok, {{one_for_one, 5, 10}, [
+        MetricCreatorSup,
+        PoolSpec|
+        PartitionSpecs
+    ]}}.

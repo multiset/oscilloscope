@@ -5,8 +5,10 @@
     stop/0
 ]).
 
+
 start() ->
     application:start(osc_kafka).
+
 
 stop() ->
     application:stop(osc_kafka).
