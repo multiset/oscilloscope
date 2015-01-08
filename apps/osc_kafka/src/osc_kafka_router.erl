@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 -behaviour(poolboy_worker).
 
--export([send/1]).
+-export([send/2]).
 
 -export([start_link/1]).
 
@@ -23,19 +23,53 @@
 }).
 
 
--spec send([Message]) -> ok | {error, Reason} when
+-spec send([Message], Timeout) -> ok | {error, Reason} when
     Message :: {MetricID, Time, Value} | {OwnerID, Name, Time, Value},
     MetricID :: integer(),
     Time :: integer(),
     Value :: float(),
     OwnerID :: integer(),
     Name :: [{binary(), binary()}],
-    Reason :: any().
+    Reason :: any(),
+    Timeout :: integer() | infinity.
 
-send(Messages) ->
-    poolboy:transaction(?MODULE, fun(Worker) ->
-        gen_server:call(Worker, {batch, Messages})
-    end).
+send(Messages, Timeout) ->
+    transact(
+        ?MODULE,
+        fun(Worker, WorkerTimeout) ->
+            gen_server:call(Worker, {batch, Messages}, WorkerTimeout)
+        end,
+        50,
+        Timeout
+    ).
+
+
+-spec transact(Pool, Fun, Backoff, Timeout) -> Response when
+    Pool :: atom(),
+    Fun :: fun((pid(), pos_integer()) -> FunResponse),
+    Backoff :: pos_integer(),
+    Timeout :: non_neg_integer(),
+    FunResponse :: any(),
+    Response :: FunResponse | {error, timeout}.
+
+transact(Pool, Fun, Backoff, Timeout) when Timeout > 0 ->
+    try poolboy:checkout(Pool, false, Timeout) of
+        full ->
+            timer:sleep(min(Backoff, Timeout)),
+            transact(Pool, Fun, Backoff * 2, Timeout - Backoff);
+        Worker ->
+            try
+                Fun(Worker, Timeout)
+            catch exit:{timeout, _} ->
+                {error, timeout}
+            after
+                ok = poolboy:checkin(Pool, Worker)
+            end
+    catch exit:{timeout, _} ->
+        {error, timeout}
+    end;
+transact(_, _, _, _) ->
+    {error, timeout}.
 
 
 start_link([]) ->
