@@ -16,6 +16,7 @@
     {env, [
         {partitions, []},
         {topic_name, <<"porter">>},
-        {batch_timeout, 1000}
+        {batch_timeout, 1000},
+        {max_router_latency, 100}
     ]}
 ]}.

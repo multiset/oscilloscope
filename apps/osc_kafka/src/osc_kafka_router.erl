@@ -77,7 +77,8 @@ start_link([]) ->
 
 
 init([]) ->
-    {ok, #state{last_batch=os:timestamp(), max_time=60000, messages=[]}}.
+    {ok, MaxLatency} = application:get_env(osc_kafka, max_router_latency),
+    {ok, #state{last_batch=os:timestamp(), max_time=MaxLatency, messages=[]}}.
 
 
 handle_call({batch, Batch}, _From, State) ->
