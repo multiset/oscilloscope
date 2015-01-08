@@ -157,6 +157,9 @@ send_batch(State) ->
                     ok ->
                         RetryAcc;
                     {error, noproc} ->
+                        % If the metric creator proc terminates between the
+                        % calls to find and update, the update will noproc.
+                        % Retry later instead.
                         lists:foldl(fun({Timestamp, Value}, Acc) ->
                             [{OwnerID, Name, Timestamp, Value}|Acc]
                         end, RetryAcc, Datapoints)
