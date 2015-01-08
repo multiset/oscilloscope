@@ -85,7 +85,9 @@ handle_call({batch, Batch}, _From, State) ->
     #state{
         messages=Messages
     } = State,
-    {NewState, Timeout} = maybe_send_batch(State#state{messages=[Batch|Messages]}),
+    {NewState, Timeout} = maybe_send_batch(
+        State#state{messages=[Batch|Messages]}
+    ),
     {reply, ok, NewState, Timeout}.
 
 
