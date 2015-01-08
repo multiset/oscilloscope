@@ -33,7 +33,7 @@ init([]) ->
     ],
     MetricCreatorSup = ?CHILD(osc_kafka_metric_creator_sup, supervisor),
     PoolSpec = poolboy:child_spec(osc_kafka_router, PoolArgs, []),
-    {ok, {{one_for_one, 5, 10}, [
+    {ok, {{one_for_one, 0, 1}, [
         MetricCreatorSup,
         PoolSpec|
         PartitionSpecs
