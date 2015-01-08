@@ -15,6 +15,7 @@
     {mod, {osc_kafka_app, []}},
     {env, [
         {partitions, []},
-        {topic_name, <<"porter">>}
+        {topic_name, <<"porter">>},
+        {batch_timeout, 1000}
     ]}
 ]}.

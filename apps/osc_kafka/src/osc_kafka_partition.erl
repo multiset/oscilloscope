@@ -7,6 +7,7 @@
 -export([
     init/1,
     recv/2,
+    retry_batch/2,
     handle_event/3,
     handle_sync_event/4,
     handle_info/3,
@@ -17,7 +18,8 @@
 -record(state, {
     partition,
     offset=0,
-    timeout=0
+    timeout,
+    retry_batch
 }).
 
 
@@ -33,12 +35,13 @@ init([Partition]) ->
 recv(timeout, State) ->
     #state{
         partition=Partition,
-        offset=OldOffset
+        offset=OldOffset,
+        timeout=Timeout
     } = State,
     {ok, Topic} = application:get_env(osc_kafka, topic_name),
-    NewState = case kofta:fetch(Topic, Partition, [{offset, OldOffset}]) of
+    case kofta:fetch(Topic, Partition, [{offset, OldOffset}]) of
         {ok, []} ->
-            State#state{timeout=5000};
+            {next_state, recv, State, Timeout};
         {ok, Messages} ->
             {Batch, NewOffset} = lists:foldl(fun({Offset, Key, BValue}, Acc) ->
                 {BatchAcc, _Offs} = Acc,
@@ -52,13 +55,38 @@ recv(timeout, State) ->
                 end,
                 {[Message|BatchAcc], Offset}
             end, {[], 0}, Messages),
-            osc_kafka_router:send(Batch),
-            State#state{offset=NewOffset+1, timeout=0};
+            NewState = State#state{offset=NewOffset+1},
+            {ok, BatchTimeout} = application:get_env(osc_kafka, batch_timeout),
+            case osc_kafka_router:send(Batch, BatchTimeout) of
+                ok ->
+                    {next_state, recv, NewState, Timeout};
+                {error, Reason} ->
+                    lager:error("Error sending batch to router: ~p", [Reason]),
+                    {
+                        next_state,
+                        retry_batch,
+                        NewState#state{retry_batch=Batch},
+                        Timeout
+                    }
+            end;
         {error, Reason} ->
             lager:error("Error fetching partition ~p: ~p", [Partition, Reason]),
-            State#state{timeout=0}
-    end,
-    {next_state, recv, NewState, NewState#state.timeout}.
+            {next_state, recv, State, Timeout}
+    end.
+
+
+retry_batch(timeout, State) ->
+    #state{
+        retry_batch=Batch,
+        timeout=Timeout
+    } = State,
+    case osc_kafka_router:send(Batch) of
+        ok ->
+            {next_state, recv, State#state{retry_batch=undefined}, Timeout};
+        {error, Reason} ->
+            lager:error("Error sending batch to router: ~p", [Reason]),
+            {next_state, retry_batch, State, Timeout}
+    end.
 
 
 handle_event(_Event, StateName, State) ->
