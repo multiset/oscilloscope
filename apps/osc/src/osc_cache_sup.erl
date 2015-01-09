@@ -34,4 +34,8 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init(_Args) ->
+    % Currently, there is no logic in oscilloscope to recover after a single
+    % cache crash. Setting the max restarts to zero will cause a single cache
+    % crash to kill the entire node, which will force oscilloscope to re-read
+    % everything from kafka.
     {ok, {{one_for_one, 0, 10}, []}}.
