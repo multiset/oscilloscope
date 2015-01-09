@@ -23,6 +23,23 @@ reload_statements() ->
     end, Workers).
 
 transact(Msg) ->
-    poolboy:transaction(
-      pgsql,
-      fun(Worker) -> gen_server:call(Worker, Msg) end).
+    transact(Msg, 1000, 30000).
+
+transact(Message, Backoff, Timeout) when Timeout > 0 ->
+    try poolboy:checkout(pgsql, false, Timeout) of
+        full ->
+            timer:sleep(min(Backoff, Timeout)),
+            transact(Message, Backoff * 1.5, Timeout - Backoff);
+        Worker ->
+            try
+                gen_server:call(Worker, Message, Timeout)
+            catch exit:{timeout, _} ->
+                timeout
+            after
+                ok = poolboy:checkin(pgsql, Worker)
+            end
+    catch exit:{timeout, _} ->
+        timeout
+    end;
+transact(_, _, _) ->
+    timeout.

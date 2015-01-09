@@ -10,7 +10,7 @@
     {mod, {osc_sql_app, []}},
     {env, [
         {pools, [
-            {pgsql, [{size, 10}, {max_overflow, 20}], []}
+            {pgsql, [{size, 30}, {max_overflow, 0}], []}
         ]},
         {hostname, {127, 0, 0, 1}},
         {port, 5432},
