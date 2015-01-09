@@ -12,6 +12,7 @@
 ]).
 
 -export([
+    find/1,
     read/3,
     update/2
 ]).
@@ -36,6 +37,14 @@
     windows :: window_map(),
     persisting :: persisting_map()
 }).
+
+
+find({OwnerID, EncodedProps}) ->
+    try gproc:lookup_value({n, l, {OwnerID, EncodedProps}}) of
+        Metric -> {ok, Metric}
+    catch error:badarg ->
+        not_found
+    end.
 
 
 read(Metric, From, Until) ->
@@ -73,7 +82,10 @@ init({Metric, Meta}) ->
         windows=Windows,
         persisting=gb_trees:empty()
     },
+    OwnerID = osc_meta_metric:owner_id(Meta),
+    EncodedProps = osc_meta_metric:encoded_props(Meta),
     gproc:reg({n, l, Metric}, ignored),
+    gproc:reg({n, l, {OwnerID, EncodedProps}}, Metric),
     {ok, State, hibernate_timeout()}.
 
 

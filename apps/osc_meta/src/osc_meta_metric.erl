@@ -4,7 +4,9 @@
     create/1,
     lookup/1,
     search/1,
-    windows/1
+    windows/1,
+    encoded_props/1,
+    owner_id/1
 ]).
 
 -include_lib("osc/include/osc_types.hrl").
@@ -79,3 +81,11 @@ search({OwnerID, [{Key, Value}]}) ->
 
 windows(#metricmeta{windows=Windows}) ->
     Windows.
+
+
+encoded_props(#metricmeta{encoded_props=Props}) ->
+    Props.
+
+
+owner_id(#metricmeta{owner_id=OwnerID}) ->
+    OwnerID.

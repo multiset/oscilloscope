@@ -70,27 +70,32 @@ send_batch(State) ->
     Retry = dict:fold(fun(Key, Datapoints, RetryAcc) ->
         case Key of
             {OwnerID, Name} ->
-                Pid = case osc_kafka_metric_creator:find(OwnerID, Name) of
-                    undefined ->
-                        % TODO: handle not {ok, Pid}
-                        {ok, Pid0} = osc_kafka_metric_creator_sup:start_child(
-                            OwnerID,
-                            Name
-                        ),
-                        Pid0;
-                    Pid0 ->
-                        Pid0
-                end,
-                case osc_kafka_metric_creator:update(Pid, Datapoints) of
-                    ok ->
-                        RetryAcc;
-                    {error, noproc} ->
-                        % If the metric creator proc terminates between the
-                        % calls to find and update, the update will noproc.
-                        % Retry later instead.
-                        lists:foldl(fun({Timestamp, Value}, Acc) ->
-                            [{OwnerID, Name, Timestamp, Value}|Acc]
-                        end, RetryAcc, Datapoints)
+                case osc_cache:find({OwnerID, Name}) of
+                    not_found ->
+                        Pid = case osc_kafka_metric_creator:find(OwnerID, Name) of
+                            undefined ->
+                                % TODO: handle not {ok, Pid}
+                                {ok, Pid0} = osc_kafka_metric_creator_sup:start_child(
+                                    OwnerID,
+                                    Name
+                                ),
+                                Pid0;
+                            Pid0 ->
+                                Pid0
+                        end,
+                        case osc_kafka_metric_creator:update(Pid, Datapoints) of
+                            ok ->
+                                RetryAcc;
+                            {error, noproc} ->
+                                % If the metric creator proc terminates between the
+                                % calls to find and update, the update will noproc.
+                                % Retry later instead.
+                                lists:foldl(fun({Timestamp, Value}, Acc) ->
+                                    [{OwnerID, Name, Timestamp, Value}|Acc]
+                                end, RetryAcc, Datapoints)
+                        end;
+                    {ok, MetricID} ->
+                        ok = osc_cache:update(MetricID, Datapoints)
                 end;
             MetricID ->
                 ok = osc_cache:update(MetricID, Datapoints),
