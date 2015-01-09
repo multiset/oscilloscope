@@ -55,20 +55,8 @@ recv(timeout, State) ->
                 end,
                 {[Message|BatchAcc], Offset}
             end, {[], 0}, Messages),
-            NewState = State#state{offset=NewOffset+1},
-            {ok, BatchTimeout} = application:get_env(osc_kafka, batch_timeout),
-            case osc_kafka_router:send(Batch, BatchTimeout) of
-                ok ->
-                    {next_state, recv, NewState, 0};
-                {error, Reason} ->
-                    lager:error("Error sending batch to router: ~p", [Reason]),
-                    {
-                        next_state,
-                        retry_batch,
-                        NewState#state{retry_batch=Batch},
-                        Timeout
-                    }
-            end;
+            ok = osc_kafka_router_sup:start_child(Batch),
+            {next_state, recv, State#state{offset=NewOffset+1}, Timeout};
         {error, Reason} ->
             lager:error("Error fetching partition ~p: ~p", [Partition, Reason]),
             {next_state, recv, State, Timeout}

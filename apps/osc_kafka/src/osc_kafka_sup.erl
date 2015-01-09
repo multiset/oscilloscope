@@ -25,16 +25,9 @@ init([]) ->
             [osc_kafka_partition]
         }
     end, Partitions),
-    PoolArgs = [
-        {name, {local, osc_kafka_router}},
-        {worker_module, osc_kafka_router},
-        {size, 100},
-        {max_overflow, 10}
-    ],
     MetricCreatorSup = ?CHILD(osc_kafka_metric_creator_sup, supervisor),
-    PoolSpec = poolboy:child_spec(osc_kafka_router, PoolArgs, []),
     {ok, {{one_for_one, 0, 1}, [
+        ?CHILD(osc_kafka_router_sup, supervisor),
         MetricCreatorSup,
-        PoolSpec|
         PartitionSpecs
     ]}}.

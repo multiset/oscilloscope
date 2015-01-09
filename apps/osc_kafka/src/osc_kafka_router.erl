@@ -1,9 +1,6 @@
 -module(osc_kafka_router).
 
 -behaviour(gen_server).
--behaviour(poolboy_worker).
-
--export([send/2]).
 
 -export([start_link/1]).
 
@@ -17,87 +14,35 @@
 ]).
 
 -record(state, {
-    messages,
-    max_time,
-    last_batch
+    batch
 }).
 
 
--spec send([Message], Timeout) -> ok | {error, Reason} when
-    Message :: {MetricID, Time, Value} | {OwnerID, Name, Time, Value},
-    MetricID :: integer(),
-    Time :: integer(),
-    Value :: float(),
-    OwnerID :: integer(),
-    Name :: [{binary(), binary()}],
-    Reason :: any(),
-    Timeout :: integer() | infinity.
-
-send(Messages, Timeout) ->
-    transact(
-        ?MODULE,
-        fun(Worker, WorkerTimeout) ->
-            gen_server:call(Worker, {batch, Messages}, WorkerTimeout)
-        end,
-        50,
-        Timeout
-    ).
+start_link(Batch) ->
+    gen_server:start_link(?MODULE, [Batch], []).
 
 
--spec transact(Pool, Fun, Backoff, Timeout) -> Response when
-    Pool :: atom(),
-    Fun :: fun((pid(), pos_integer()) -> FunResponse),
-    Backoff :: pos_integer(),
-    Timeout :: non_neg_integer(),
-    FunResponse :: any(),
-    Response :: FunResponse | {error, timeout}.
-
-transact(Pool, Fun, Backoff, Timeout) when Timeout > 0 ->
-    try poolboy:checkout(Pool, false, Timeout) of
-        full ->
-            timer:sleep(min(Backoff, Timeout)),
-            transact(Pool, Fun, Backoff * 2, Timeout - Backoff);
-        Worker ->
-            try
-                Fun(Worker, Timeout)
-            catch exit:{timeout, _} ->
-                {error, timeout}
-            after
-                ok = poolboy:checkin(Pool, Worker)
-            end
-    catch exit:{timeout, _} ->
-        {error, timeout}
-    end;
-transact(_, _, _, _) ->
-    {error, timeout}.
+init([Batch]) ->
+    {ok, #state{batch=Batch}, 0}.
 
 
-start_link([]) ->
-    gen_server:start_link(?MODULE, [], []).
+handle_call(Msg, _From, State) ->
+    lager:error("Received unknown message: ~p", [Msg]),
+    {stop, unknown_message, State}.
 
 
-init([]) ->
-    {ok, MaxLatency} = application:get_env(osc_kafka, max_router_latency),
-    {ok, #state{last_batch=os:timestamp(), max_time=MaxLatency, messages=[]}}.
-
-
-handle_call({batch, Batch}, _From, State) ->
-    #state{
-        messages=Messages
-    } = State,
-    {NewState, Timeout} = maybe_send_batch(
-        State#state{messages=[Batch|Messages]}
-    ),
-    {reply, ok, NewState, Timeout}.
-
-
-handle_cast(_Msg, State) ->
-    {noreply, State}.
+handle_cast(Msg, State) ->
+    lager:error("Received unknown message: ~p", [Msg]),
+    {stop, unknown_message, State}.
 
 
 handle_info(timeout, State) ->
-    {NewState, Timeout} = maybe_send_batch(State),
-    {noreply, NewState, Timeout}.
+    case send_batch(State) of
+        #state{batch=[]}=NewState ->
+            {stop, normal, NewState};
+        NewState ->
+            {noreply, NewState, 1000}
+    end.
 
 
 terminate(_Reason, _State) ->
@@ -108,30 +53,11 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 
--spec maybe_send_batch(State) -> {State, Timeout} when
-    State :: #state{},
-    Timeout :: integer().
-
-maybe_send_batch(State) ->
-    #state{
-        last_batch=LastBatch,
-        max_time=MaxTime
-    } = State,
-    case timer:now_diff(os:timestamp(), LastBatch) of
-        Diff when Diff >= MaxTime ->
-            {send_batch(State), MaxTime};
-        Diff ->
-            {State, MaxTime-Diff}
-    end.
-
-
 -spec send_batch(State) -> State when
     State :: #state{}.
 
 send_batch(State) ->
-    #state{messages=Messages} = State,
-    FlatMessages = lists:flatten(Messages),
-
+    #state{batch=Batch} = State,
     GroupedMessages = lists:foldl(fun(Message, Acc) ->
         case Message of
             {OwnerID, Name, Timestamp, Value} ->
@@ -139,7 +65,7 @@ send_batch(State) ->
             {MetricID, Timestamp, Value} ->
                 dict:append(MetricID, {Timestamp, Value}, Acc)
         end
-    end, dict:new(), FlatMessages),
+    end, dict:new(), Batch),
 
     Retry = dict:fold(fun(Key, Datapoints, RetryAcc) ->
         case Key of
@@ -171,5 +97,4 @@ send_batch(State) ->
                 RetryAcc
         end
     end, [], GroupedMessages),
-
-    State#state{messages=Retry, last_batch=os:timestamp()}.
+    #state{batch=Retry}.
