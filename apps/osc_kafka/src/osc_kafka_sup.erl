@@ -17,7 +17,7 @@ init([]) ->
     {ok, Partitions} = application:get_env(osc_kafka, partitions),
     PartitionSpecs = lists:map(fun(Partition) ->
         {
-            list_to_atom("osc_kafka_partition_" ++ integer_to_list(Partition)),
+            osc_kafka_partition:name(Partition),
             {osc_kafka_partition, start_link, [Partition]},
             permanent,
             5000,

@@ -2,6 +2,8 @@
 
 -behaviour(gen_fsm).
 
+-export([name/1]).
+
 -export([start_link/1]).
 
 -export([
@@ -24,8 +26,7 @@
 
 
 start_link(Partition) ->
-    Name = list_to_atom("osc_kafka_partition_" ++ integer_to_list(Partition)),
-    gen_fsm:start_link({local, Name}, ?MODULE, [Partition], []).
+    gen_fsm:start_link({local, name(Partition)}, ?MODULE, [Partition], []).
 
 
 init([Partition]) ->
@@ -95,3 +96,7 @@ terminate(_Reason, _StateName, _State) ->
 
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
+
+
+name(PartitionID) ->
+    list_to_atom("osc_kafka_partition_" ++ integer_to_list(PartitionID)).
