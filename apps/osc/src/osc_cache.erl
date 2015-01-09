@@ -39,23 +39,29 @@
 }).
 
 
-find({OwnerID, EncodedProps}) ->
-    try gproc:lookup_value({n, l, {OwnerID, EncodedProps}}) of
-        Metric -> {ok, Metric}
-    catch error:badarg ->
-        not_found
+find(Metric) ->
+    case gproc:where({n, l, Metric}) of
+        undefined ->
+            case osc_meta_metric:lookup(Metric) of
+                not_found ->
+                    not_found;
+                {ok, Meta} ->
+                    osc_cache_sup:start_cache(Metric, Meta)
+            end;
+        Pid ->
+            Pid
     end.
 
 
 read(Metric, From, Until) ->
-    case osc_cache_sup:find(Metric) of
+    case find(Metric) of
         not_found -> not_found;
         {ok, Pid} -> gen_server:call(Pid, {read, From, Until})
     end.
 
 
 update(Metric, Points) ->
-    case osc_cache_sup:find(Metric) of
+    case find(Metric) of
         not_found -> not_found;
         {ok, Pid} -> gen_server:call(Pid, {update, Points})
     end.
@@ -82,10 +88,9 @@ init({Metric, Meta}) ->
         windows=Windows,
         persisting=gb_trees:empty()
     },
-    OwnerID = osc_meta_metric:owner_id(Meta),
-    EncodedProps = osc_meta_metric:encoded_props(Meta),
     gproc:reg({n, l, Metric}, ignored),
-    gproc:reg({n, l, {OwnerID, EncodedProps}}, Metric),
+    Name = osc_meta_metric:name(Meta),
+    gproc:reg({n, l, Name}, ignored),
     {ok, State, hibernate_timeout()}.
 
 
