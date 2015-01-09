@@ -103,6 +103,8 @@ CREATE TABLE window_configurations (
 
 CREATE TABLE ports (
     owner_id integer NOT NULL REFERENCES owners(id),
+    host bytea,
+    "type" bytea NOT NULL,
     port integer NOT NULL
 );
 
