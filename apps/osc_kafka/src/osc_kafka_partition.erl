@@ -21,7 +21,8 @@
     partition,
     offset=0,
     timeout=1000,
-    retry_batch
+    retry_batch,
+    topic_name
 }).
 
 
@@ -30,16 +31,17 @@ start_link(Partition) ->
 
 
 init([Partition]) ->
-    {ok, recv, #state{partition=Partition}, 0}.
+    {ok, Topic} = application:get_env(osc_kafka, topic_name),
+    {ok, recv, #state{partition=Partition, topic_name=Topic}, 0}.
 
 
 recv(timeout, State) ->
     #state{
         partition=Partition,
         offset=OldOffset,
-        timeout=Timeout
+        timeout=Timeout,
+        topic_name=Topic
     } = State,
-    {ok, Topic} = application:get_env(osc_kafka, topic_name),
     case kofta:fetch(Topic, Partition, [{offset, OldOffset}]) of
         {ok, []} ->
             {next_state, recv, State, Timeout};
