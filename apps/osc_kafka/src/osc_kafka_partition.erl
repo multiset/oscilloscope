@@ -18,7 +18,7 @@
 -record(state, {
     partition,
     offset=0,
-    timeout,
+    timeout=1000,
     retry_batch
 }).
 
@@ -59,7 +59,7 @@ recv(timeout, State) ->
             {ok, BatchTimeout} = application:get_env(osc_kafka, batch_timeout),
             case osc_kafka_router:send(Batch, BatchTimeout) of
                 ok ->
-                    {next_state, recv, NewState, Timeout};
+                    {next_state, recv, NewState, 0};
                 {error, Reason} ->
                     lager:error("Error sending batch to router: ~p", [Reason]),
                     {
