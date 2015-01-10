@@ -9,16 +9,21 @@
 -export([init/1]).
 
 
-start_child(OwnerID, Name) ->
+start_child(OwnerID, EncodedProps) ->
     ChildSpec = {
-        make_ref(),
-        {osc_kafka_metric_creator, start_link, [OwnerID, Name]},
+        {OwnerID, EncodedProps},
+        {osc_kafka_metric_creator, start_link, [OwnerID, EncodedProps]},
         transient,
         5000,
         worker,
         [osc_kafka_metric_creator]
     },
-    supervisor:start_child(?MODULE, ChildSpec).
+    case supervisor:start_child(?MODULE, ChildSpec) of
+        {error, {already_started, Pid}} ->
+            {ok, Pid};
+        Other ->
+            Other
+    end.
 
 
 start_link() ->
