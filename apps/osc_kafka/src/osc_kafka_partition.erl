@@ -9,7 +9,6 @@
 -export([
     init/1,
     recv/2,
-    retry_batch/2,
     handle_event/3,
     handle_sync_event/4,
     handle_info/3,
@@ -21,7 +20,6 @@
     partition,
     offset=0,
     timeout=1000,
-    retry_batch,
     topic_name
 }).
 
@@ -50,33 +48,19 @@ recv(timeout, State) ->
                 {BatchAcc, _Offs} = Acc,
                 <<Time:32/integer, OwnerID:32/integer, Rest/binary>> = Key,
                 <<Value:64/float>> = BValue,
-                Message = case Rest of
+                Metric = case Rest of
                     <<1:8/integer, MetricID:32/integer>> ->
-                        {MetricID, Time, Value};
+                        MetricID;
                     <<0:8/integer, NameBin/binary>> ->
-                        {OwnerID, binary_to_term(NameBin), Time, Value}
+                        {OwnerID, NameBin}
                 end,
-                {[Message|BatchAcc], Offset}
+                {[{Metric, Time, Value}|BatchAcc], Offset}
             end, {[], 0}, Messages),
-            ok = osc_kafka_router_sup:start_child(Batch),
+            ok = osc_kafka_insert_sup:start_child(Batch),
             {next_state, recv, State#state{offset=NewOffset+1}, Timeout};
         {error, Reason} ->
             lager:error("Error fetching partition ~p: ~p", [Partition, Reason]),
             {next_state, recv, State, Timeout}
-    end.
-
-
-retry_batch(timeout, State) ->
-    #state{
-        retry_batch=Batch,
-        timeout=Timeout
-    } = State,
-    case osc_kafka_router:send(Batch) of
-        ok ->
-            {next_state, recv, State#state{retry_batch=undefined}, Timeout};
-        {error, Reason} ->
-            lager:error("Error sending batch to router: ~p", [Reason]),
-            {next_state, retry_batch, State, Timeout}
     end.
 
 

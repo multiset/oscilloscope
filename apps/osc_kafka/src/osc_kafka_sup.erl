@@ -27,7 +27,7 @@ init([]) ->
     end, Partitions),
     MetricCreatorSup = ?CHILD(osc_kafka_metric_creator_sup, supervisor),
     {ok, {{one_for_one, 0, 1}, [
-        ?CHILD(osc_kafka_router_sup, supervisor),
+        ?CHILD(osc_kafka_insert_sup, supervisor),
         MetricCreatorSup,
         PartitionSpecs
     ]}}.
