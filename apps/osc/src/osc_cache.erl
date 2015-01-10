@@ -12,6 +12,7 @@
 ]).
 
 -export([
+    start/1,
     find/1,
     read/3,
     update/2
@@ -39,32 +40,26 @@
 }).
 
 
+start(Metric) ->
+    case osc_meta_metric:lookup(Metric) of
+        not_found -> not_found;
+        {ok, Meta} -> osc_cache_sup:start_cache(Metric, Meta)
+    end.
+
+
 find(Metric) ->
     case gproc:where({n, l, Metric}) of
-        undefined ->
-            case osc_meta_metric:lookup(Metric) of
-                not_found ->
-                    not_found;
-                {ok, Meta} ->
-                    osc_cache_sup:start_cache(Metric, Meta)
-            end;
-        Pid ->
-            Pid
+        undefined -> not_found;
+        Pid -> {ok, Pid}
     end.
 
 
-read(Metric, From, Until) ->
-    case find(Metric) of
-        not_found -> not_found;
-        {ok, Pid} -> gen_server:call(Pid, {read, From, Until})
-    end.
+read(Pid, From, Until) ->
+    gen_server:call(Pid, {read, From, Until}).
 
 
-update(Metric, Points) ->
-    case find(Metric) of
-        not_found -> not_found;
-        {ok, Pid} -> gen_server:call(Pid, {update, Points})
-    end.
+update(Pid, Points) ->
+    gen_server:call(Pid, {update, Points}).
 
 
 start_link(Metric, Meta) ->
