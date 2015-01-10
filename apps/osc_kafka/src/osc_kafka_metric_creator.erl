@@ -1,131 +1,145 @@
 -module(osc_kafka_metric_creator).
 
--behaviour(gen_fsm).
+-behaviour(gen_server).
 
 -export([
-    find/2,
+    find/1,
     update/2
 ]).
 
--export([start_link/2]).
+-export([start_link/0]).
 
 -export([
     init/1,
-    create_metric/2,
-    create_metric/3,
-    flush/2,
-    flush/3,
-    handle_event/3,
-    handle_sync_event/4,
-    handle_info/3,
-    terminate/3,
-    code_change/4
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
 ]).
 
 -record(state, {
-    datapoints=[],
-    metric_id,
-    owner_id,
-    metric_name,
-    flush_timeout=10000
+    metric,
+    datapoints,
+    flush=false
 }).
 
 
--spec find(OwnerID, Name) -> {ok, Pid} | undefined when
+-spec find({OwnerID, EncodedProps}) -> {ok, Pid} | undefined when
     OwnerID :: integer(),
-    Name :: [{binary(), binary()}],
+    EncodedProps :: binary(),
     Pid :: pid().
 
-find(OwnerID, Name) ->
-    gproc:where({n, l, {OwnerID, Name}}).
+find({OwnerID, EncodedProps}) ->
+    case gproc:where({n, l, {OwnerID, EncodedProps}}) of
+        undefined ->
+            osc_kafka_metric_creator_sup:start_child(
+                OwnerID,
+                EncodedProps
+            );
+        Pid ->
+            {ok, Pid}
+    end.
 
 
--spec update(Pid, Datapoints) -> ok | {error, Reason} when
-    Pid :: pid(),
+-spec update({OwnerID, EncodedProps}, Datapoints) -> ok | {error, Reason} when
+    OwnerID :: integer(),
+    EncodedProps :: binary(),
     Datapoints :: [{integer(), float()}],
     Reason :: any().
 
-update(Pid, Datapoints) ->
-    try gen_fsm:sync_send_event(Pid, {update, Datapoints})
-    catch _:Reason ->
-        {error, Reason}
-    end.
+update({OwnerID, EncodedProps}, Datapoints) ->
+    {ok, Pid} = find({OwnerID, EncodedProps}),
+    gen_server:call(Pid, {update, Datapoints}).
 
 
-start_link(OwnerID, Name) ->
-    gen_fsm:start_link(?MODULE, [OwnerID, Name], []).
+start_link() ->
+    gen_server:start_link(?MODULE, [], []).
 
 
-init([OwnerID, Name]) ->
-    gproc:reg({n, l, {OwnerID, Name}}),
-    {ok, create_metric, #state{owner_id=OwnerID, metric_name=Name}, 0}.
+init([OwnerID, EncodedProps]) ->
+    gproc:reg({n, l, {OwnerID, EncodedProps}}),
+    spawn_monitor(fun() ->
+        create_metric({OwnerID, EncodedProps})
+    end),
+    {ok, #state{metric={OwnerID, EncodedProps}}, 0}.
 
 
-create_metric(timeout, State) ->
+handle_call({update, NewDatapoints}, _From, State) ->
     #state{
-        owner_id=OwnerID,
-        metric_name=Name
+        datapoints=Datapoints
     } = State,
-    case osc_meta_metric:create({OwnerID, Name}) of
-        {ok, MetricID} ->
-            {next_state, flush, State#state{metric_id=MetricID}};
-        {error, {exists, MetricID}} ->
-            {next_state, flush, State#state{metric_id=MetricID}};
-        {error, Reason} ->
-            lager:error("Error while creating metric: ~p", [Reason]),
-            {next_state, create_metric, State, 5000}
-    end.
-
-
-create_metric({update, NewDatapoints}, _From, State) ->
-    #state{datapoints=Datapoints} = State,
     NewState = State#state{datapoints=[NewDatapoints|Datapoints]},
-    {reply, ok, create_metric, NewState, 0}.
+    format_reply(ok, NewState);
+
+% Because of gproc indirection, may get requests intended for the cache.
+handle_call(_Msg, _From, State) ->
+    format_reply(not_ready, State).
 
 
-flush(timeout, #state{datapoints=[]}=State) ->
-    {stop, normal, State};
+handle_cast(_Msg, State) ->
+    {stop, unknown_cast, State}.
 
-flush(timeout, State) ->
+
+handle_info({'DOWN', _, _, _, Info}, State) ->
+    case Info of
+        normal ->
+            {noreply, State#state{flush=true}, 0};
+        _ ->
+            lager:error("Metric creator failed: ~p", [Info]),
+            spawn_monitor(fun() ->
+                create_metric(State#state.metric)
+            end),
+            {noreply, State}
+    end;
+
+handle_info(timeout, State) ->
     #state{
         datapoints=Datapoints,
-        flush_timeout=Timeout,
-        metric_id=MetricID
+        metric=Metric
     } = State,
-    ok = osc_cache:update(MetricID, lists:flatten(Datapoints)),
-    {next_state, flush, State#state{datapoints=[]}, Timeout}.
+    Self = self(),
+    {ok, Pid} = case osc_cache:find(Metric) of
+        not_found ->
+            osc_cache:start(Metric);
+        {ok, Pid0} ->
+            {ok, Pid0}
+    end,
+    case Pid of
+        Self ->
+            {stop, cache_still_self, State};
+        _ ->
+            ok = osc_cache:update(Pid, Datapoints),
+            {stop, normal, State}
+
+    end.
 
 
-flush({update, NewDatapoints}, _From, State) ->
-    #state{
-        datapoints=Datapoints,
-        flush_timeout=Timeout,
-        metric_id=MetricID
-    } = State,
-    ok = osc_cache:update(MetricID, lists:flatten([NewDatapoints|Datapoints])),
-    {reply, ok, flush, State#state{datapoints=[]}, Timeout}.
-
-
-handle_event(_Event, StateName, State) ->
-    {next_state, StateName, State}.
-
-
-handle_sync_event(_Event, _From, StateName, State) ->
-    {reply, ok, StateName, State}.
-
-
-handle_info(_Info, StateName, State) ->
-    {next_state, StateName, State}.
-
-
-terminate(_Reason, _StateName, State) ->
-    #state{
-        owner_id=OwnerID,
-        metric_name=Name
-    } = State,
-    gproc:unreg({n, l, {OwnerID, Name}}),
+terminate(_Reason, _State) ->
     ok.
 
 
-code_change(_OldVsn, StateName, State, _Extra) ->
-    {ok, StateName, State}.
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+
+create_metric(Metric) ->
+    case osc_meta_metric:create(Metric) of
+        {ok, _MetricID} ->
+            ok;
+        {error, {exists, _MetricID}} ->
+            ok;
+        {error, Reason} ->
+            lager:error("Error while creating metric: ~p", [Reason]),
+            timer:sleep(5000),
+            create_metric(Metric)
+    end.
+
+
+format_reply(Reply, State) ->
+    case State of
+        #state{flush=true} ->
+            {reply, Reply, State, 0};
+        #state{flush=false} ->
+            {reply, Reply, State}
+    end.
