@@ -2,12 +2,7 @@
 
 -behaviour(gen_server).
 
--export([
-    find/1,
-    update/2
-]).
-
--export([start_link/0]).
+-export([start_link/2]).
 
 -export([
     init/1,
@@ -25,36 +20,8 @@
 }).
 
 
--spec find({OwnerID, EncodedProps}) -> {ok, Pid} | undefined when
-    OwnerID :: integer(),
-    EncodedProps :: binary(),
-    Pid :: pid().
-
-find({OwnerID, EncodedProps}) ->
-    case gproc:where({n, l, {OwnerID, EncodedProps}}) of
-        undefined ->
-            osc_kafka_metric_creator_sup:start_child(
-                OwnerID,
-                EncodedProps
-            );
-        Pid ->
-            {ok, Pid}
-    end.
-
-
--spec update({OwnerID, EncodedProps}, Datapoints) -> ok | {error, Reason} when
-    OwnerID :: integer(),
-    EncodedProps :: binary(),
-    Datapoints :: [{integer(), float()}],
-    Reason :: any().
-
-update({OwnerID, EncodedProps}, Datapoints) ->
-    {ok, Pid} = find({OwnerID, EncodedProps}),
-    gen_server:call(Pid, {update, Datapoints}).
-
-
-start_link() ->
-    gen_server:start_link(?MODULE, [], []).
+start_link(OwnerID, EncodedProps) ->
+    gen_server:start_link(?MODULE, [OwnerID, EncodedProps], []).
 
 
 init([OwnerID, EncodedProps]) ->
