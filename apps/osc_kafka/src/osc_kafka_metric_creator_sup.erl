@@ -2,17 +2,17 @@
 
 -behaviour(supervisor).
 
--export([start_child/2]).
+-export([start_child/1]).
 
 -export([start_link/0]).
 
 -export([init/1]).
 
 
-start_child(OwnerID, EncodedProps) ->
+start_child({OwnerID, EncodedProps}) ->
     ChildSpec = {
         {OwnerID, EncodedProps},
-        {osc_kafka_metric_creator, start_link, [OwnerID, EncodedProps]},
+        {osc_kafka_metric_creator, start_link, [{OwnerID, EncodedProps}]},
         transient,
         5000,
         worker,

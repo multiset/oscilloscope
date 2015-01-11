@@ -85,7 +85,10 @@ init({Metric, Meta}) ->
     },
     gproc:reg({n, l, Metric}, ignored),
     Name = osc_meta_metric:name(Meta),
-    gproc:reg({n, l, Name}, ignored),
+    try gproc:reg({n, l, Name}, ignored)
+    catch error:badarg ->
+        ok
+    end,
     {ok, State, hibernate_timeout()}.
 
 

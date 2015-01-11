@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/2]).
+-export([start_link/1]).
 
 -export([
     init/1,
@@ -14,22 +14,28 @@
 ]).
 
 -record(state, {
-    metric,
+    encoded_metric,
+    decoded_metric,
     datapoints,
     flush=false
 }).
 
 
-start_link(OwnerID, EncodedProps) ->
+start_link({OwnerID, EncodedProps}) ->
     gen_server:start_link(?MODULE, [OwnerID, EncodedProps], []).
 
 
 init([OwnerID, EncodedProps]) ->
     gproc:reg({n, l, {OwnerID, EncodedProps}}),
+    Props = osc_meta_util:decode_props(EncodedProps),
     spawn_monitor(fun() ->
-        create_metric({OwnerID, EncodedProps})
+        create_metric({OwnerID, Props})
     end),
-    {ok, #state{metric={OwnerID, EncodedProps}}, 0}.
+    State = #state{
+        decoded_metric={OwnerID, Props},
+        encoded_metric={OwnerID, EncodedProps}
+    },
+    {ok, State}.
 
 
 handle_call({update, NewDatapoints}, _From, State) ->
@@ -49,13 +55,19 @@ handle_cast(_Msg, State) ->
 
 
 handle_info({'DOWN', _, _, _, Info}, State) ->
+    #state{
+        decoded_metric=DMetric,
+        encoded_metric=EMetric
+    } = State,
     case Info of
         normal ->
+            {ok, Pid} = osc_cache:start(DMetric),
+            gproc:give_away(EMetric, Pid),
             {noreply, State#state{flush=true}, 0};
         _ ->
             lager:error("Metric creator failed: ~p", [Info]),
             spawn_monitor(fun() ->
-                create_metric(State#state.metric)
+                create_metric(DMetric)
             end),
             {noreply, State}
     end;
@@ -63,12 +75,13 @@ handle_info({'DOWN', _, _, _, Info}, State) ->
 handle_info(timeout, State) ->
     #state{
         datapoints=Datapoints,
-        metric=Metric
+        encoded_metric=EMetric,
+        decoded_metric=DMetric
     } = State,
     Self = self(),
-    {ok, Pid} = case osc_cache:find(Metric) of
+    {ok, Pid} = case osc_cache:find(EMetric) of
         not_found ->
-            osc_cache:start(Metric);
+            osc_cache:start(DMetric);
         {ok, Pid0} ->
             {ok, Pid0}
     end,

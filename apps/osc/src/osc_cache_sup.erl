@@ -16,7 +16,12 @@ start_cache(Metric, Meta) ->
         {osc_cache, start_link, [Metric, Meta]},
         temporary, 5000, worker, [osc_cache]
     },
-    supervisor:start_child(?MODULE, Spec).
+    case supervisor:start_child(?MODULE, Spec) of
+        {error, {already_started, Pid}} ->
+            {ok, Pid};
+        Other ->
+            Other
+    end.
 
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
