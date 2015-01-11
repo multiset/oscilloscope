@@ -43,12 +43,12 @@ apod_op(W, Interval, {truncate, Time}) ->
     ok = apod:truncate(W, Time),
     true = apod:earliest_time(W) >= Time + Interval - (Time rem Interval).
 
-prop_apod_rect_avg() ->
+prop_apod_rect_average() ->
     ?FORALL(
         Ops,
         non_empty(list(op())),
         begin
-            {ok, W} = apod:new(rectangular, avg, 10, 8640, -1),
+            {ok, W} = apod:new(rectangular, average, 10, 8640, -1),
             lists:map(
                 fun(Op) ->
                     apod_op(W, 10, Op)

@@ -3,7 +3,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 aggregation_average_test() ->
-    {ok, W} = apod:new(rectangular, avg, 10, 8640, -1),
+    {ok, W} = apod:new(rectangular, average, 10, 8640, -1),
     ok = apod:update(W, 10, 0.0),
     ok = apod:update(W, 10, 10.0),
     ?assertEqual([5.0], apod:to_list(W)).
@@ -36,41 +36,41 @@ aggregation_last_test() ->
     ?assertEqual([7.5], apod:to_list(W)).
 
 update_empty_test() ->
-    {ok, W} = apod:new(rectangular, avg, 10, 8640, -1),
+    {ok, W} = apod:new(rectangular, average, 10, 8640, -1),
     ok = apod:update(W, 12345, 42.0),
     ?assertEqual(12340, apod:earliest_time(W)),
     ?assertEqual([42.0], apod:to_list(W)).
 
 update_adjacent_test() ->
-    {ok, W} = apod:new(rectangular, avg, 10, 8640, -1),
+    {ok, W} = apod:new(rectangular, average, 10, 8640, -1),
     ok = apod:update(W, 50, 1.0),
     ok = apod:update(W, 62, 2.0),
     ?assertEqual(50, apod:earliest_time(W)),
     ?assertEqual([1.0, 2.0], apod:to_list(W)).
 
 update_skip_test() ->
-    {ok, W} = apod:new(rectangular, avg, 10, 8640, -1),
+    {ok, W} = apod:new(rectangular, average, 10, 8640, -1),
     ok = apod:update(W, 50, 1.0),
     ok = apod:update(W, 72, 2.0),
     ?assertEqual(50, apod:earliest_time(W)),
     ?assertEqual([1.0, undefined, 2.0], apod:to_list(W)).
 
 update_negative_accept_test() ->
-    {ok, W} = apod:new(rectangular, avg, 10, 8640, -1),
+    {ok, W} = apod:new(rectangular, average, 10, 8640, -1),
     ok = apod:update(W, 50, 1.0),
     ok = apod:update(W, 30, 2.0),
     ?assertEqual(30, apod:earliest_time(W)),
     ?assertEqual([2.0, undefined, 1.0], apod:to_list(W)).
 
 update_negative_reject_test() ->
-    {ok, W} = apod:new(rectangular, avg, 10, 8640, 40000),
+    {ok, W} = apod:new(rectangular, average, 10, 8640, 40000),
     ok = apod:update(W, 50000, 1.0),
     ok = apod:update(W, 30000, 2.0),
     ?assertEqual(50000, apod:earliest_time(W)),
     ?assertEqual([1.0], apod:to_list(W)).
 
 automatic_truncate_test() ->
-    {ok, W} = apod:new(rectangular, avg, 10, 2, -1),
+    {ok, W} = apod:new(rectangular, average, 10, 2, -1),
     ok = apod:update(W, 100, 1.0),
     ok = apod:update(W, 110, 2.0),
     ?assertEqual(100, apod:earliest_time(W)),
@@ -83,7 +83,7 @@ automatic_truncate_test() ->
     ?assertEqual([4.0], apod:to_list(W)).
 
 manual_truncate_test() ->
-    {ok, W} = apod:new(rectangular, avg, 10, 8640, -1),
+    {ok, W} = apod:new(rectangular, average, 10, 8640, -1),
     ok = apod:update(W, 100, 1.0),
     ok = apod:update(W, 110, 2.0),
     ok = apod:update(W, 120, 3.0),
@@ -100,7 +100,7 @@ manual_truncate_test() ->
     ?assertEqual(undefined, apod:to_list(W)).
 
 chunkify_test() ->
-    {ok, W} = apod:new(rectangular, avg, 10, 8640, -1),
+    {ok, W} = apod:new(rectangular, average, 10, 8640, -1),
     ok = apod:update(W, 0, 0.0),
     ok = apod:update(W, 10, 1.0),
     ok = apod:update(W, 20, 2.0),
@@ -130,7 +130,7 @@ chunkify_test() ->
     ], Decoded2).
 
 read_test() ->
-    {ok, W} = apod:new(rectangular, avg, 10, 8640, -1),
+    {ok, W} = apod:new(rectangular, average, 10, 8640, -1),
     ok = apod:update(W, 0, 0.0),
     ok = apod:update(W, 10, 1.0),
     ok = apod:update(W, 20, 2.0),

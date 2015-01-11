@@ -11,9 +11,9 @@
     {mod, {osc_meta_app, []}},
     {env, [
         {default_window_configuration, [
-            {rectangular, avg, 10, 1000},
-            {rectangular, avg, 60, 1000},
-            {rectangular, avg, 3600, 1000}
+            {rectangular, average, 10, 1000},
+            {rectangular, average, 60, 1000},
+            {rectangular, average, 3600, 1000}
         ]}
     ]}
 ]}.

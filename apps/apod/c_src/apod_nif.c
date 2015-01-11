@@ -55,7 +55,7 @@ get_class(char *agg_str, ApodClass *class)
 static int
 get_aggregation(char *agg_str, ApodAggregation *aggregation)
 {
-  if (!strcmp(agg_str, "avg")) {
+  if (!strcmp(agg_str, "average")) {
     *aggregation = AVERAGE;
   } else if (!strcmp(agg_str, "sum")) {
     *aggregation = SUM;

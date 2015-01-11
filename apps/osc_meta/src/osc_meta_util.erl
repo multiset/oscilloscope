@@ -20,7 +20,7 @@ decode_props(Binary) ->
 
 parse_window_type(<<"rectangular">>) -> rectangular.
 
-parse_window_aggregation(<<"avg">>) -> avg;
+parse_window_aggregation(<<"average">>) -> average;
 parse_window_aggregation(<<"sum">>) -> sum;
 parse_window_aggregation(<<"min">>) -> min;
 parse_window_aggregation(<<"max">>) -> max;
