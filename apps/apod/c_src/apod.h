@@ -6,7 +6,11 @@
 
 typedef enum
 {
-  AVERAGE
+  AVERAGE,
+  SUM,
+  MIN,
+  MAX,
+  LAST
 } ApodAggregation;
 
 typedef enum

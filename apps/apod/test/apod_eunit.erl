@@ -2,6 +2,39 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+aggregation_average_test() ->
+    {ok, W} = apod:new(rectangular, avg, 10, 8640, -1),
+    ok = apod:update(W, 10, 0.0),
+    ok = apod:update(W, 10, 10.0),
+    ?assertEqual([5.0], apod:to_list(W)).
+
+aggregation_sum_test() ->
+    {ok, W} = apod:new(rectangular, sum, 10, 8640, -1),
+    ok = apod:update(W, 10, 10.0),
+    ok = apod:update(W, 10, 10.0),
+    ?assertEqual([20.0], apod:to_list(W)).
+
+aggregation_min_test() ->
+    {ok, W} = apod:new(rectangular, min, 10, 8640, -1),
+    ok = apod:update(W, 10, 10.0),
+    ok = apod:update(W, 10, 5.0),
+    ok = apod:update(W, 10, 7.5),
+    ?assertEqual([5.0], apod:to_list(W)).
+
+aggregation_max_test() ->
+    {ok, W} = apod:new(rectangular, max, 10, 8640, -1),
+    ok = apod:update(W, 10, 7.5),
+    ok = apod:update(W, 10, 10.0),
+    ok = apod:update(W, 10, 5.0),
+    ?assertEqual([10.0], apod:to_list(W)).
+
+aggregation_last_test() ->
+    {ok, W} = apod:new(rectangular, last, 10, 8640, -1),
+    ok = apod:update(W, 10, 10.0),
+    ok = apod:update(W, 10, 5.0),
+    ok = apod:update(W, 10, 7.5),
+    ?assertEqual([7.5], apod:to_list(W)).
+
 update_empty_test() ->
     {ok, W} = apod:new(rectangular, avg, 10, 8640, -1),
     ok = apod:update(W, 12345, 42.0),

@@ -158,7 +158,6 @@ apply_patch(<<"add">>, [<<"windows">>], {WindowProps}, GroupProps0) ->
     true = is_integer(Interval),
     true = is_integer(Count),
     true = Type =:= rectangular,
-    true = lists:member(Aggregation, [avg]),
     WindowConfig = {
         Type,
         Aggregation,

@@ -20,7 +20,11 @@ decode_props(Binary) ->
 
 parse_window_type(<<"rectangular">>) -> rectangular.
 
-parse_window_aggregation(<<"avg">>) -> avg.
+parse_window_aggregation(<<"avg">>) -> avg;
+parse_window_aggregation(<<"sum">>) -> sum;
+parse_window_aggregation(<<"min">>) -> min;
+parse_window_aggregation(<<"max">>) -> max;
+parse_window_aggregation(<<"last">>) -> last.
 
 -spec find_prop_match(PropMatchList, MetricProps) -> Match when
     PropMatchList :: [PropMatch],

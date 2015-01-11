@@ -135,6 +135,11 @@ void apod_dealloc(ApodData *data)
   switch (data->aggregation) {
   case AVERAGE:
     apod_judy_truncate(&data->counters, -1);
+    break;
+  case SUM: break;
+  case MIN: break;
+  case MAX: break;
+  case LAST: break;
   }
   free(data);
 }
@@ -184,6 +189,22 @@ int apod_update(ApodData *data, int64_t t, double v)
     case AVERAGE:
       bucket[t] = v + existing;
       break;
+    case SUM:
+      bucket[t] = v + existing;
+      break;
+    case MIN:
+      if (existing > v) {
+        bucket[t] = v;
+      }
+      break;
+    case MAX:
+      if (v > existing) {
+        bucket[t] = v;
+      }
+      break;
+    case LAST:
+      bucket[t] = v;
+      break;
     }
   }
 
@@ -201,6 +222,10 @@ int apod_update(ApodData *data, int64_t t, double v)
       bucket[t] = bucket[t] + 1;
     }
     break;
+  case SUM: break;
+  case MIN: break;
+  case MAX: break;
+  case LAST: break;
   }
 
   latest_time = apod_latest_time(data);
@@ -302,6 +327,10 @@ ApodRead *apod_read(ApodData *data, int64_t from, int64_t until)
 
     free(counters);
     break;
+  case SUM: break;
+  case MIN: break;
+  case MAX: break;
+  case LAST: break;
   }
 
   return read;
@@ -397,7 +426,13 @@ void apod_truncate(ApodData *data, int64_t floor)
       switch (data->aggregation) {
       case AVERAGE:
         apod_judy_truncate(&data->counters, truncate_index);
+        break;
+      case SUM: break;
+      case MIN: break;
+      case MAX: break;
+      case LAST: break;
       }
+
     }
     data->t = apod_earliest_time(data);
   }

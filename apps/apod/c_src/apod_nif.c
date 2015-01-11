@@ -57,6 +57,14 @@ get_aggregation(char *agg_str, ApodAggregation *aggregation)
 {
   if (!strcmp(agg_str, "avg")) {
     *aggregation = AVERAGE;
+  } else if (!strcmp(agg_str, "sum")) {
+    *aggregation = SUM;
+  } else if (!strcmp(agg_str, "min")) {
+    *aggregation = MIN;
+  } else if (!strcmp(agg_str, "max")) {
+    *aggregation = MAX;
+  } else if (!strcmp(agg_str, "last")) {
+    *aggregation = LAST;
   } else {
     return 0;
   }
