@@ -85,6 +85,9 @@ init({Metric, Meta}) ->
     },
     gproc:reg({n, l, Metric}, ignored),
     Name = osc_meta_metric:name(Meta),
+    % This name may be registered to another process during the metadata
+    % creation process. The metadata creator should re-register this cache
+    % once the metadata creation finishes.
     try gproc:reg({n, l, Name}, ignored)
     catch error:badarg ->
         ok
