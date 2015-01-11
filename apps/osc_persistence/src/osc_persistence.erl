@@ -17,7 +17,7 @@
 
 -spec persist(WindowMeta, Window) -> ok when
     WindowMeta :: osc_meta_window:windowmeta(),
-    Window :: osc_window:window().
+    Window :: apod:apod().
 
 persist(WindowMeta, Window) ->
     {ok, Timeout} = application:get_env(osc_persistence, request_timeout),
@@ -32,7 +32,7 @@ persist(WindowMeta, Window) ->
 
 -spec vacuum(WindowMeta, Window) -> ok when
     WindowMeta :: osc_meta_window:windowmeta(),
-    Window :: osc_window:window().
+    Window :: apod:apod().
 
 vacuum(WindowMeta, Window) ->
     {ok, Timeout} = application:get_env(osc_persistence, request_timeout),
@@ -70,10 +70,10 @@ read(WindowMeta, From, Until) ->
 
 -spec persist_int(WindowMeta, Window) -> ok when
     WindowMeta :: osc_meta_window:windowmeta(),
-    Window :: osc_window:window().
+    Window :: apod:apod().
 
 persist_int(WindowMeta, Window) ->
-    Chunks = osc_window:chunkify(Window),
+    Chunks = apod:chunkify(Window),
     case Chunks of
         [] ->
             ok;
@@ -108,19 +108,25 @@ persist_int(WindowMeta, Window) ->
 
 -spec vacuum_int(WindowMeta, Window) -> ok when
     WindowMeta :: osc_meta_window:windowmeta(),
-    Window :: osc_window:window().
+    Window :: apod:apod().
 
 vacuum_int(WindowMeta, Window) ->
-    WindowID = osc_meta_window:id(WindowMeta),
-    Interval = osc_meta_window:interval(WindowMeta),
-    Count = osc_meta_window:count(WindowMeta),
     Persisted = osc_meta_window:persisted(WindowMeta),
-    TNow = osc_window:now(Window),
-    case TNow of
-        undefined ->
+    case Persisted of
+        [] ->
+            %% Nothing to persist means nothing to vacuum
             ok;
         _ ->
-            TExpired = TNow - Interval * Count,
+            WindowID = osc_meta_window:id(WindowMeta),
+            Interval = osc_meta_window:interval(WindowMeta),
+            Count = osc_meta_window:count(WindowMeta),
+            TExpired = case apod:earliest_time(Window) of
+                undefined ->
+                    osc_meta_window:latest_persisted_time(WindowMeta);
+                T ->
+                    TLatest = T + (apod:size(Window) * Interval),
+                    TLatest - (Interval * Count)
+            end,
             Commutator = osc_persistence_util:commutator(),
             Vacuumed = lists:filtermap(
                 fun({Time, PersistCount}) ->
@@ -186,7 +192,7 @@ read_int(WindowMeta, From0, Until0) ->
             Read = lists:foldr(
                 fun(Row, Acc) ->
                     Bin = proplists:get_value(<<"v">>, Row),
-                    Value = osc_window:inflate(Bin),
+                    Value = apod:inflate(Bin),
                     [Value|Acc]
                 end,
                 [],

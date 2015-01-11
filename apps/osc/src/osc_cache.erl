@@ -24,7 +24,7 @@
 %% a window for querying. It also has values/1, and dict doesn't.
 -type window_map() :: gb_trees:tree(
     osc_meta_window:window_id(),
-    {osc_meta_window:windowmeta(), osc_window:window()}
+    {osc_meta_window:windowmeta(), apod:apod()}
 ).
 
 %% This data structure is a gb_tree simply because the previous one is, too.
@@ -69,9 +69,24 @@ start_link(Metric, Meta) ->
 init({Metric, Meta}) ->
     Windows = lists:foldl(
         fun(WindowMeta, Acc) ->
+            LP0 = osc_meta_window:latest_persisted_time(WindowMeta),
+            LP1 = case LP0 of
+                undefined ->
+                    %% Apod will only accept integers
+                    -1;
+                _ ->
+                    LP0
+            end,
+            {ok, Window} = apod:new(
+                rect,
+                osc_meta_window:aggregation(WindowMeta),
+                osc_meta_window:interval(WindowMeta),
+                osc_meta_window:count(WindowMeta),
+                LP1
+            ),
             gb_trees:insert(
                 osc_meta_window:id(WindowMeta),
-                {WindowMeta, osc_window:new(WindowMeta)},
+                {WindowMeta, Window},
                 Acc
             )
         end,
@@ -98,13 +113,20 @@ init({Metric, Meta}) ->
 handle_call({read, From, Until}, _From, State) ->
     #st{windows=Windows, meta=Meta}=State,
     {WindowMeta, Window} = select_window(From, gb_trees:values(Windows)),
-    {ok, Read} = osc_window:read(From, Until, Window),
+    {ok, Read} = apod:read(Window, From, Until),
     {reply, {ok, Meta, WindowMeta, Read}, State, hibernate_timeout()};
 handle_call({update, Points}, _From, State0) ->
     #st{windows=Windows0, persisting=Persisting0}=State0,
+    %folsom_metrics:notify({osc, cache_updates}, {inc, 1}),
     Windows1 = gb_trees:map(
         fun(_ID, {WindowMeta, Window}) ->
-            {WindowMeta, osc_window:update(Points, Window)}
+            lists:foreach(
+                fun({T, V}) ->
+                    apod:update(Window, T, V)
+                end,
+                Points
+            ),
+            {WindowMeta, Window}
         end,
         Windows0
     ),
@@ -115,10 +137,45 @@ handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
 
 
+handle_cast({update, Points}, State0) ->
+    #st{windows=Windows0, persisting=Persisting0}=State0,
+    %folsom_metrics:notify({osc, cache_updates}, {inc, 1}),
+    Windows1 = gb_trees:map(
+        fun(_ID, {WindowMeta, Window}) ->
+            lists:foreach(
+                fun({T, V}) ->
+                    apod:update(Window, T, V)
+                end,
+                Points
+            ),
+            {WindowMeta, Window}
+        end,
+        Windows0
+    ),
+    Persisting1 = maybe_persist(Windows1, Persisting0),
+    State1 = State0#st{windows=Windows1, persisting=Persisting1},
+    {noreply, State1, hibernate_timeout()};
 handle_cast(Msg, State) ->
     {stop, {unknown_cast, Msg}, State}.
 
-
+handle_info({update, Points}, State0) ->
+    #st{windows=Windows0, persisting=Persisting0}=State0,
+    %folsom_metrics:notify({osc, cache_updates}, {inc, 1}),
+    Windows1 = gb_trees:map(
+        fun(_ID, {WindowMeta, Window}) ->
+            lists:foreach(
+                fun({T, V}) ->
+                    apod:update(Window, T, V)
+                end,
+                Points
+            ),
+            {WindowMeta, Window}
+        end,
+        Windows0
+    ),
+    Persisting1 = maybe_persist(Windows1, Persisting0),
+    State1 = State0#st{windows=Windows1, persisting=Persisting1},
+    {noreply, State1, hibernate_timeout()};
 handle_info(timeout, State) ->
     #st{windows=Windows, persisting=Persisting0} = State,
     Persisting1 = maybe_persist(Windows, Persisting0),
@@ -159,13 +216,20 @@ handle_info({'DOWN', Ref, process, Pid, Reason}=Msg, State0) ->
             State1 = case Reason of
                 normal ->
                     %% Persist was successful - update our internal state
-                    {WindowMeta0, Window0} = gb_trees:get(WindowID, Windows0),
+                    {WindowMeta0, Window} = gb_trees:get(WindowID, Windows0),
                     WindowMeta1 = osc_meta_window:refresh(WindowMeta0),
-                    Window1 = osc_window:refresh(WindowMeta1, Window0),
-                    Window2 = osc_window:trim(Window1),
+                    LP0 = osc_meta_window:latest_persisted_time(WindowMeta1),
+                    LP1 = case LP0 of
+                        undefined ->
+                            %% Apod will only accept integers
+                            -1;
+                        _ ->
+                            LP0
+                    end,
+                    ok = apod:truncate(Window, LP1),
                     Windows1 = gb_trees:enter(
                         WindowID,
-                        {WindowMeta1, Window2},
+                        {WindowMeta1, Window},
                         Windows0
                     ),
                     State0#st{windows=Windows1, persisting=Persisting1};
@@ -213,12 +277,12 @@ select_window(From, Windows) ->
 
 -spec earliest_timestamp({Meta, Window}) -> Timestamp when
     Meta :: osc_meta_window:window(),
-    Window :: osc_window:window(),
+    Window :: apod:apod(),
     Timestamp :: timestamp() | undefined.
 
 earliest_timestamp({Meta, Window}) ->
     case osc_meta_window:earliest_persisted_time(Meta) of
-        undefined -> osc_window:earliest_time(Window);
+        undefined -> apod:earliest_time(Window);
         Timestamp -> Timestamp
     end.
 
@@ -259,7 +323,7 @@ thunk_persists(Windows) ->
 thunk_persists(none, _Threshold, Thunks) ->
     Thunks;
 thunk_persists({WindowID, {WindowMeta, Window}, Iterator}, Threshold, Thunks0) ->
-    Thunks1 = case osc_window:chunkifyability(Window) > Threshold of
+    Thunks1 = case apod:chunkifyability(Window) > Threshold of
         true ->
             Thunk = fun() ->
                 ok = osc_persistence:persist(WindowMeta, Window),

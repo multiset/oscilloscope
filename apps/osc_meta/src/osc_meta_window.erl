@@ -9,6 +9,7 @@
     interval/1,
     count/1,
     persisted/1,
+    type/1,
     earliest_persisted_time/1,
     latest_persisted_time/1,
     insert_persist/3,
@@ -87,6 +88,9 @@ count(#windowmeta{count=Count}) ->
 
 persisted(#windowmeta{persisted=Persisted}) ->
     Persisted.
+
+type(#windowmeta{window_type=Type}) ->
+    Type.
 
 earliest_persisted_time(#windowmeta{persisted=[]}) ->
     undefined;

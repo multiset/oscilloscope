@@ -9,6 +9,7 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init([]) ->
+    folsom_metrics:new_counter({osc, cache_updates}),
     CacheSup = {
         osc_cache_sup,
         {osc_cache_sup, start_link, []},
