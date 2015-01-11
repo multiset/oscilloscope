@@ -14,5 +14,5 @@ init([]) ->
         {osc_cache_sup, start_link, []},
         permanent, infinity, supervisor, [osc_cache_sup]
     },
-    {ok, {{one_for_one, 10, 10}, [CacheSup]}}.
+    {ok, {{one_for_one, 0, 10}, [CacheSup]}}.
 

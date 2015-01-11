@@ -4,7 +4,8 @@
     create/1,
     lookup/1,
     search/1,
-    windows/1
+    windows/1,
+    name/1
 ]).
 
 -include_lib("osc/include/osc_types.hrl").
@@ -38,22 +39,29 @@ create({OwnerID, Props}=Metric) ->
                 Windows
             ),
             {ok, MetricID};
-        _ ->
-            {error, exists}
+        [{MetricID}] ->
+            {error, {exists, MetricID}}
     end.
 
 
--spec lookup(MetricID) -> {ok, Meta} | not_found when
-    MetricID :: metric_id(),
+-spec lookup(Metric) -> {ok, Meta} | not_found when
+    Metric :: metric_id() | metric(),
     Meta :: metricmeta().
 
-lookup(MetricID) ->
-    LookupSQL = "SELECT owner_id, hash FROM metrics WHERE id = $1",
-    {ok, _, ID} = osc_sql:adhoc(LookupSQL, [MetricID]),
-    case ID of
+lookup(Metric) ->
+    {ok, _, Info} = case Metric of
+        {OwnerID0, MetricName} ->
+            LookupSQL = "SELECT id, owner_id, hash FROM metrics "
+                        "WHERE owner_id = $1 AND hash = $2",
+            osc_sql:adhoc(LookupSQL, [OwnerID0, MetricName]);
+        Metric ->
+            LookupSQL = "SELECT id, owner_id, hash FROM metrics WHERE id = $1",
+            osc_sql:adhoc(LookupSQL, [Metric])
+    end,
+    case Info of
         [] ->
             not_found;
-        [{OwnerID, EncodedProps}] ->
+        [{MetricID, OwnerID, EncodedProps}] ->
             PropSQL = "SELECT key, value FROM tags WHERE metric_id = $1",
             {ok, _, Props} = osc_sql:adhoc(PropSQL, [MetricID]),
             Windows = osc_meta_window:lookup(MetricID),
@@ -79,3 +87,7 @@ search({OwnerID, [{Key, Value}]}) ->
 
 windows(#metricmeta{windows=Windows}) ->
     Windows.
+
+
+name(#metricmeta{owner_id=OwnerID, encoded_props=EncodedProps}) ->
+    {OwnerID, EncodedProps}.

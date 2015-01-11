@@ -12,6 +12,8 @@
 ]).
 
 -export([
+    start/1,
+    find/1,
     read/3,
     update/2
 ]).
@@ -38,18 +40,26 @@
 }).
 
 
-read(Metric, From, Until) ->
-    case osc_cache_sup:find(Metric) of
+start(Metric) ->
+    case osc_meta_metric:lookup(Metric) of
         not_found -> not_found;
-        {ok, Pid} -> gen_server:call(Pid, {read, From, Until})
+        {ok, Meta} -> osc_cache_sup:start_cache(Metric, Meta)
     end.
 
 
-update(Metric, Points) ->
-    case osc_cache_sup:find(Metric) of
-        not_found -> not_found;
-        {ok, Pid} -> gen_server:call(Pid, {update, Points})
+find(Metric) ->
+    case gproc:where({n, l, Metric}) of
+        undefined -> not_found;
+        Pid -> {ok, Pid}
     end.
+
+
+read(Pid, From, Until) ->
+    gen_server:call(Pid, {read, From, Until}).
+
+
+update(Pid, Points) ->
+    gen_server:call(Pid, {update, Points}).
 
 
 start_link(Metric, Meta) ->
@@ -74,6 +84,14 @@ init({Metric, Meta}) ->
         persisting=gb_trees:empty()
     },
     gproc:reg({n, l, Metric}, ignored),
+    Name = osc_meta_metric:name(Meta),
+    % This name may be registered to another process during the metadata
+    % creation process. The metadata creator should re-register this cache
+    % once the metadata creation finishes.
+    try gproc:reg({n, l, Name}, ignored)
+    catch error:badarg ->
+        ok
+    end,
     {ok, State, hibernate_timeout()}.
 
 

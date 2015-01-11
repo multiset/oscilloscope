@@ -1,0 +1,19 @@
+%% -*- mode: erlang -*-
+%% -*- tab-width: 4;erlang-indent-level: 4;indent-tabs-mode: nil -*-
+
+{application, osc_kafka, [
+    {description, ""},
+    {vsn, git},
+    {registered, [osc_kafka_sup]},
+    {applications, [
+        kernel,
+        stdlib,
+        kofta,
+        osc
+    ]},
+    {mod, {osc_kafka_app, []}},
+    {env, [
+        {partitions, [0,1,2,3,4,5,6,7,8,9]},
+        {topic_name, <<"porter">>}
+    ]}
+]}.
