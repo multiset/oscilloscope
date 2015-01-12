@@ -46,12 +46,12 @@ recv(timeout, State) ->
         {ok, Messages} ->
             {Batch, NewOffset} = lists:foldl(fun({Offset, Key, BValue}, Acc) ->
                 {BatchAcc, _Offs} = Acc,
-                <<Time:32/integer, OwnerID:32/integer, Rest/binary>> = Key,
+                <<Time:32/integer, Rest/binary>> = Key,
                 <<Value:64/float>> = BValue,
                 Metric = case Rest of
                     <<1:8/integer, MetricID:32/integer>> ->
                         MetricID;
-                    <<0:8/integer, NameBin/binary>> ->
+                    <<0:8/integer, OwnerID:32/integer, NameBin/binary>> ->
                         {OwnerID, NameBin}
                 end,
                 {[{Metric, Time, Value}|BatchAcc], Offset}
