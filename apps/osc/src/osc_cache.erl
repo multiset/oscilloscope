@@ -15,7 +15,8 @@
     start/1,
     find/1,
     read/3,
-    update/2
+    update/2,
+    persist/1
 ]).
 
 -include_lib("osc/include/osc_types.hrl").
@@ -50,6 +51,10 @@ read(Pid, From, Until) ->
 
 update(Pid, Points) ->
     gen_server:call(Pid, {update, Points}).
+
+
+persist(Pid) ->
+    gen_server:call(Pid, persist).
 
 
 start_link(Metric, Meta) ->
@@ -118,6 +123,21 @@ handle_call({update, Points}, _From, State) ->
         {P0, P1} ->
             {reply, ok, State#st{persisting=P1 ++ P0}}
     end;
+handle_call(persist, _From, State) ->
+    #st{windows=W, persisting=P0} = State,
+    P1 = lists:filtermap(
+        fun({WMeta, _WData}=Window) ->
+            ID = osc_meta_window:id(WMeta),
+            case lists:keyfind(ID, 1, P0) of
+                false ->
+                    {true, spawn_persist(Window)};
+                _ ->
+                    false
+            end
+        end,
+        W
+    ),
+    {reply, ok, State#st{persisting=P0 ++ P1}};
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
 
