@@ -7,11 +7,10 @@
 -type group_tag_key() :: binary().
 -type group_tag_value() :: binary().
 
--type window_id() :: pos_integer().
--type window_type() :: rectangular.
+
 -type window_config() :: {
-    window_id(),
-    window_type(),
+    osc_meta_window:window_id(),
+    osc_meta_window:window_type(),
     aggregation(),
     interval(),
     count()
@@ -25,15 +24,5 @@
     windows :: [osc_meta_window:windowmeta()]
 }).
 
--record(windowmeta, {
-    id :: window_id(),
-    metric_id :: metric_id(),
-    window_type :: window_type(),
-    aggregation :: aggregation(),
-    interval :: interval(),
-    count :: count(),
-    persisted :: persisted()
-}).
-
 -type metricmeta() :: #metricmeta{}.
--type windowmeta() :: #windowmeta{}.
+

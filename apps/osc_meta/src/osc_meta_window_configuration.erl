@@ -141,7 +141,7 @@ add_window(GroupID, WindowConfig) ->
 
 -spec delete_window(GroupID, WindowID) -> ok when
     GroupID :: group_id(),
-    WindowID :: window_id().
+    WindowID :: osc_meta_window:window_id().
 
 delete_window(GroupID, WindowID) ->
     SQL = " DELETE FROM window_configurations"

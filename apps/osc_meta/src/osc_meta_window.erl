@@ -19,6 +19,24 @@
 -include_lib("osc/include/osc_types.hrl").
 -include_lib("osc_meta/include/osc_meta.hrl").
 
+-opaque window_id() :: pos_integer().
+-opaque window_type() :: rectangular.
+
+-record(windowmeta, {
+    id :: window_id(),
+    metric_id :: metric_id(),
+    window_type :: window_type(),
+    aggregation :: aggregation(),
+    interval :: interval(),
+    count :: count(),
+    persisted :: persisted()
+}).
+
+-opaque windowmeta() :: #windowmeta{}.
+
+-export_type([window_id/0, window_type/0, windowmeta/0]).
+
+
 create(MetricID, {rectangular, Aggregation, Interval, Count}) ->
     SQL = <<
         "INSERT INTO windows"
