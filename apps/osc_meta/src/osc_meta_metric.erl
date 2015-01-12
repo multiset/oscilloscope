@@ -31,7 +31,7 @@ create({OwnerID, Props}=Metric) ->
                 add_metric, [OwnerID, EncodedProps]
             ),
             lists:map(fun({Key, Value}) ->
-                {ok, 1} = osc_sql:named(add_tag, [OwnerID, MetricID, Key, Value])
+                {ok, 1} = osc_sql:named(add_tag, [MetricID, Key, Value])
             end, Props),
             {ok, Windows} = osc_meta_window_configuration:for_metric(Metric),
             lists:foreach(
@@ -78,10 +78,12 @@ lookup(Metric) ->
 -spec search(metric()) -> [].
 search({OwnerID, [{Key, Value}]}) ->
     % Metrics with only one key-value pair are supported right now
-    {ok, _, Resp} = osc_sql:adhoc(
-        <<"SELECT metric_id FROM tags WHERE owner_id=$1 AND key=$2 AND value~$3">>,
-        [OwnerID, Key, Value]
-    ),
+    SQL = "SELECT id FROM metrics "
+          "JOIN tags ON metrics.id = tags.metric_id "
+          "WHERE metrics.owner_id=$1 "
+          "AND tags.key=$2 "
+          "AND tags.value~$3;",
+    {ok, _, Resp} = osc_sql:adhoc(SQL, [OwnerID, Key, Value]),
     [MetricID || {MetricID} <- Resp].
 
 

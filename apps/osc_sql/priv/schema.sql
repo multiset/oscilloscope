@@ -61,7 +61,6 @@ CREATE TABLE metrics (
 );
 
 CREATE TABLE tags (
-    owner_id integer NOT NULL REFERENCES owners(id),
     key text NOT NULL,
     value text NOT NULL,
     metric_id integer NOT NULL REFERENCES metrics(id)
