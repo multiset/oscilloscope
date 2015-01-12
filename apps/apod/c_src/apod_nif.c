@@ -391,7 +391,7 @@ apod_nif_interval(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
     ApodPriv* priv = enif_priv_data(env);
     ApodWrap* wrap = NULL;
 
-    int64_t interval;
+    int interval;
 
     if (argc != 1) {
         return enif_make_badarg(env);
@@ -407,14 +407,40 @@ apod_nif_interval(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
         break;
     }
 
-    return enif_make_int64(env, interval);
+    return enif_make_int(env, interval);
 }
 
 static ERL_NIF_TERM
-apod_nif_chunkifyability(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+apod_nif_size(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
-    // TODO
-    return enif_make_double(env, 0.0);
+    ApodPriv* priv = enif_priv_data(env);
+    ApodWrap* wrap = NULL;
+
+    int interval, size;
+    int64_t earliest_time, latest_time;
+
+    if (argc != 1) {
+        return enif_make_badarg(env);
+    }
+
+    if (!enif_get_resource(env, argv[0], priv->res_apod, (void**) &wrap)) {
+        return enif_make_badarg(env);
+    }
+
+    switch (wrap->class) {
+    case RECT:
+        interval = wrap->data->interval;
+        earliest_time = wrap->data->t;
+        if (earliest_time < 0) {
+            size = 0;
+        } else {
+            latest_time = apod_latest_time(wrap->data);
+            size = (latest_time - earliest_time) / interval + 1;
+        }
+        break;
+    }
+
+    return enif_make_int(env, size);
 }
 
 static void apod_nif_destroy(ErlNifEnv* env, void* obj)
@@ -472,7 +498,7 @@ static ErlNifFunc funcs[] = {
     {"earliest_time", 1, apod_nif_earliest_time},
     {"latest_time", 1, apod_nif_latest_time},
     {"interval", 1, apod_nif_interval},
-    {"chunkifyability", 1, apod_nif_chunkifyability}
+    {"size", 1, apod_nif_size}
 };
 
 ERL_NIF_INIT(apod, funcs, &load, NULL, NULL, &unload);

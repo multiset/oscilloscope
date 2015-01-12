@@ -9,6 +9,7 @@
     interval/1,
     count/1,
     persisted/1,
+    average_persist_size/1,
     type/1,
     earliest_persisted_time/1,
     latest_persisted_time/1,
@@ -106,6 +107,10 @@ count(#windowmeta{count=Count}) ->
 
 persisted(#windowmeta{persisted=Persisted}) ->
     Persisted.
+
+average_persist_size(#windowmeta{persisted=Persisted}) ->
+    Sum = lists:foldl(fun({_, N}, Acc) -> Acc + N end, 0, Persisted),
+    Sum / length(Persisted).
 
 type(#windowmeta{window_type=Type}) ->
     Type.

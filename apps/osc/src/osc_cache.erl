@@ -281,7 +281,8 @@ maybe_persist(Windows, Persisting, Threshold) ->
             ID = osc_meta_window:id(WMeta),
             case lists:keyfind(ID, 1, Persisting) of
                 false ->
-                    case apod:chunkifyability(WData) > Threshold of
+                    AverageSize = osc_meta_window:average_persist_size(WMeta),
+                    case apod:size(WData)/AverageSize > Threshold of
                         true ->
                             {true, spawn_persist(W)};
                         false ->

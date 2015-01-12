@@ -15,7 +15,7 @@
     earliest_time/1,
     latest_time/1,
     interval/1,
-    chunkifyability/1,
+    size/1,
     chunkify/1,
     inflate/1,
     deflate/1
@@ -101,11 +101,11 @@ interval(_Apod) ->
     ?NOTLOADED.
 
 
--spec chunkifyability(Apod) -> Value when
+-spec size(Apod) -> Size when
     Apod :: apod(),
-    Value :: float().
+    Size :: pos_integer().
 
-chunkifyability(_Apod) ->
+size(_Apod) ->
     ?NOTLOADED.
 
 
