@@ -93,7 +93,6 @@ forbidden(Req0, State) ->
                 <<"GET">> ->
                     %% Only *team* members and org owners can view
                     IsMember = osc_meta_team:is_member(
-                        OrgID,
                         proplists:get_value(id, TeamProps),
                         UserID
                     ),
@@ -160,7 +159,6 @@ apply_patch(<<"add">>, [<<"members">>], UserName, TeamProps) ->
             %% I don't think there's a notion of membership outside
             %% team membership.
             ok = osc_meta_team:add_member(
-                proplists:get_value(orgid, TeamProps),
                 proplists:get_value(id, TeamProps),
                 proplists:get_value(id, UserProps)
             ),
@@ -173,7 +171,6 @@ apply_patch(<<"add">>, [<<"members">>], UserName, TeamProps) ->
     end;
 apply_patch(<<"remove">>, [<<"members">>], UserID, TeamProps) ->
     ok = osc_meta_team:remove_member(
-        proplists:get_value(orgid, TeamProps),
         proplists:get_value(id, TeamProps),
         UserID
     ),

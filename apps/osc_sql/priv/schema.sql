@@ -49,7 +49,6 @@ CREATE TABLE org_members (
 );
 
 CREATE TABLE team_members (
-    org_id integer NOT NULL REFERENCES orgs(id),
     team_id integer NOT NULL REFERENCES teams(id),
     user_id integer NOT NULL REFERENCES users(id)
 );

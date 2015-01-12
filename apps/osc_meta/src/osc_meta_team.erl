@@ -4,11 +4,11 @@
     lookup/1,
     lookup_members/1,
     create/2,
-    delete/2,
-    members/2,
-    add_member/3,
-    remove_member/3,
-    is_member/3
+    delete/1,
+    members/1,
+    add_member/2,
+    remove_member/2,
+    is_member/2
 ]).
 
 -include_lib("osc/include/osc_types.hrl").
@@ -50,11 +50,11 @@ create(OrgID, Name) ->
     {ok, 1, _, [{TeamID}]} = osc_sql:named(create_team, [OrgID, Name]),
     {ok, TeamID}.
 
--spec delete(org_id(), team_id()) -> ok | error.
-delete(OrgID, TeamID) ->
+-spec delete(team_id()) -> ok | error.
+delete(TeamID) ->
     Commands = [
-        {delete_team_members, [OrgID, TeamID]},
-        {delete_team, [OrgID, TeamID]}
+        {delete_team_members, [TeamID]},
+        {delete_team, [TeamID]}
     ],
     Batch = osc_sql:batch(Commands),
     case lists:usort([Status || {Status, _} <- Batch]) of
@@ -65,22 +65,22 @@ delete(OrgID, TeamID) ->
             error
     end.
 
--spec members(org_id(), team_id()) -> [user_id()].
-members(OrgID, TeamID) ->
-    {ok, _, Members} = osc_sql:named(get_team_members, [OrgID, TeamID]),
+-spec members(team_id()) -> [user_id()].
+members(TeamID) ->
+    {ok, _, Members} = osc_sql:named(get_team_members, [TeamID]),
     lists:map(fun({{UserID}}) -> UserID end, Members).
 
--spec add_member(org_id(), team_id(), user_id()) -> ok.
-add_member(OrgID, TeamID, UserID) ->
-    osc_sql:named(add_team_member, [OrgID, TeamID, UserID]),
+-spec add_member(team_id(), user_id()) -> ok.
+add_member(TeamID, UserID) ->
+    osc_sql:named(add_team_member, [TeamID, UserID]),
     ok.
 
--spec remove_member(org_id(), team_id(), user_id()) -> ok.
-remove_member(OrgID, TeamID, UserID) ->
-    osc_sql:named(remove_team_member, [OrgID, TeamID, UserID]),
+-spec remove_member(team_id(), user_id()) -> ok.
+remove_member(TeamID, UserID) ->
+    osc_sql:named(remove_team_member, [TeamID, UserID]),
     ok.
 
--spec is_member(org_id(), team_id(), user_id()) -> boolean().
-is_member(OrgID, TeamID, UserID) ->
-    {ok, _, [{IsMember}]} = osc_sql:named(is_team_member, [OrgID, TeamID, UserID]),
+-spec is_member(team_id(), user_id()) -> boolean().
+is_member(TeamID, UserID) ->
+    {ok, _, [{IsMember}]} = osc_sql:named(is_team_member, [TeamID, UserID]),
     IsMember.
