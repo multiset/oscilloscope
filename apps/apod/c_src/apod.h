@@ -6,37 +6,37 @@
 
 typedef enum
 {
-  AVERAGE,
-  SUM,
-  MIN,
-  MAX,
-  LAST
+    AVERAGE,
+    SUM,
+    MIN,
+    MAX,
+    LAST
 } ApodAggregation;
 
 typedef enum
 {
-  RECT
+    RECT
 } ApodClass;
 
 typedef struct
 {
-  int64_t from;
-  int64_t until;
-  int size;
-  int interval;
-  double *arr;
+    int64_t from;
+    int64_t until;
+    int size;
+    int interval;
+    double *arr;
 } ApodRead;
 
 typedef struct
 {
-  Pvoid_t values;
-  Pvoid_t counters;
-  ApodAggregation aggregation;
-  int bucket_size;
-  int64_t t;
-  int64_t floor;
-  int interval;
-  int count;
+    Pvoid_t values;
+    Pvoid_t counters;
+    ApodAggregation aggregation;
+    int bucket_size;
+    int64_t t;
+    int64_t floor;
+    int interval;
+    int count;
 } ApodData;
 
 ApodData *apod_new(ApodAggregation, int, int, int64_t);
