@@ -80,6 +80,9 @@ CREATE TABLE persists (
     window_id integer NOT NULL REFERENCES windows(id),
     "timestamp" integer NOT NULL,
     count integer NOT NULL,
+    vacuumed boolean,
+    persist_time timestamp without time zone default (now() at time zone 'utc') NOT NULL,
+    vacuum_time timestamp without time zone,
     UNIQUE(window_id, "timestamp")
 );
 
