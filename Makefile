@@ -28,9 +28,8 @@ eunit:
 dialyze:
 	@dialyzer --plt dialyzer.plt --src apps/*/src/ -pa apps/osc/ebin -pa apps/osc_meta/ebin | grep -F -v -f ./dialyzer.ignore-warnings
 
-release: deps compile
-	@./rebar generate
-	@cd rel; tar -cvzf osc.tar.gz osc
+artifact: clean relclean rel
+	@./artifact.sh
 
 fuck-it-all:
 	@echo -n "Killing all the postgres... "
