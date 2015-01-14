@@ -18,7 +18,7 @@ clean:
 	@./rebar clean
 
 console:
-	@rel/osc/bin/osc console
+	@rel/osc/erts-*/bin/erl -name remsh -remsh osc@127.0.0.1 -hidden -setcookie osc
 
 test: eunit dialyze
 
