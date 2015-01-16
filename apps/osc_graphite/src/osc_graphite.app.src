@@ -1,0 +1,15 @@
+{application, osc_graphite, [
+    {description, "Graphite interfaces for osc"},
+    {vsn, git},
+    {registered, [osc_graphite_sup]},
+    {applications, [
+        kernel,
+        stdlib,
+        osc_meta,
+        osc
+    ]},
+    {mod, {osc_graphite_app, []}},
+    {env, [
+
+    ]}
+]}.

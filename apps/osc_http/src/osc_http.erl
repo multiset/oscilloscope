@@ -92,11 +92,33 @@ is_authorized(Req0, SuccessFun, FailureFun) ->
     {Meta, Req1} = get_session(Req0),
     case proplists:get_value(id, Meta) of
         undefined ->
-            {{false, <<"Basic realm=\"oscilloscope\"">>}, Req1, FailureFun()};
+            {AuthHeader, Req2} = cowboy_req:header(<<"authorization">>, Req1),
+            case AuthHeader of
+                <<"Basic ", Encoded/binary>> ->
+                    Decoded = base64:decode(Encoded),
+                    [Username, Password] = binary:split(Decoded, <<":">>),
+                    case osc_meta_user:is_authorized(Username, Password) of
+                        true ->
+                            {ok, UserProps} = osc_meta_user:lookup(Username),
+                            UserID = proplists:get_value(id, UserProps),
+                            {true, Req2, SuccessFun(UserID)};
+                        false ->
+                            {
+                                {false, <<"Basic realm=\"oscilloscope\"">>},
+                                Req2,
+                                FailureFun()
+                            }
+                    end;
+                _ ->
+                    {
+                        {false, <<"Basic realm=\"oscilloscope\"">>},
+                        Req2,
+                        FailureFun()
+                    }
+            end;
         UserID ->
             {true, Req1, SuccessFun(UserID)}
     end.
-
 
 delete_session(Req) ->
     {ok, CookieName} = application:get_env(osc_http, cookie_name),

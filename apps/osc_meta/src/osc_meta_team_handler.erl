@@ -140,11 +140,19 @@ to_json(Req, #st{team_props=TeamProps}=State) ->
         end,
         Members0
     ),
+    Permissions0 = proplists:get_value(permissions, TeamProps),
+    Permissions1 = lists:map(
+        fun({ID, Perms}) ->
+            {[{id, ID}, {permissions, {Perms}}]}
+        end,
+        Permissions0
+    ),
     Body = {[
         {id, proplists:get_value(id, TeamProps)},
         {name, proplists:get_value(name, TeamProps)},
         {orgid, proplists:get_value(orgid, TeamProps)},
-        {members, Members1}
+        {members, Members1},
+        {permissions, Permissions1}
     ]},
     {jiffy:encode(Body), Req, State}.
 
@@ -179,6 +187,24 @@ apply_patch(<<"remove">>, [<<"members">>], UserID, TeamProps) ->
         proplists:get_value(members, TeamProps)
     ),
     {ok, [{members, Members}|proplists:delete(members, TeamProps)]};
+apply_patch(<<"remove">>, [<<"permissions">>], PermID, TeamProps) ->
+    ok = osc_meta_team:remove_permission(
+        proplists:get_value(id, TeamProps),
+        PermID
+    ),
+    Permissions = lists:filter(
+        fun({ID, _Perms}) -> ID =/= PermID end,
+        proplists:get_value(permissions, TeamProps)
+    ),
+    {ok, [{permissions, Permissions}|proplists:delete(permissions, TeamProps)]};
+apply_patch(<<"add">>, [<<"permissions">>], {Permission}, TeamProps) ->
+    {ok, PermID} = osc_meta_team:add_permission(
+        proplists:get_value(id, TeamProps),
+        Permission
+    ),
+    OldPerms = proplists:get_value(permissions, TeamProps),
+    NewPerms = [{PermID, Permission}|OldPerms],
+    {ok, [{permissions, NewPerms}|proplists:delete(permissions, TeamProps)]};
 apply_patch(Op, Path, _, TeamProps) ->
     lager:error(
         "Got an unknown patch attempt: ~p, ~p for team ~p",

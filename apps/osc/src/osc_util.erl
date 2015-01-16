@@ -2,7 +2,8 @@
 -export([
     now/0,
     parse_resolution/1,
-    adjust_query_range/3
+    adjust_query_range/3,
+    binary_join/2
 ]).
 
 now() ->
@@ -61,6 +62,16 @@ adjust_query_range(From0, Until0, Interval) ->
         N -> Until0 + Interval - N
     end,
     {From, Until}.
+
+binary_join([], _Sep) ->
+    <<>>;
+binary_join([H|T], Sep) ->
+    binary_join(T, Sep, H).
+
+binary_join([], _Sep, Acc) ->
+    Acc;
+binary_join([H|T], Sep, Acc) ->
+    binary_join(T, Sep, <<Acc/binary, Sep/binary, H/binary>>).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
