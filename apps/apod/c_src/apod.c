@@ -391,9 +391,9 @@ int64_t apod_latest_time(ApodData *data)
      */
     bucket = (double*) *pvalue;
     index = (int64_t) pindex;
-    for (i = bucket_size - 1; i >= 0; i--) {
-        if (!isnan(bucket[i])) {
-            return index + i * data->interval;
+    for (i = bucket_size; i > 0; i--) {
+        if (!isnan(bucket[i - 1])) {
+            return index + (i - 1) * data->interval;
         }
     }
     return -1;
