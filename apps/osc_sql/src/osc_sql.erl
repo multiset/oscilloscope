@@ -29,7 +29,7 @@ transact(Message, Backoff, Timeout) when Timeout > 0 ->
     try poolboy:checkout(pgsql, false, Timeout) of
         full ->
             timer:sleep(min(Backoff, Timeout)),
-            transact(Message, Backoff * 1.5, Timeout - Backoff);
+            transact(Message, trunc(Backoff * 1.5), Timeout - Backoff);
         Worker ->
             try
                 gen_server:call(Worker, Message, Timeout)
