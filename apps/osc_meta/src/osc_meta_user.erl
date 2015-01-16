@@ -70,7 +70,10 @@ remove_email(UserID, Email) ->
 -spec change_password(user_id(), binary()) -> ok.
 change_password(UserID, NewPass) ->
     Hash = hash_password(NewPass),
-    {ok,_} = osc_sql:named(change_password, [UserID, Hash]),
+    SQL = "UPDATE users "
+          "SET (password, updated)=($2, (now() at time one 'utc')) "
+          "WHERE id=$1;",
+    {ok, _} = osc_sql:adhoc(SQL, [UserID, Hash]),
     ok.
 
 -spec teams(user_id()) -> [{team_id(), binary(), non_neg_integer()}].

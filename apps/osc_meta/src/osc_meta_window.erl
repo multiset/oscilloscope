@@ -68,11 +68,9 @@ lookup(MetricID) ->
 refresh(WindowMeta) ->
     %% N.B.: This only refreshes persisted values, because that's the only field
     %% that's allowed to be mutable at the moment.
-    PersistSQL = <<
-        "SELECT timestamp, count"
-        " FROM persists WHERE window_id = $1;"
-    >>,
-    {ok, _, Persisted} = osc_sql:adhoc(PersistSQL, [WindowMeta#windowmeta.id]),
+    SQL = "SELECT timestamp, count FROM persists "
+          "WHERE window_id = $1 AND vacuumed=FALSE;",
+    {ok, _, Persisted} = osc_sql:adhoc(SQL, [WindowMeta#windowmeta.id]),
     WindowMeta#windowmeta{persisted = Persisted}.
 
 id(#windowmeta{id=ID}) ->
@@ -102,13 +100,19 @@ latest_persisted_time(#windowmeta{interval=Interval, persisted=Persisted}) ->
     Timestamp + Interval * (Count - 1).
 
 insert_persist(Window, Timestamp, Count) ->
-    {ok, _Count} = osc_sql:named(
-        insert_persist, [Window#windowmeta.id, Timestamp, Count]
+    SQL = "INSERT INTO persists "
+          "(window_id, timestamp, count) "
+          "VALUES ($1, $2, $3);",
+    {ok, _Count} = osc_sql:adhoc(
+        SQL, [Window#windowmeta.id, Timestamp, Count]
     ),
     ok.
 
 delete_persist(Window, Timestamp) ->
-    {ok, _Count} = osc_sql:named(
-        delete_persist, [Window#windowmeta.id, Timestamp]
+    SQL = "UPDATE persists "
+          "SET (vacuumed, vacuum_time)=(TRUE, (now() at time one 'utc')) "
+          "WHERE window_id=$1 AND timestamp=$2;",
+    {ok, _Count} = osc_sql:adhoc(
+        SQL, [Window#windowmeta.id, Timestamp]
     ),
     ok.

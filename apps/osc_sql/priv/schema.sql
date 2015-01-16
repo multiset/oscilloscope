@@ -21,6 +21,8 @@ CREATE TABLE users (
     owner_id integer NOT NULL REFERENCES owners(id),
     name text UNIQUE NOT NULL,
     password bytea NOT NULL,
+    created timestamp without time zone default (now() at time zone 'utc') NOT NULL,
+    updated timestamp without time zone default (now() at time zone 'utc') NOT NULL,
     active boolean DEFAULT TRUE NOT NULL
 );
 
@@ -34,6 +36,7 @@ CREATE TABLE orgs (
     id serial PRIMARY KEY,
     owner_id integer NOT NULL REFERENCES owners(id),
     name text UNIQUE NOT NULL,
+    created timestamp without time zone default (now() at time zone 'utc') NOT NULL,
     active boolean DEFAULT TRUE NOT NULL
 );
 
@@ -49,7 +52,6 @@ CREATE TABLE org_members (
 );
 
 CREATE TABLE team_members (
-    org_id integer NOT NULL REFERENCES orgs(id),
     team_id integer NOT NULL REFERENCES teams(id),
     user_id integer NOT NULL REFERENCES users(id)
 );
@@ -57,12 +59,12 @@ CREATE TABLE team_members (
 CREATE TABLE metrics (
     id serial PRIMARY KEY,
     owner_id integer NOT NULL REFERENCES owners(id),
+    created timestamp without time zone default (now() at time zone 'utc') NOT NULL,
     hash bytea NOT NULL,
     UNIQUE(owner_id, hash)
 );
 
 CREATE TABLE tags (
-    owner_id integer NOT NULL REFERENCES owners(id),
     key text NOT NULL,
     value text NOT NULL,
     metric_id integer NOT NULL REFERENCES metrics(id)
@@ -82,6 +84,9 @@ CREATE TABLE persists (
     window_id integer NOT NULL REFERENCES windows(id),
     "timestamp" integer NOT NULL,
     count integer NOT NULL,
+    vacuumed boolean,
+    persist_time timestamp without time zone default (now() at time zone 'utc') NOT NULL,
+    vacuum_time timestamp without time zone,
     UNIQUE(window_id, "timestamp")
 );
 
@@ -103,6 +108,7 @@ CREATE TABLE window_configurations (
 
 CREATE TABLE ports (
     owner_id integer NOT NULL REFERENCES owners(id),
+    created timestamp without time zone default (now() at time zone 'utc') NOT NULL,
     host bytea,
     "type" bytea NOT NULL,
     port integer NOT NULL
