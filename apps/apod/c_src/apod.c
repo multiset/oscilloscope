@@ -157,13 +157,8 @@ int apod_update(ApodData *data, int64_t t, double v)
     double existing;
 
     t = t - t % data->interval;
-    latest_time = apod_latest_time(data);
-    floor = latest_time - data->interval * data->count;
-    if (floor < data->floor) {
-        floor = data->floor;
-    }
 
-    if (t <= floor) {
+    if (t <= data->floor) {
         // This datapoint is too old
         return 1;
     }
