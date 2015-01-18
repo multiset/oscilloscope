@@ -18,41 +18,47 @@
 -include_lib("osc/include/osc_types.hrl").
 -include_lib("osc_meta/include/osc_meta.hrl").
 
--spec create(OwnerID, Priority, GroupProps, WindowConfig) -> {ok, GroupID} when
+-spec create(OwnerID, Priority, GroupProps, WindowConfig) -> Response when
     OwnerID :: owner_id(),
     Priority :: pos_integer(),
     GroupProps :: [{GroupTagKey, GroupTagValue}],
     GroupTagKey :: group_tag_key(),
     GroupTagValue :: group_tag_value(),
     WindowConfig :: [window_config()],
-    GroupID :: group_id().
+    Response :: {ok, GroupID} | {error, Error},
+    GroupID :: group_id(),
+    Error :: exists.
 
 create(OwnerID, Priority, GroupProps, WindowConfigs) ->
     GroupSQL = "INSERT INTO window_configuration_groups"
                "(owner_id, priority, tags) VALUES ($1, $2, $3)"
                "RETURNING id;",
-    Tags = lists:map(fun tuple_to_list/1, GroupProps),
-    {ok, _, _, [{GroupID}]} = osc_sql:adhoc(
-        GroupSQL,
-        [OwnerID, Priority, Tags]
-    ),
     WindowSQL = "INSERT INTO window_configurations"
                 "(group_id, type, aggregation, interval, count)"
                 "VALUES ($1, $2, $3, $4, $5);",
-    ok = lists:foreach(
-        fun({Type, Aggregation, Interval, Count}) ->
-            Args = [
-                GroupID,
-                term_to_binary(Type),
-                term_to_binary(Aggregation),
-                Interval,
-                Count
-            ],
-            {ok, _} = osc_sql:adhoc(WindowSQL, Args)
-        end,
-        WindowConfigs
-    ),
-    {ok, GroupID}.
+    ok = mpgsql:tx_begin(),
+    Tags = lists:map(fun tuple_to_list/1, GroupProps),
+    case mpgsql:equery(GroupSQL, [OwnerID, Priority, Tags]) of
+        {error, unique_violation} ->
+            ok = mpgsql:tx_rollback(),
+            {error, exists};
+        {ok, _, _, [{GroupID}]} ->
+            lists:foreach(
+                fun({Type, Aggregation, Interval, Count}) ->
+                    Args = [
+                        GroupID,
+                        term_to_binary(Type),
+                        term_to_binary(Aggregation),
+                        Interval,
+                        Count
+                    ],
+                    {ok, _} = mpgsql:equery(WindowSQL, Args)
+                end,
+                WindowConfigs
+            ),
+            ok = mpgsql:tx_commit(),
+            {ok, GroupID}
+    end.
 
 
 -spec list(OwnerID) -> {ok, WindowConfigs} when
@@ -60,14 +66,14 @@ create(OwnerID, Priority, GroupProps, WindowConfigs) ->
     WindowConfigs :: proplists:proplist().
 
 list(OwnerID) ->
-    GroupSQL = " SELECT id, priority, tags FROM window_configuration_groups"
-               " WHERE owner_id = $1",
-    {ok, _, GroupRows} = osc_sql:adhoc(GroupSQL, [OwnerID]),
+    SQL = "SELECT id, priority, tags FROM window_configuration_groups "
+          "WHERE owner_id = $1;",
+    {ok, _, Rows} = mpgsql:equery(SQL, [OwnerID]),
     Configs = lists:map(
         fun({GroupID, Priority, Tags}) ->
             format_group(GroupID, OwnerID, Priority, Tags)
         end,
-        GroupRows
+        Rows
     ),
     SortedConfigs = lists:sort(
         fun(PropsA, PropsB) ->
@@ -84,36 +90,30 @@ list(OwnerID) ->
     GroupID :: group_id().
 
 lookup(GroupID) ->
-    GroupSQL = " SELECT owner_id, priority, tags"
-               " FROM window_configuration_groups"
-               " WHERE id = $1",
-    {ok, _, GroupRows} = osc_sql:adhoc(GroupSQL, [GroupID]),
-    case GroupRows of
+    SQL = "SELECT owner_id, priority, tags"
+          "FROM window_configuration_groups"
+          "WHERE id = $1;",
+    {ok, _, Rows} = mpgsql:equery(SQL, [GroupID]),
+    case Rows of
         [] ->
             not_found;
         [{OwnerID, Priority, Tags}] ->
             {ok, format_group(GroupID, OwnerID, Priority, Tags)}
     end.
 
--spec delete(GroupID) -> ok | error when
+-spec delete(GroupID) -> ok when
     GroupID :: group_id().
 
 delete(GroupID) ->
-    Commands = [
-        {delete_window_configurations, [GroupID]},
-        {delete_window_group_configurations, [GroupID]}
-    ],
-    Batch = osc_sql:batch(Commands),
-    case lists:usort([Status || {Status, _} <- Batch]) of
-        [ok] ->
-            ok;
-        _ ->
-            lager:error(
-                "Window configuration deletion encountered an error: ~p",
-                [Batch]
-            ),
-            error
-    end.
+    ok = mpgsql:tx_begin(),
+    DeleteWindowGroupConfigSQL = "DELETE FROM window_configuration_groups "
+                                 "WHERE id = $1;",
+    DeleteWindowConfigSQL = "DELETE FROM window_configurations "
+                            "WHERE group_id = $1;",
+    {ok, _} = mpgsql:equery(DeleteWindowConfigSQL, [GroupID]),
+    {ok, _} = mpgsql:equery(DeleteWindowGroupConfigSQL, [GroupID]),
+    ok = mpgsql:tx_commit().
+
 
 -spec add_window(GroupID, WindowConfig) -> ok when
     GroupID :: group_id(),
@@ -136,42 +136,43 @@ add_window(GroupID, WindowConfig) ->
         Interval,
         Count
     ],
-    {ok, 1} = osc_sql:adhoc(SQL, Args),
+    {ok, 1} = mpgsql:equery(SQL, Args),
     ok.
+
 
 -spec delete_window(GroupID, WindowID) -> ok when
     GroupID :: group_id(),
     WindowID :: osc_meta_window:window_id().
 
 delete_window(GroupID, WindowID) ->
-    SQL = " DELETE FROM window_configurations"
-          " WHERE group_id = $1 AND id = $2;",
-    {ok, 1} = osc_sql:adhoc(SQL, [GroupID, WindowID]),
+    SQL = "DELETE FROM window_configurations "
+          "WHERE group_id = $1 AND id = $2;",
+    {ok, 1} = mpgsql:equery(SQL, [GroupID, WindowID]),
     ok.
+
 
 -spec set_priority(GroupID, Priority) -> ok when
     GroupID :: group_id(),
     Priority :: pos_integer().
 
 set_priority(GroupID, Priority) ->
-    SQL = " UPDATE window_configuration_groups"
-          " SET priority = $2"
-          " WHERE id = $1;",
-    {ok, 1} = osc_sql:adhoc(SQL, [GroupID, Priority]),
+    SQL = "UPDATE window_configuration_groups "
+          "SET priority = $2 "
+          "WHERE id = $1;",
+    {ok, 1} = mpgsql:equery(SQL, [GroupID, Priority]),
     ok.
+
 
 -spec for_metric(Metric) -> {ok, Windows} when
     Metric :: metric(),
     Windows :: [window_config()].
 
 for_metric({OwnerID, Props}) ->
-    SQL = <<
-        "SELECT id, tags"
-        " FROM window_configuration_groups"
-        " WHERE owner_id=$1"
-        " ORDER BY priority DESC;"
-    >>,
-    {ok, _, Rows0} = osc_sql:adhoc(SQL, [OwnerID]),
+    SQL = "SELECT id, tags "
+          "FROM window_configuration_groups "
+          "WHERE owner_id = $1 "
+          "ORDER BY priority DESC;",
+    {ok, _, Rows0} = mpgsql:equery(SQL, [OwnerID]),
     %% Vector types come back as lists of lists, and that's a pain.
     Rows1 = lists:map(
         fun({ID, Tags}) -> {ID, lists:map(fun list_to_tuple/1, Tags)} end,
@@ -199,10 +200,10 @@ find_configuration_match([{GroupID, KVs}|Groups], Props) ->
     %% represented in a group in order to be considered a match.
     case match_props(KVs, Props) of
         true ->
-            SQL = "SELECT type, aggregation, interval, count"
-                  " FROM window_configurations"
-                  " WHERE group_id = $1;",
-            {ok, _,  Rows} = osc_sql:adhoc(SQL, [GroupID]),
+            SQL = "SELECT type, aggregation, interval, count "
+                  "FROM window_configurations "
+                  "WHERE group_id = $1;",
+            {ok, _,  Rows} = mpgsql:equery(SQL, [GroupID]),
             Windows = lists:map(
                 fun({Type, Aggregation, Interval, Count}) ->
                     {
@@ -242,15 +243,17 @@ match_props([{GroupKey, GroupValue}|KVs], Props) ->
             end
     end.
 
+
 -spec windows(GroupID) -> Windows when
     GroupID :: group_id(),
     Windows :: [window_config()].
 
 windows(GroupID) ->
-    WindowSQL = " SELECT id, type, aggregation, interval, count"
-                " FROM window_configurations WHERE group_id = $1;",
-    {ok, _, Windows} = osc_sql:adhoc(WindowSQL, [GroupID]),
+    WindowSQL = "SELECT id, type, aggregation, interval, count "
+                "FROM window_configurations WHERE group_id = $1;",
+    {ok, _, Windows} = mpgsql:equery(WindowSQL, [GroupID]),
     Windows.
+
 
 -spec format_group(GroupID, OwnerID, Priority, Tags) -> Group when
     GroupID :: group_id(),
