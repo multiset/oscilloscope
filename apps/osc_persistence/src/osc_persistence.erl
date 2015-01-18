@@ -36,13 +36,19 @@ persist(WindowMeta, Window) ->
 
 vacuum(WindowMeta, Window) ->
     {ok, Timeout} = application:get_env(osc_persistence, request_timeout),
-    poolboy:transaction(
-        osc_persistence_pool,
-        fun(Worker) ->
-            gen_server:call(Worker, {vacuum, WindowMeta, Window})
-        end,
-        Timeout
-    ).
+    {ok, Vacuum} = application:get_env(osc_persistence, vacuum),
+    case Vacuum of
+        true ->
+            poolboy:transaction(
+                osc_persistence_pool,
+                fun(Worker) ->
+                    gen_server:call(Worker, {vacuum, WindowMeta, Window})
+                end,
+                Timeout
+            );
+        false ->
+            ok
+    end.
 
 
 -spec read(WindowMeta, From, Until) -> {ok, Read | no_data} when

@@ -25,6 +25,7 @@
         {min_persist_age, 300},
         {worker_pool_size, 5},
         {worker_pool_overflow, 10},
-        {request_timeout, 10000}
+        {request_timeout, 10000},
+        {vacuum, false}
     ]}
 ]}.
