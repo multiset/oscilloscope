@@ -1,7 +1,7 @@
 #ifndef APOD_H
 #define APOD_H
 
-#include <judy.h>
+#include <Judy.h>
 #include "erl_nif.h"
 
 typedef enum
