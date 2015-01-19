@@ -241,6 +241,9 @@ apod_nif_read(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
         free(points);
         apod_read_dealloc(read);
         return ret;
+    default:
+        return priv->atom_undefined;
+        break;
     }
 }
 
@@ -293,6 +296,9 @@ apod_nif_to_list(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
         free(points);
         apod_read_dealloc(read);
         return ret;
+    default:
+        return priv->atom_undefined;
+        break;
     }
 
 }
