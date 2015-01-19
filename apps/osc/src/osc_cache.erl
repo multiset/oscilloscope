@@ -15,28 +15,19 @@
     start/1,
     find/1,
     read/3,
-    update/2
+    update/2,
+    persist/1
 ]).
 
 -include_lib("osc/include/osc_types.hrl").
 
-%% This data structure is a gb_tree to ensure stable sorting when selecting
-%% a window for querying. It also has values/1, and dict doesn't.
--type window_map() :: gb_trees:tree(
-    osc_meta_window:window_id(),
-    {osc_meta_window:windowmeta(), osc_window:window()}
-).
-
-%% This data structure is a gb_tree simply because the previous one is, too.
--type persisting_map() :: gb_trees:tree(
-    osc_meta_window:window_id(),
-    {pid(), reference()}
-).
+-type window() :: {osc_meta_window:window(), apod:apod()}.
+-type persist() :: {osc_meta_window:window_id(), {pid(), reference()}}.
 
 -record(st, {
     meta :: osc_meta_metric:metricmeta(),
-    windows :: window_map(),
-    persisting :: persisting_map()
+    windows :: [window()],
+    persisting :: [persist()]
 }).
 
 
@@ -62,6 +53,10 @@ update(Pid, Points) ->
     gen_server:call(Pid, {update, Points}).
 
 
+persist(Pid) ->
+    gen_server:call(Pid, persist).
+
+
 start_link(Metric, Meta) ->
     gen_server:start_link(?MODULE, {Metric, Meta}, []).
 
@@ -69,19 +64,30 @@ start_link(Metric, Meta) ->
 init({Metric, Meta}) ->
     Windows = lists:foldl(
         fun(WindowMeta, Acc) ->
-            gb_trees:insert(
-                osc_meta_window:id(WindowMeta),
-                {WindowMeta, osc_window:new(WindowMeta)},
-                Acc
-            )
+            LP0 = osc_meta_window:latest_persisted_time(WindowMeta),
+            LP1 = case LP0 of
+                undefined ->
+                    %% Apod will only accept integers
+                    -1;
+                _ ->
+                    LP0
+            end,
+            {ok, WindowData} = apod:new(
+                rect,
+                osc_meta_window:aggregation(WindowMeta),
+                osc_meta_window:interval(WindowMeta),
+                osc_meta_window:count(WindowMeta),
+                LP1
+            ),
+            [{WindowMeta, WindowData}|Acc]
         end,
-        gb_trees:empty(),
+        [],
         osc_meta_metric:windows(Meta)
     ),
     State = #st{
         meta=Meta,
         windows=Windows,
-        persisting=gb_trees:empty()
+        persisting=[]
     },
     gproc:reg({n, l, Metric}, ignored),
     Name = osc_meta_metric:name(Meta),
@@ -97,20 +103,41 @@ init({Metric, Meta}) ->
 
 handle_call({read, From, Until}, _From, State) ->
     #st{windows=Windows, meta=Meta}=State,
-    {WindowMeta, Window} = select_window(From, gb_trees:values(Windows)),
-    {ok, Read} = osc_window:read(From, Until, Window),
+    {WindowMeta, WindowData} = select_window(From, Windows),
+    {ok, Read} = apod:read(WindowData, From, Until),
     {reply, {ok, Meta, WindowMeta, Read}, State, hibernate_timeout()};
-handle_call({update, Points}, _From, State0) ->
-    #st{windows=Windows0, persisting=Persisting0}=State0,
-    Windows1 = gb_trees:map(
-        fun(_ID, {WindowMeta, Window}) ->
-            {WindowMeta, osc_window:update(Points, Window)}
+handle_call({update, Points}, _From, State) ->
+    #st{windows=Windows, persisting=Persisting}=State,
+    UpdateCount = length(Points) * length(Windows),
+    folsom_metrics:notify({osc, cache_updates}, {inc, UpdateCount}),
+    lists:foreach(
+        fun({_WMeta, WData}) ->
+            ok = apod:update(WData, Points)
         end,
-        Windows0
+        Windows
     ),
-    Persisting1 = maybe_persist(Windows1, Persisting0),
-    State1 = State0#st{windows=Windows1, persisting=Persisting1},
-    {reply, ok, State1, hibernate_timeout()};
+    {ok, Threshold} = application:get_env(osc, chunkifyability_threshold),
+    case {Persisting, maybe_persist(Windows, Persisting, Threshold)} of
+        {[], []} ->
+            {reply, ok, State, hibernate_timeout()};
+        {P0, P1} ->
+            {reply, ok, State#st{persisting=P1 ++ P0}}
+    end;
+handle_call(persist, _From, State) ->
+    #st{windows=W, persisting=P0} = State,
+    P1 = lists:filtermap(
+        fun({WMeta, _WData}=Window) ->
+            ID = osc_meta_window:id(WMeta),
+            case lists:keyfind(ID, 1, P0) of
+                false ->
+                    {true, spawn_persist(Window)};
+                _ ->
+                    false
+            end
+        end,
+        W
+    ),
+    {reply, ok, State#st{persisting=P0 ++ P1}};
 handle_call(Msg, _From, State) ->
     {stop, {unknown_call, Msg}, error, State}.
 
@@ -119,34 +146,25 @@ handle_cast(Msg, State) ->
     {stop, {unknown_cast, Msg}, State}.
 
 
+handle_info(timeout, #st{persisting=P}=State) when length(P) =/= 0 ->
+    %% There are outstanding persists; don't hibernate
+    {noreply, State};
 handle_info(timeout, State) ->
-    #st{windows=Windows, persisting=Persisting0} = State,
-    Persisting1 = maybe_persist(Windows, Persisting0),
-    case gb_trees:is_empty(Persisting1) of
-        true ->
+    {ok, Threshold} = application:get_env(osc, chunkifyability_threshold),
+    case maybe_persist(State#st.windows, [], Threshold) of
+        [] ->
             %% No windows are currently persisting, and nothing is worth trying
             %% to persist, so go to sleep.
-            case Persisting0 =/= Persisting1 of
-                true ->
-                    %% This should never happen - maybe_persist should only be
-                    %% able to add items to the list.
-                    lager:critical(
-                        "Bad persist mutation; old was ~p, new is ~p",
-                        [Persisting0, Persisting1]
-                    );
-                false ->
-                    ok
-            end,
-            {noreply, State#st{persisting=Persisting1}, hibernate};
-        false ->
+            {noreply, State, hibernate};
+        Persisting ->
             %% Some persist attempts are in-progress; don't hibernate.
-            {noreply, State#st{persisting=Persisting1}}
+            {noreply, State#st{persisting=Persisting}}
     end;
 handle_info({'DOWN', Ref, process, Pid, Reason}=Msg, State0) ->
     #st{windows=Windows0, persisting=Persisting0} = State0,
     Key = {Pid, Ref},
-    case gb_trees:lookup(Key, Persisting0) of
-        none ->
+    case lists:keytake(Key, 2, Persisting0) of
+        false ->
             %% Log a critical message, but don't crash - it's somewhat expensive
             %% to recreate the state of this server.
             lager:critical(
@@ -154,18 +172,37 @@ handle_info({'DOWN', Ref, process, Pid, Reason}=Msg, State0) ->
                 [Msg]
             ),
             {noreply, State0};
-        {value, WindowID} ->
-            Persisting1 = gb_trees:delete(Key, Persisting0),
+        {value, {WindowID, Key}, Persisting1} ->
             State1 = case Reason of
                 normal ->
                     %% Persist was successful - update our internal state
-                    {WindowMeta0, Window0} = gb_trees:get(WindowID, Windows0),
-                    WindowMeta1 = osc_meta_window:refresh(WindowMeta0),
-                    Window1 = osc_window:refresh(WindowMeta1, Window0),
-                    Window2 = osc_window:trim(Window1),
-                    Windows1 = gb_trees:enter(
-                        WindowID,
-                        {WindowMeta1, Window2},
+                    Windows1 = lists:foldl(
+                        fun({WMeta0, WData}=W, Acc) ->
+                            case osc_meta_window:id(WMeta0) =:= WindowID of
+                                false ->
+                                    [W|Acc];
+                                true ->
+                                    WMeta1 = osc_meta_window:refresh(WMeta0),
+                                    LP0 = osc_meta_window:latest_persisted_time(
+                                        WMeta1
+                                    ),
+                                    LP1 = case LP0 of
+                                        undefined ->
+                                            %% This shouldn't happen
+                                            lager:critical(
+                                                "Post-persist latest persisted "
+                                                "time was undefined for ~p",
+                                                [WindowID]
+                                            ),
+                                            -1;
+                                        _ ->
+                                            LP0
+                                    end,
+                                    ok = apod:truncate(WData, LP1),
+                                    [{WMeta1, WData}|Acc]
+                            end
+                        end,
+                        [],
                         Windows0
                     ),
                     State0#st{windows=Windows1, persisting=Persisting1};
@@ -194,7 +231,12 @@ select_window(From, Windows) ->
         fun({MetaA, _}, {MetaB, _}) ->
             IntervalA = osc_meta_window:interval(MetaA),
             IntervalB = osc_meta_window:interval(MetaB),
-            IntervalA >= IntervalB
+            case IntervalA =:= IntervalB of
+                true ->
+                    osc_meta_window:id(MetaA) >= osc_meta_window:id(MetaB);
+                false ->
+                    IntervalA >= IntervalB
+            end
         end,
         Windows
     ),
@@ -213,12 +255,12 @@ select_window(From, Windows) ->
 
 -spec earliest_timestamp({Meta, Window}) -> Timestamp when
     Meta :: osc_meta_window:window(),
-    Window :: osc_window:window(),
+    Window :: apod:apod(),
     Timestamp :: timestamp() | undefined.
 
 earliest_timestamp({Meta, Window}) ->
     case osc_meta_window:earliest_persisted_time(Meta) of
-        undefined -> osc_window:earliest_time(Window);
+        undefined -> apod:earliest_time(Window);
         Timestamp -> Timestamp
     end.
 
@@ -228,45 +270,39 @@ hibernate_timeout() ->
     Timeout.
 
 
--spec maybe_persist(Windows, Persisting) -> Persisting when
-    Windows :: window_map(),
-    Persisting :: persisting_map().
+-spec maybe_persist(Windows, Persisting, Threshold) -> Persisting when
+    Windows :: [window()],
+    Persisting :: [persist()],
+    Threshold :: float().
 
-maybe_persist(Windows, Persisting) ->
-    case gb_trees:is_empty(Persisting) of
-        true ->
-            lists:foldl(
-                fun({WindowID, Thunk}, Acc) ->
-                    Key = spawn_monitor(Thunk),
-                    gb_trees:insert(Key, WindowID, Acc)
-                end,
-                gb_trees:empty(),
-                thunk_persists(Windows)
-            );
-        false ->
-            Persisting
-    end.
+maybe_persist(Windows, Persisting, Threshold) ->
+    lists:filtermap(
+        fun({WMeta, WData}=W) ->
+            ID = osc_meta_window:id(WMeta),
+            case lists:keyfind(ID, 1, Persisting) of
+                false ->
+                    AverageSize = osc_meta_window:average_persist_size(WMeta),
+                    case apod:size(WData)/AverageSize > Threshold of
+                        true ->
+                            {true, spawn_persist(W)};
+                        false ->
+                            false
+                    end;
+                _ ->
+                    false
+            end
+        end,
+        Windows
+    ).
 
--spec thunk_persists(Windows) -> Thunks when
-    Windows :: window_map(),
-    Thunks :: [{osc_meta_window:window_id(), fun(() -> ok)}].
 
-thunk_persists(Windows) ->
-    {ok, Threshold} = application:get_env(osc, chunkifyability_threshold),
-    Iterator = gb_trees:iterator(Windows),
-    thunk_persists(gb_trees:next(Iterator), Threshold, []).
+-spec spawn_persist(Window) -> Persist when
+    Window :: window(),
+    Persist :: persist().
 
-thunk_persists(none, _Threshold, Thunks) ->
-    Thunks;
-thunk_persists({WindowID, {WindowMeta, Window}, Iterator}, Threshold, Thunks0) ->
-    Thunks1 = case osc_window:chunkifyability(Window) > Threshold of
-        true ->
-            Thunk = fun() ->
-                ok = osc_persistence:persist(WindowMeta, Window),
-                ok = osc_persistence:vacuum(WindowMeta, Window)
-            end,
-            [{WindowID, Thunk}|Thunks0];
-        false ->
-            Thunks0
-    end,
-    thunk_persists(gb_trees:next(Iterator), Threshold, Thunks1).
+spawn_persist({WindowMeta, WindowData}) ->
+    Ref = spawn_monitor(fun() ->
+        ok = osc_persistence:persist(WindowMeta, WindowData),
+        ok = osc_persistence:vacuum(WindowMeta, WindowData)
+    end),
+    {osc_meta_window:id(WindowMeta), Ref}.

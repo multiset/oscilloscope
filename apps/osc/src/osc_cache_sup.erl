@@ -7,8 +7,6 @@
 -export([start_link/0, init/1]).
 
 -include_lib("osc/include/osc_types.hrl").
--include_lib("osc_meta/include/osc_meta.hrl").
-
 
 start_cache(Metric, Meta) ->
     Spec = {

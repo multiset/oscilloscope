@@ -9,6 +9,8 @@
     interval/1,
     count/1,
     persisted/1,
+    average_persist_size/1,
+    type/1,
     earliest_persisted_time/1,
     latest_persisted_time/1,
     insert_persist/3,
@@ -17,6 +19,24 @@
 
 -include_lib("osc/include/osc_types.hrl").
 -include_lib("osc_meta/include/osc_meta.hrl").
+
+-opaque window_id() :: pos_integer().
+-opaque window_type() :: rectangular.
+
+-record(windowmeta, {
+    id :: window_id(),
+    metric_id :: metric_id(),
+    window_type :: window_type(),
+    aggregation :: aggregation(),
+    interval :: interval(),
+    count :: count(),
+    persisted :: persisted()
+}).
+
+-opaque windowmeta() :: #windowmeta{}.
+
+-export_type([window_id/0, window_type/0, windowmeta/0]).
+
 
 create(MetricID, {rectangular, Aggregation, Interval, Count}) ->
     SQL = <<
@@ -87,6 +107,13 @@ count(#windowmeta{count=Count}) ->
 
 persisted(#windowmeta{persisted=Persisted}) ->
     Persisted.
+
+average_persist_size(#windowmeta{persisted=Persisted}) ->
+    Sum = lists:foldl(fun({_, N}, Acc) -> Acc + N end, 0, Persisted),
+    Sum / length(Persisted).
+
+type(#windowmeta{window_type=Type}) ->
+    Type.
 
 earliest_persisted_time(#windowmeta{persisted=[]}) ->
     undefined;

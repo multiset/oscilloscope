@@ -9,3 +9,5 @@ dump.rdb
 erln8.config
 dev
 callgrind.*
+*.o
+*.so

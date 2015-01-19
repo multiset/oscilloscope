@@ -4,7 +4,8 @@
     {registered, [osc_sup, osc_cache_sup]},
     {applications, [
         kernel,
-        stdlib
+        stdlib,
+        apod
     ]},
     {mod, {osc_app, []}},
     {env, [

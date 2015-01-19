@@ -1,0 +1,9 @@
+{application, apod, [
+    {description, "Window functions in C"},
+    {vsn, git},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib
+    ]}
+]}.
