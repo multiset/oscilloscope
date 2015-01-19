@@ -52,7 +52,7 @@ resource_exists(Req, State) ->
         undefined ->
             {ok, UserProps} = osc_meta_user:lookup(UserID),
             UserOwnerID = proplists:get_value(owner_id, UserProps),
-            case osc_meta_metric:lookup(UserOwnerID, MetricProps) of
+            case osc_meta_metric:lookup({UserOwnerID, MetricProps}) of
                 {ok, MetricMeta} ->
                     {true, Req, State#st{metricmeta=MetricMeta}};
                 not_found ->
@@ -64,7 +64,7 @@ resource_exists(Req, State) ->
                     {false, Req, State};
                 {ok, OrgProps} ->
                     OrgOwnerID = proplists:get_value(owner_id, OrgProps),
-                    case osc_meta_metric:lookup(OrgOwnerID, MetricProps) of
+                    case osc_meta_metric:lookup({OrgOwnerID, MetricProps}) of
                         not_found ->
                             {false, Req, State};
                         {ok, MetricMeta} ->

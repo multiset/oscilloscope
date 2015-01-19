@@ -31,10 +31,20 @@
 }).
 
 
+-spec start(Metric) -> {ok, Cache} | {error, Error} when
+    Metric :: term(),
+    Cache :: pid(),
+    Error :: not_found | unknown.
+
 start(Metric) ->
-    case osc_meta_metric:lookup(Metric) of
-        not_found -> not_found;
-        {ok, Meta} -> osc_cache_sup:start_cache(Metric, Meta)
+    Lookup = try osc_meta_metric:lookup(Metric)
+    catch error:{badmatch, B} ->
+        lager:warning("badmatch in osc_cache:start/1: ~p", [B]),
+        unknown
+    end,
+    case Lookup of
+        {ok, Meta} -> osc_cache_sup:start_cache(Metric, Meta);
+        Else -> {error, Else}
     end.
 
 

@@ -4,7 +4,6 @@
     create/1,
     lookup/1,
     name/1,
-    lookup/2,
     search/2,
     id/1,
     windows/1,
@@ -17,7 +16,7 @@
 -spec create(Metric) -> {ok, MetricID} | {error, Error} when
     Metric :: metric(),
     MetricID :: metric_id(),
-    Error :: exists.
+    Error :: exists | missing_owner.
 
 create({OwnerID, Props}=Metric) ->
     EncodedProps = term_to_binary(lists:sort(Props)),
@@ -28,6 +27,9 @@ create({OwnerID, Props}=Metric) ->
         {error, unique_violation} ->
             ok = mpgsql:tx_rollback(),
             {error, exists};
+        {error, foreign_key_violation} ->
+            ok = mpgsql:tx_rollback(),
+            {error, missing_owner};
         {ok, 1, _, [{MetricID}]} ->
             {ok, Windows} =  osc_meta_window_configuration:for_metric(Metric),
             InsertWindowSQL = "INSERT INTO windows "
@@ -36,10 +38,14 @@ create({OwnerID, Props}=Metric) ->
                               "($1, $2, $3, $4, $5);",
             lists:foreach(
                 fun({Type, Aggregation, Interval, Count}) ->
-                    {ok, 1} = mpgsql:equery(
-                        InsertWindowSQL,
-                        [MetricID, Type, Aggregation, Interval, Count]
-                    )
+                    Args = [
+                        MetricID,
+                        term_to_binary(Type),
+                        term_to_binary(Aggregation),
+                        Interval,
+                        Count
+                    ],
+                    {ok, 1} = mpgsql:equery(InsertWindowSQL, Args)
                 end,
                 Windows
             ),
@@ -66,11 +72,14 @@ create({OwnerID, Props}=Metric) ->
 
 lookup(Metric) ->
     {ok, _, Info} = case Metric of
-        {OwnerID0, MetricName} ->
+        {OwnerID0, Props0} ->
+            %% Use Props0 here because the value from the SQL below may be in a
+            %% different order - the ordering in the database is undefined.
+            EncodedProps0 = term_to_binary(lists:sort(Props0)),
             LookupSQL = "SELECT id, owner_id, hash FROM metrics "
                         "WHERE owner_id = $1 AND hash = $2",
-            mpgsql:equery(LookupSQL, [OwnerID0, MetricName]);
-        Metric ->
+            mpgsql:equery(LookupSQL, [OwnerID0, EncodedProps0]);
+        _ ->
             LookupSQL = "SELECT id, owner_id, hash FROM metrics WHERE id = $1",
             mpgsql:equery(LookupSQL, [Metric])
     end,
@@ -79,37 +88,12 @@ lookup(Metric) ->
             not_found;
         [{MetricID, OwnerID, EncodedProps}] ->
             PropSQL = "SELECT key, value FROM tags WHERE metric_id = $1",
-            {ok, _, Props} = mpgsql:equery(PropSQL, [MetricID]),
+            {ok, _, Props1} = mpgsql:equery(PropSQL, [MetricID]),
             Windows = osc_meta_window:lookup(MetricID),
             {ok, #metricmeta{
                 id = MetricID,
                 owner_id = OwnerID,
-                props = Props,
-                encoded_props = EncodedProps,
-                windows = Windows
-            }}
-    end.
-
--spec lookup(OwnerID, Props) -> {ok, Meta} | not_found when
-    OwnerID :: owner_id(),
-    Props :: any(),
-    Meta :: metricmeta().
-
-lookup(OwnerID, Props) ->
-    EncodedProps = term_to_binary(lists:sort(Props)),
-    LookupSQL = "SELECT id FROM metrics where owner_id = $1 AND hash = $2",
-    {ok, _, Rows} = mpgsql:equery(
-        LookupSQL, [OwnerID, EncodedProps]
-    ),
-    case Rows of
-        [] ->
-            not_found;
-        [{MetricID}] ->
-            Windows = osc_meta_window:lookup(MetricID),
-            {ok, #metricmeta{
-                id = MetricID,
-                owner_id = OwnerID,
-                props = Props,
+                props = Props1,
                 encoded_props = EncodedProps,
                 windows = Windows
             }}
