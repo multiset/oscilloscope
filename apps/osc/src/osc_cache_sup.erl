@@ -12,7 +12,7 @@ start_cache(Metric, Meta) ->
     Spec = {
         Metric,
         {osc_cache, start_link, [Metric, Meta]},
-        temporary, 5000, worker, [osc_cache]
+        transient, 5000, worker, [osc_cache]
     },
     case supervisor:start_child(?MODULE, Spec) of
         {error, {already_started, Pid}} ->
