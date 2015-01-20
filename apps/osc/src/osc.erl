@@ -81,26 +81,26 @@ merge_reads(From0, Until0, Interval, CRead, PRead) ->
     ),
     Points = case {PRead, CRead} of
         {no_data, no_data} ->
-            lists:duplicate((Until1 - From1) div Interval, null);
+            lists:duplicate((Until1 - From1) div Interval, undefined);
         {{PFrom, PUntil, PData}, no_data} ->
             lists:append([
-                lists:duplicate((PFrom - From1) div Interval, null),
+                lists:duplicate((PFrom - From1) div Interval, undefined),
                 PData,
-                lists:duplicate((Until1 - PUntil) div Interval, null)
+                lists:duplicate((Until1 - PUntil) div Interval, undefined)
             ]);
         {no_data, {CFrom, CUntil, CData}} ->
             lists:append([
-                lists:duplicate((CFrom - From1) div Interval, null),
+                lists:duplicate((CFrom - From1) div Interval, undefined),
                 CData,
-                lists:duplicate((Until1 - CUntil) div Interval, null)
+                lists:duplicate((Until1 - CUntil) div Interval, undefined)
             ]);
         {{_, PUntil, PData}, {CFrom, CUntil, CData}} ->
             lists:append([
-                lists:duplicate((CFrom - From1) div Interval, null),
+                lists:duplicate((CFrom - From1) div Interval, undefined),
                 PData,
-                lists:duplicate((CFrom - PUntil) div Interval, null),
+                lists:duplicate((CFrom - PUntil) div Interval, undefined),
                 CData,
-                lists:duplicate((Until1 - CUntil) div Interval, null)
+                lists:duplicate((Until1 - CUntil) div Interval, undefined)
             ])
     end,
     {From1, Until1, Points}.
