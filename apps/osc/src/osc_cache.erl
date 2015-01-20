@@ -149,11 +149,13 @@ handle_call(persist, _From, State) ->
     ),
     {reply, ok, State#st{persisting=P0 ++ P1}};
 handle_call(Msg, _From, State) ->
-    {stop, {unknown_call, Msg}, error, State}.
+    lager:warning("osc_cache ~p received unknown call: ~p", [self(), Msg]),
+    {noreply, State}.
 
 
 handle_cast(Msg, State) ->
-    {stop, {unknown_cast, Msg}, State}.
+    lager:warning("osc_cache ~p received unknown cast: ~p", [self(), Msg]),
+    {noreply, State}.
 
 
 handle_info(timeout, #st{persisting=P}=State) when length(P) =/= 0 ->
@@ -224,7 +226,8 @@ handle_info({'DOWN', Ref, process, Pid, Reason}=Msg, State0) ->
             {noreply, State1#st{persisting=Persisting1}, hibernate_timeout()}
     end;
 handle_info(Msg, State) ->
-    {stop, {unknown_info, Msg}, State}.
+    lager:warning("osc_cache ~p received unknown info: ~p", [self(), Msg]),
+    {noreply, State}.
 
 
 terminate(_Reason, _State) ->
