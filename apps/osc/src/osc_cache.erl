@@ -83,7 +83,7 @@ init({Metric, Meta}) ->
                     LP0
             end,
             {ok, WindowData} = apod:new(
-                rect,
+                osc_meta_window:type(WindowMeta),
                 osc_meta_window:aggregation(WindowMeta),
                 osc_meta_window:interval(WindowMeta),
                 osc_meta_window:count(WindowMeta),
