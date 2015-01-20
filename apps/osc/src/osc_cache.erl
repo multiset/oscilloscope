@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 -export([
-    start_link/2,
+    start_link/1,
     init/1,
     handle_call/3,
     handle_cast/2,
@@ -43,7 +43,7 @@ start(Metric) ->
         unknown
     end,
     case Lookup of
-        {ok, Meta} -> osc_cache_sup:start_cache(Metric, Meta);
+        {ok, Meta} -> osc_cache_sup:start_cache(Meta);
         Else -> {error, Else}
     end.
 
@@ -67,11 +67,11 @@ persist(Pid) ->
     gen_server:call(Pid, persist).
 
 
-start_link(Metric, Meta) ->
-    gen_server:start_link(?MODULE, {Metric, Meta}, []).
+start_link(Meta) ->
+    gen_server:start_link(?MODULE, Meta, []).
 
 
-init({Metric, Meta}) ->
+init(Meta) ->
     Windows = lists:foldl(
         fun(WindowMeta, Acc) ->
             LP0 = osc_meta_window:latest_persisted_time(WindowMeta),
@@ -99,7 +99,8 @@ init({Metric, Meta}) ->
         windows=Windows,
         persisting=[]
     },
-    gproc:reg({n, l, Metric}, ignored),
+    ID = osc_meta_metric:id(Meta),
+    gproc:reg({n, l, ID}, ignored),
     Name = osc_meta_metric:name(Meta),
     % This name may be registered to another process during the metadata
     % creation process. The metadata creator should re-register this cache
@@ -114,7 +115,7 @@ init({Metric, Meta}) ->
 handle_call({read, From, Until}, _From, State) ->
     #st{windows=Windows, meta=Meta}=State,
     {WindowMeta, WindowData} = select_window(From, Windows),
-    {ok, Read} = apod:read(WindowData, From, Until),
+    Read = apod:read(WindowData, From, Until),
     {reply, {ok, Meta, WindowMeta, Read}, State, hibernate_timeout()};
 handle_call({update, Points}, _From, State) ->
     #st{windows=Windows, persisting=Persisting}=State,
@@ -296,6 +297,7 @@ maybe_persist(Windows, Persisting, Threshold) ->
                     Size = apod:size(WData),
                     case osc_meta_window:average_persist_size(WMeta) of
                         undefined ->
+                            %% TODO: this needs to return some heuristic, otherwise we'll never start persisting
                             false;
                         AverageSize when Size / AverageSize < Threshold ->
                             false;
