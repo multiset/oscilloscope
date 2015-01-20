@@ -92,6 +92,8 @@ persisted(#windowmeta{persisted=Persisted}) ->
     Persisted.
 
 
+average_persist_size(#windowmeta{persisted=[]}) ->
+    undefined;
 average_persist_size(#windowmeta{persisted=Persisted}) ->
     Sum = lists:foldl(fun({_, N}, Acc) -> Acc + N end, 0, Persisted),
     Sum / length(Persisted).
