@@ -94,7 +94,8 @@ CREATE TABLE window_configuration_groups (
     id serial PRIMARY KEY,
     owner_id integer NOT NULL REFERENCES owners(id),
     priority integer NOT NULL,
-    tags text[][] NOT NULL
+    tags text[][] NOT NULL,
+    UNIQUE(owner_id, tags)
 );
 
 CREATE TABLE window_configurations (
