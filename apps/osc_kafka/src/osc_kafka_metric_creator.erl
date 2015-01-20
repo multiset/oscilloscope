@@ -51,8 +51,12 @@ handle_call(_Msg, _From, State) ->
     format_reply(not_ready, State).
 
 
-handle_cast(_Msg, State) ->
-    {stop, unknown_cast, State}.
+handle_cast(Msg, State) ->
+    lager:warning(
+        "osc_kafka_metric_creator ~p received unknown cast: ~p",
+        [self(), Msg]
+    ),
+    {noreply, State}.
 
 
 handle_info({'DOWN', Ref, process, Pid, Info}, #st{creator={Pid, Ref}}=State) ->
