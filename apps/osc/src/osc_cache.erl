@@ -291,6 +291,14 @@ hibernate_timeout() ->
     Threshold :: float().
 
 maybe_persist(Windows, Persisting, Threshold) ->
+    case application:get_env(osc, persist) of
+        {ok, true} ->
+            maybe_persist_int(Windows, Persisting, Threshold);
+        _ ->
+            []
+    end.
+
+maybe_persist_int(Windows, Persisting, Threshold) ->
     lists:filtermap(
         fun({WMeta, WData}=W) ->
             ID = osc_meta_window:id(WMeta),

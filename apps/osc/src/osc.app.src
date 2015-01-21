@@ -11,6 +11,7 @@
     {env, [
         %% Hibernate caches after 30s of inactivity
         {cache_hibernate_timeout, 30000},
-        {chunkifyability_threshold, 0.9}
+        {chunkifyability_threshold, 0.9},
+        {persist, true}
     ]}
 ]}.
