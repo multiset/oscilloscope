@@ -10,10 +10,13 @@
     add_member/2,
     remove_member/2,
     is_member/2,
-    team_permissions/2
+    team_permissions/2,
+    add_port/2,
+    remove_port/2
 ]).
 
 -include_lib("osc/include/osc_types.hrl").
+-include_lib("osc_meta/include/osc_meta.hrl").
 
 -spec lookup(NameOrID) -> {ok, Props} | not_found when
     NameOrID :: binary() | org_id(),
@@ -26,7 +29,12 @@ lookup(Name) when is_binary(Name) ->
         [] ->
             not_found;
         [{OrgID, OwnerID}] ->
-            {ok, [{id, OrgID}, {owner_id, OwnerID}, {name, Name}]}
+            {ok, [
+                {id, OrgID},
+                {owner_id, OwnerID},
+                {name, Name},
+                {ports, ports(OwnerID)}
+            ]}
     end;
 lookup(OrgID) ->
     SQL = "SELECT owner_id, name FROM orgs WHERE id = $1;",
@@ -35,8 +43,25 @@ lookup(OrgID) ->
         [] ->
             not_found;
         [{OwnerID, Name}] ->
-            {ok, [{id, OrgID}, {owner_id, OwnerID}, {name, Name}]}
+            {ok, [
+                {id, OrgID},
+                {owner_id, OwnerID},
+                {name, Name},
+                {ports, ports(OwnerID)}
+            ]}
     end.
+
+
+-spec ports(OwnerID) -> Ports when
+    OwnerID :: owner_id(),
+    Ports :: [pos_integer()].
+
+ports(OwnerID) ->
+    {ok, _, Ports} = mpgsql:equery(
+        "SELECT port FROM ports WHERE owner_id=$1",
+        [OwnerID]
+    ),
+    [Port || {Port} <- Ports].
 
 
 -spec create(Name, UserID) -> {ok, OrgID} | {error, Error} when
@@ -175,3 +200,24 @@ team_permissions(OrgID, UserID) ->
         fun({Permissions}) -> lists:map(fun list_to_tuple/1, Permissions) end,
         Rows
     ).
+
+
+-spec add_port(org_id(), pos_integer()) -> ok.
+
+add_port(OrgID, Port) ->
+    Type = <<"graphite">>,
+    SQL = "INSERT INTO ports "
+          "(owner_id, port, type) "
+          "VALUES "
+          "((SELECT owner_id FROM orgs WHERE id=$1), $2, $3);",
+    {ok, 1} = mpgsql:equery(SQL, [OrgID, Port, Type]),
+    ok.
+
+
+-spec remove_port(org_id(), pos_integer()) -> ok.
+
+remove_port(OrgID, Port) ->
+    SQL = "DELETE FROM ports "
+          "WHERE owner_id=(SELECT owner_id FROM orgs WHERE id=$1) AND port=$2",
+    {ok, 1} = mpgsql:equery(SQL, [OrgID, Port]),
+    ok.
