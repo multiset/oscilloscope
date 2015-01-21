@@ -130,18 +130,22 @@ chunkify(Apod) ->
 
 chunkify(Apod, MinPersistAge, MinChunkSize, MaxChunkSize) ->
     %% This head exists largely for testing reasons.
-    {From, _Until, Values} = read(Apod, 0, latest_time(Apod) - MinPersistAge),
-    chunkify(
-        From,
-        interval(Apod),
-        Values,
-        [],
-        MinChunkSize,
-        MaxChunkSize,
-        0,
-        [],
-        length(Values)
-    ).
+    case read(Apod, 0, latest_time(Apod) - MinPersistAge) of
+        undefined ->
+            [];
+        {From, _Until, Values} ->
+            chunkify(
+                From,
+                interval(Apod),
+                Values,
+                [],
+                MinChunkSize,
+                MaxChunkSize,
+                0,
+                [],
+                length(Values)
+            )
+    end.
 
 chunkify(T0, Interval, Values, Excess, Min, Max, Count, Chunks, Guess) ->
     %% We may want to write this in C at some point, but it's pretty easy to
