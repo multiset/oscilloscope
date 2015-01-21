@@ -64,6 +64,6 @@ sql:
 	@echo "Creating osc database... "
 	@createdb -h 127.0.0.1 -U osc osc
 	@echo "Done."
-	@echo "Popluating database with apps/osc_sql/priv/schema.sql"
-	@psql -U osc -h 127.0.0.1 osc < apps/osc_sql/priv/schema.sql
+	@echo "Popluating database with apps/osc_meta/priv/schema.sql"
+	@psql -U osc -h 127.0.0.1 osc < apps/osc_meta/priv/schema.sql
 	@echo "Done. You're set!"

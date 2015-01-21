@@ -1,7 +1,6 @@
 -module(osc_meta_window).
 
 -export([
-    create/2,
     lookup/1,
     refresh/1,
     id/1,
@@ -37,35 +36,14 @@
 
 -export_type([window_id/0, window_type/0, windowmeta/0]).
 
-
-create(MetricID, {rectangular, Aggregation, Interval, Count}) ->
-    SQL = <<
-        "INSERT INTO windows"
-        " (metric_id, type, aggregation, interval, count)"
-        " VALUES ($1, $2, $3, $4, $5)"
-        " RETURNING id;"
-    >>,
-    Params = [
-        MetricID,
-        term_to_binary(rectangular),
-        term_to_binary(Aggregation),
-        Interval,
-        Count
-    ],
-    {ok, 1, _, [{ID}]} = osc_sql:adhoc(SQL, Params),
-    {ok, ID}.
-
-
 -spec lookup(MetricID) -> Windows when
     MetricID :: metric_id(),
     Windows :: [windowmeta()].
 
 lookup(MetricID) ->
-    WindowSQL = <<
-        "SELECT id, type, aggregation, interval, count"
-        " FROM windows WHERE metric_id = $1;"
-    >>,
-    {ok, _, Windows} = osc_sql:adhoc(WindowSQL, [MetricID]),
+    SQL = "SELECT id, type, aggregation, interval, count "
+          "FROM windows WHERE metric_id = $1;",
+    {ok, _, Windows} = mpgsql:equery(SQL, [MetricID]),
     lists:map(
         fun({ID, Type, Aggregation, Interval, Count}) ->
             WindowMeta = #windowmeta{
@@ -90,35 +68,44 @@ refresh(WindowMeta) ->
     %% that's allowed to be mutable at the moment.
     SQL = "SELECT timestamp, count FROM persists "
           "WHERE window_id = $1 AND vacuumed=FALSE;",
-    {ok, _, Persisted} = osc_sql:adhoc(SQL, [WindowMeta#windowmeta.id]),
+    {ok, _, Persisted} = mpgsql:equery(SQL, [WindowMeta#windowmeta.id]),
     WindowMeta#windowmeta{persisted = Persisted}.
+
 
 id(#windowmeta{id=ID}) ->
     ID.
 
+
 aggregation(#windowmeta{aggregation=Aggregation}) ->
     Aggregation.
+
 
 interval(#windowmeta{interval=Interval}) ->
     Interval.
 
+
 count(#windowmeta{count=Count}) ->
     Count.
 
+
 persisted(#windowmeta{persisted=Persisted}) ->
     Persisted.
+
 
 average_persist_size(#windowmeta{persisted=Persisted}) ->
     Sum = lists:foldl(fun({_, N}, Acc) -> Acc + N end, 0, Persisted),
     Sum / length(Persisted).
 
+
 type(#windowmeta{window_type=Type}) ->
     Type.
+
 
 earliest_persisted_time(#windowmeta{persisted=[]}) ->
     undefined;
 earliest_persisted_time(#windowmeta{persisted=[{Timestamp, _}|_]}) ->
     Timestamp.
+
 
 latest_persisted_time(#windowmeta{persisted=[]}) ->
     undefined;
@@ -126,20 +113,22 @@ latest_persisted_time(#windowmeta{interval=Interval, persisted=Persisted}) ->
     {Timestamp, Count} = lists:last(Persisted),
     Timestamp + Interval * (Count - 1).
 
+
 insert_persist(Window, Timestamp, Count) ->
     SQL = "INSERT INTO persists "
           "(window_id, timestamp, count) "
           "VALUES ($1, $2, $3);",
-    {ok, _Count} = osc_sql:adhoc(
+    {ok, _Count} = mpgsql:equery(
         SQL, [Window#windowmeta.id, Timestamp, Count]
     ),
     ok.
 
+
 delete_persist(Window, Timestamp) ->
     SQL = "UPDATE persists "
           "SET (vacuumed, vacuum_time)=(TRUE, (now() at time one 'utc')) "
-          "WHERE window_id=$1 AND timestamp=$2;",
-    {ok, _Count} = osc_sql:adhoc(
+          "WHERE window_id = $1 AND timestamp = $2;",
+    {ok, _Count} = mpgsql:equery(
         SQL, [Window#windowmeta.id, Timestamp]
     ),
     ok.

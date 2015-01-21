@@ -31,10 +31,20 @@
 }).
 
 
+-spec start(Metric) -> {ok, Cache} | {error, Error} when
+    Metric :: term(),
+    Cache :: pid(),
+    Error :: not_found | unknown.
+
 start(Metric) ->
-    case osc_meta_metric:lookup(Metric) of
-        not_found -> not_found;
-        {ok, Meta} -> osc_cache_sup:start_cache(Metric, Meta)
+    Lookup = try osc_meta_metric:lookup(Metric)
+    catch error:{badmatch, B} ->
+        lager:warning("badmatch in osc_cache:start/1: ~p", [B]),
+        unknown
+    end,
+    case Lookup of
+        {ok, Meta} -> osc_cache_sup:start_cache(Metric, Meta);
+        Else -> {error, Else}
     end.
 
 
@@ -174,7 +184,7 @@ handle_info({'DOWN', Ref, process, Pid, Reason}=Msg, State0) ->
             {noreply, State0};
         {value, {WindowID, Key}, Persisting1} ->
             State1 = case Reason of
-                normal ->
+                {ok, WindowMeta} ->
                     %% Persist was successful - update our internal state
                     Windows1 = lists:foldl(
                         fun({WMeta0, WData}=W, Acc) ->
@@ -182,9 +192,8 @@ handle_info({'DOWN', Ref, process, Pid, Reason}=Msg, State0) ->
                                 false ->
                                     [W|Acc];
                                 true ->
-                                    WMeta1 = osc_meta_window:refresh(WMeta0),
                                     LP0 = osc_meta_window:latest_persisted_time(
-                                        WMeta1
+                                        WindowMeta
                                     ),
                                     LP1 = case LP0 of
                                         undefined ->
@@ -199,7 +208,7 @@ handle_info({'DOWN', Ref, process, Pid, Reason}=Msg, State0) ->
                                             LP0
                                     end,
                                     ok = apod:truncate(WData, LP1),
-                                    [{WMeta1, WData}|Acc]
+                                    [{WindowMeta, WData}|Acc]
                             end
                         end,
                         [],
@@ -303,6 +312,14 @@ maybe_persist(Windows, Persisting, Threshold) ->
 spawn_persist({WindowMeta, WindowData}) ->
     Ref = spawn_monitor(fun() ->
         ok = osc_persistence:persist(WindowMeta, WindowData),
-        ok = osc_persistence:vacuum(WindowMeta, WindowData)
+        ok = osc_persistence:vacuum(WindowMeta, WindowData),
+        exit(fun Refresh() ->
+            try
+                {ok, osc_meta_window:refresh(WindowMeta)}
+            catch error:{badmatch, B} ->
+                lager:warning("badmatch in persist refresh: ~p", [B]),
+                Refresh()
+            end
+        end)
     end),
     {osc_meta_window:id(WindowMeta), Ref}.

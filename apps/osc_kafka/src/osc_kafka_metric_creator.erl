@@ -13,10 +13,11 @@
     code_change/3
 ]).
 
--record(state, {
+-record(st, {
     encoded_metric,
     decoded_metric,
     datapoints,
+    creator,
     flush=false
 }).
 
@@ -28,21 +29,19 @@ start_link({OwnerID, EncodedProps}) ->
 init([OwnerID, EncodedProps]) ->
     gproc:reg({n, l, {OwnerID, EncodedProps}}),
     Props = osc_meta_util:decode_props(EncodedProps),
-    spawn_monitor(fun() ->
-        create_metric({OwnerID, Props})
-    end),
-    State = #state{
+    State = #st{
         decoded_metric={OwnerID, Props},
-        encoded_metric={OwnerID, EncodedProps}
+        encoded_metric={OwnerID, EncodedProps},
+        creator=create_metric({OwnerID, Props})
     },
     {ok, State}.
 
 
 handle_call({update, NewDatapoints}, _From, State) ->
-    #state{
+    #st{
         datapoints=Datapoints
     } = State,
-    NewState = State#state{datapoints=[NewDatapoints|Datapoints]},
+    NewState = State#st{datapoints=[NewDatapoints|Datapoints]},
     format_reply(ok, NewState);
 
 % Because of gproc indirection, may get requests intended for the cache.
@@ -54,45 +53,57 @@ handle_cast(_Msg, State) ->
     {stop, unknown_cast, State}.
 
 
-handle_info({'DOWN', _, _, _, Info}, State) ->
-    #state{
-        decoded_metric=DMetric,
+handle_info({'DOWN', Ref, process, Pid, Info}, #st{creator={Pid, Ref}}=State) ->
+    #st{
+        decoded_metric={OwnerID, _}=DMetric,
         encoded_metric=EMetric
     } = State,
     case Info of
-        normal ->
-            {ok, Pid} = osc_cache:start(DMetric),
-            gproc:give_away(EMetric, Pid),
-            {noreply, State#state{flush=true}, 0};
+        {ok, CachePid} ->
+            gproc:give_away({n, l, EMetric}, CachePid),
+            {noreply, State#st{flush=true, creator=undefined}, 0};
+        missing_owner ->
+            lager:error("Owner ~p does not exist", [OwnerID]),
+            {stop, missing_owner, State};
         _ ->
             lager:error("Metric creator failed: ~p", [Info]),
-            spawn_monitor(fun() ->
-                create_metric(DMetric)
-            end),
-            {noreply, State}
+            {noreply, State#st{creator=create_metric(DMetric)}}
     end;
-
-handle_info(timeout, State) ->
-    #state{
+handle_info({'DOWN', _Ref, process, _Pid, Info}, State) ->
+    lager:error(
+        "Metric creator received 'DOWN' from unknown pid for reason ~p",
+        [Info]
+    ),
+    {noreply, State};
+handle_info(timeout, #st{flush=true, creator=undefined}=State) ->
+    #st{
         datapoints=Datapoints,
         encoded_metric=EMetric,
         decoded_metric=DMetric
     } = State,
-    Self = self(),
-    {ok, Pid} = case osc_cache:find(EMetric) of
+    case osc_cache:find(EMetric) of
         not_found ->
-            osc_cache:start(DMetric);
-        {ok, Pid0} ->
-            {ok, Pid0}
-    end,
-    case Pid of
-        Self ->
-            {stop, cache_still_self, State};
-        _ ->
+            lager:error(
+                "metric_creator failed to create cache ~p; retrying",
+                [DMetric]
+            ),
+            {noreply, State#st{creator=create_metric(DMetric)}};
+        {ok, Pid} when Pid =/= self() ->
             ok = osc_cache:update(Pid, Datapoints),
-            {stop, normal, State}
-
-    end.
+            {stop, normal, State};
+        _ ->
+            lager:error(
+                "metric_creator registered after creation for ~p; retrying",
+                [DMetric]
+            ),
+            {noreply, State#st{creator=create_metric(DMetric)}}
+    end;
+handle_info(Msg, State) ->
+    lager:error(
+        "metric_creator received unknown info ~p in state ~p",
+        [Msg, State]
+    ),
+    {noreply, State}.
 
 
 terminate(_Reason, _State) ->
@@ -104,22 +115,22 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 create_metric(Metric) ->
-    case osc_meta_metric:create(Metric) of
-        {ok, _MetricID} ->
-            ok;
-        {error, {exists, _MetricID}} ->
-            ok;
-        {error, Reason} ->
-            lager:error("Error while creating metric: ~p", [Reason]),
-            timer:sleep(5000),
-            create_metric(Metric)
-    end.
+    spawn_monitor(fun() ->
+        case osc_meta_metric:create(Metric) of
+            {ok, _MetricID} ->
+                exit(osc_cache:start(Metric));
+            {error, exists} ->
+                exit(osc_cache:start(Metric));
+            {error, missing_owner} ->
+                exit(missing_owner)
+        end
+    end).
 
 
 format_reply(Reply, State) ->
     case State of
-        #state{flush=true} ->
+        #st{flush=true} ->
             {reply, Reply, State, 0};
-        #state{flush=false} ->
+        #st{flush=false} ->
             {reply, Reply, State}
     end.

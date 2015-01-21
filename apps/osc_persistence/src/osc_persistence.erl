@@ -90,11 +90,22 @@ persist_int(WindowMeta, Window) ->
                         Commutator,
                         [WindowID, Timestamp, Value]
                     ),
-                    ok = osc_meta_window:insert_persist(
-                        WindowMeta,
-                        Timestamp,
-                        Size
-                    ),
+                    InsertPersist = fun IP() ->
+                        try
+                            ok = osc_meta_window:insert_persist(
+                                WindowMeta,
+                                Timestamp,
+                                Size
+                            )
+                        catch error:{badmatch, B} ->
+                            lager:warning(
+                                "badmatch in persist insert: ~p",
+                                [B]
+                            ),
+                            IP()
+                        end
+                    end,
+                    InsertPersist(),
                     lager:debug(
                         "Persist attempt successful for window ~p",
                         [WindowID]
@@ -137,10 +148,21 @@ vacuum_int(WindowMeta, Window) ->
                                 Commutator,
                                 [WindowID, Time]
                             ),
-                            ok = osc_meta_window:delete_persist(
-                                WindowMeta,
-                                Time
-                            ),
+                            DeletePersist = fun DP() ->
+                                try
+                                    ok = osc_meta_window:delete_persist(
+                                        WindowMeta,
+                                        Time
+                                    )
+                                catch error:{badmatch, B} ->
+                                    lager:warning(
+                                        "badmatch in persist delete: ~p",
+                                        [B]
+                                    ),
+                                    DP()
+                                end
+                            end,
+                            DeletePersist(),
                             true;
                         false ->
                             false
