@@ -90,8 +90,8 @@ list(OwnerID) ->
     GroupID :: group_id().
 
 lookup(GroupID) ->
-    SQL = "SELECT owner_id, priority, tags"
-          "FROM window_configuration_groups"
+    SQL = "SELECT owner_id, priority, tags "
+          "FROM window_configuration_groups "
           "WHERE id = $1;",
     {ok, _, Rows} = mpgsql:equery(SQL, [GroupID]),
     case Rows of
