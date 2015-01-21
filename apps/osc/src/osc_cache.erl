@@ -296,13 +296,17 @@ maybe_persist(Windows, Persisting, Threshold) ->
                 false ->
                     Size = apod:size(WData),
                     case osc_meta_window:average_persist_size(WMeta) of
+                        undefined when Size / 128 > Threshold ->
+                            %% Since we've never persisted data for this window
+                            %% before, use 128 (1024 / 64) as the "average"
+                            %% size, to be conservative.
+                            {true, spawn_persist(W)};
                         undefined ->
-                            %% TODO: this needs to return some heuristic, otherwise we'll never start persisting
                             false;
-                        AverageSize when Size / AverageSize < Threshold ->
-                            false;
+                        AverageSize when Size / AverageSize > Threshold ->
+                            {true, spawn_persist(W)};
                         _ ->
-                            {true, spawn_persist(W)}
+                            false
                     end;
                 _ ->
                     false
