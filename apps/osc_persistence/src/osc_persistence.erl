@@ -22,7 +22,11 @@ persist(WindowMeta, Window) ->
     poolboy:transaction(
         osc_persistence_pool,
         fun(Worker) ->
-            gen_server:call(Worker, {persist, WindowMeta, Window})
+            %% TODO: don't use an infinite timeout. The current implementation
+            %% is ~obligated to in order to maintain state consistency.
+            %% Rewriting the persistence app as a pull-based system (instead of
+            %% a push-based one) would prevent this from becoming an issue.
+            gen_server:call(Worker, {persist, WindowMeta, Window}, infinity)
         end,
         Timeout
     ).
