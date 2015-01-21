@@ -187,6 +187,8 @@ handle_info({'DOWN', Ref, process, Pid, Reason}=Msg, State0) ->
             {noreply, State0};
         {value, {WindowID, Key}, Persisting1} ->
             State1 = case Reason of
+                {ok, nothing_to_persist} ->
+                    State0;
                 {ok, WindowMeta} ->
                     %% Persist was successful - update our internal state
                     Windows1 = lists:foldl(
@@ -217,7 +219,7 @@ handle_info({'DOWN', Ref, process, Pid, Reason}=Msg, State0) ->
                         [],
                         Windows0
                     ),
-                    State0#st{windows=Windows1, persisting=Persisting1};
+                    State0#st{windows=Windows1};
                 _ ->
                     lager:warning(
                         "Persistence process crashed with reason ~p", [Reason]
@@ -322,16 +324,22 @@ maybe_persist(Windows, Persisting, Threshold) ->
 
 spawn_persist({WindowMeta, WindowData}) ->
     Ref = spawn_monitor(fun() ->
-        ok = osc_persistence:persist(WindowMeta, WindowData),
-        ok = osc_persistence:vacuum(WindowMeta, WindowData),
-        R = fun Refresh() ->
-            try
-                {ok, osc_meta_window:refresh(WindowMeta)}
-            catch error:{badmatch, B} ->
-                lager:warning("badmatch in persist refresh: ~p", [B]),
-                Refresh()
-            end
-        end,
-        exit(R())
+        {ok, Count} = osc_persistence:persist(WindowMeta, WindowData),
+        case Count of
+            0 ->
+                exit({ok, nothing_to_persist});
+            _ ->
+                ok = osc_persistence:vacuum(WindowMeta, WindowData),
+                R = fun Refresh() ->
+                    try
+                        {ok, osc_meta_window:refresh(WindowMeta)}
+                    catch error:{badmatch, B} ->
+                        lager:warning("badmatch in persist refresh: ~p", [B]),
+                        timer:sleep(trunc(1000 * random:uniform())),
+                        Refresh()
+                    end
+                end,
+                exit(R())
+        end
     end),
     {osc_meta_window:id(WindowMeta), Ref}.

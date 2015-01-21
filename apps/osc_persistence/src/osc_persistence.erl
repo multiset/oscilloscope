@@ -68,9 +68,10 @@ read(WindowMeta, From, Until) ->
     ).
 
 
--spec persist_int(WindowMeta, Window) -> ok when
+-spec persist_int(WindowMeta, Window) -> {ok, PersistCount} when
     WindowMeta :: osc_meta_window:windowmeta(),
-    Window :: apod:apod().
+    Window :: apod:apod(),
+    PersistCount :: non_neg_integer().
 
 persist_int(WindowMeta, Window) ->
     Chunks = apod:chunkify(Window),
@@ -97,12 +98,19 @@ persist_int(WindowMeta, Window) ->
                                 Timestamp,
                                 Size
                             )
-                        catch error:{badmatch, B} ->
-                            lager:warning(
-                                "badmatch in persist insert: ~p",
-                                [B]
-                            ),
-                            IP()
+                        catch
+                            error:{badmatch, {error, unique_violation}} ->
+                                %% This was previously successfully inserted -
+                                %% probably on a query that timed-out - so
+                                %% return
+                                ok;
+                            error:{badmatch, B} ->
+                                lager:warning(
+                                    "badmatch in persist insert: ~p",
+                                    [B]
+                                ),
+                                timer:sleep(trunc(1000 * random:uniform())),
+                                IP()
                         end
                     end,
                     InsertPersist(),
@@ -114,7 +122,8 @@ persist_int(WindowMeta, Window) ->
                 end,
                 Chunks
             )
-    end.
+    end,
+    {ok, length(Chunks)}.
 
 
 -spec vacuum_int(WindowMeta, Window) -> ok when
@@ -159,6 +168,7 @@ vacuum_int(WindowMeta, Window) ->
                                         "badmatch in persist delete: ~p",
                                         [B]
                                     ),
+                                    timer:sleep(trunc(1000 * random:uniform())),
                                     DP()
                                 end
                             end,
