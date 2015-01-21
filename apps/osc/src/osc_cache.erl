@@ -320,13 +320,14 @@ spawn_persist({WindowMeta, WindowData}) ->
     Ref = spawn_monitor(fun() ->
         ok = osc_persistence:persist(WindowMeta, WindowData),
         ok = osc_persistence:vacuum(WindowMeta, WindowData),
-        exit(fun Refresh() ->
+        R = fun Refresh() ->
             try
                 {ok, osc_meta_window:refresh(WindowMeta)}
             catch error:{badmatch, B} ->
                 lager:warning("badmatch in persist refresh: ~p", [B]),
                 Refresh()
             end
-        end)
+        end,
+        exit(R())
     end),
     {osc_meta_window:id(WindowMeta), Ref}.
