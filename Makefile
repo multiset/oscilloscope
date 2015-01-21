@@ -11,6 +11,9 @@ compile:
 rel: deps compile
 	./rebar generate
 
+relrun:
+	@rel/osc/bin/osc
+
 relclean:
 	rm -rf rel/osc
 

@@ -15,7 +15,10 @@
 
 -record(st, {
     user_id,
-    org_props
+    org_props,
+    op,
+    path,
+    value
 }).
 
 init({tcp, http}, _Req, _Opts) ->
@@ -25,17 +28,28 @@ terminate(_Reason, _Req, _State) ->
     ok.
 
 rest_init(Req0, _) ->
-    State = #st{},
-    case cowboy_req:binding(org_id, Req0) of
-        {undefined, Req1} ->
-            {ok, Req1, State};
-        {OrgIDBin, Req1} ->
+    {State, Req3} = case cowboy_req:method(Req0) of
+        {<<"PATCH">>, Req1} ->
+            {ok, Body, Req2} = cowboy_req:body(Req1),
+            case osc_http:parse_json_patch(Body) of
+                {ok, {Operation, Path, Value}} ->
+                    {#st{op=Operation, path=Path, value=Value}, Req2};
+                false ->
+                    {#st{}, Req2}
+            end;
+        {_Method, Req1} ->
+            {#st{}, Req1}
+    end,
+    case cowboy_req:binding(org_id, Req3) of
+        {undefined, Req4} ->
+            {ok, Req4, State};
+        {OrgIDBin, Req4} ->
             OrgID = list_to_integer(binary_to_list(OrgIDBin)),
             case osc_meta_org:lookup(OrgID) of
                 not_found ->
-                    {ok, Req1, State};
+                    {ok, Req4, State};
                 {ok, OrgProps} ->
-                    {ok, Req1, State#st{org_props=OrgProps}}
+                    {ok, Req4, State#st{org_props=OrgProps}}
             end
     end.
 
@@ -50,7 +64,12 @@ is_authorized(Req, State) ->
     ).
 
 forbidden(Req0, State) ->
-    #st{org_props = OrgProps, user_id = UserID} = State,
+    #st{
+        org_props=OrgProps,
+        user_id=UserID,
+        op=Op,
+        path=Path
+    } = State,
     case OrgProps of
         undefined ->
             {false, Req0, State};
@@ -61,7 +80,13 @@ forbidden(Req0, State) ->
                 <<"PATCH">> ->
                     %% Mutation requires ownership
                     IsOwner = osc_meta_org:is_owner(OrgID, UserID),
-                    not IsOwner;
+                    case {Op, Path} of
+                        {<<"add">>, [<<"ports">>]} ->
+                            Ports = proplists:get_value(ports, OrgProps),
+                            length(Ports) > 1 orelse not IsOwner;
+                        _ ->
+                            not IsOwner
+                    end;
                 <<"GET">> ->
                     %% Viewing only requires membership
                     IsMember = osc_meta_org:is_member(OrgID, UserID),
@@ -82,14 +107,18 @@ content_types_accepted(Req, State) ->
         State
     }.
 
-from_json_patch(Req0, #st{org_props=OrgProps0}=State) ->
-    {ok, Body, Req1} = cowboy_req:body(Req0),
-    {ok, {Operation, Path, Value}} = osc_http:parse_json_patch(Body),
+from_json_patch(Req, State) ->
+    #st{
+        org_props=OrgProps0,
+        op=Operation,
+        path=Path,
+        value=Value
+    } = State,
     case apply_patch(Operation, Path, Value, OrgProps0) of
         {ok, OrgProps1} ->
-            {true, Req1, State#st{org_props=OrgProps1}};
+            {true, Req, State#st{org_props=OrgProps1}};
         error ->
-            {false, Req1, State}
+            {false, Req, State}
     end.
 
 content_types_provided(Req, State) ->
@@ -98,10 +127,20 @@ content_types_provided(Req, State) ->
 to_json(Req, #st{org_props=OrgProps}=State) ->
     Body = {[
         {id, proplists:get_value(id, OrgProps)},
-        {name, proplists:get_value(name, OrgProps)}
+        {name, proplists:get_value(name, OrgProps)},
+        {ports, proplists:get_value(ports, OrgProps)}
     ]},
     {jiffy:encode(Body), Req, State}.
 
+apply_patch(<<"add">>, [<<"ports">>], null, OrgProps) ->
+    {ok, Port} = osc_meta_util:available_port(),
+    ok = osc_meta_org:add_port(proplists:get_value(id, OrgProps), Port),
+    Ports = [Port|proplists:get_value(ports, OrgProps)],
+    {ok, [{ports, Ports}|proplists:delete(ports, OrgProps)]};
+apply_patch(<<"remove">>, [<<"ports">>], Port, OrgProps) ->
+    ok = osc_meta_org:remove_port(proplists:get_value(id, OrgProps), Port),
+    Ports = lists:delete(Port, proplists:get_value(ports, OrgProps)),
+    {ok, [{ports, Ports}|proplists:delete(ports, OrgProps)]};
 apply_patch(Op, Path, _, OrgProps) ->
     lager:error(
         "Got an unknown patch attempt: ~p, ~p for org ~p",
