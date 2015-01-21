@@ -6,10 +6,8 @@
 
 -export([
     persist/2,
-    vacuum/2,
     read/3,
     persist_int/2,
-    vacuum_int/2,
     read_int/3
 ]).
 
@@ -28,28 +26,6 @@ persist(WindowMeta, Window) ->
         end,
         Timeout
     ).
-
-
--spec vacuum(WindowMeta, Window) -> ok when
-    WindowMeta :: osc_meta_window:windowmeta(),
-    Window :: apod:apod().
-
-vacuum(WindowMeta, Window) ->
-    {ok, Timeout} = application:get_env(osc_persistence, request_timeout),
-    {ok, Vacuum} = application:get_env(osc_persistence, vacuum),
-    case Vacuum of
-        true ->
-            poolboy:transaction(
-                osc_persistence_pool,
-                fun(Worker) ->
-                    gen_server:call(Worker, {vacuum, WindowMeta, Window})
-                end,
-                Timeout
-            );
-        false ->
-            ok
-    end.
-
 
 -spec read(WindowMeta, From, Until) -> {ok, Read | no_data} when
     WindowMeta :: osc_meta_window:windowmeta(),
@@ -124,68 +100,6 @@ persist_int(WindowMeta, Window) ->
             )
     end,
     {ok, length(Chunks)}.
-
-
--spec vacuum_int(WindowMeta, Window) -> ok when
-    WindowMeta :: osc_meta_window:windowmeta(),
-    Window :: apod:apod().
-
-vacuum_int(WindowMeta, Window) ->
-    Persisted = osc_meta_window:persisted(WindowMeta),
-    case Persisted of
-        [] ->
-            %% Nothing to persist means nothing to vacuum
-            ok;
-        _ ->
-            WindowID = osc_meta_window:id(WindowMeta),
-            Interval = osc_meta_window:interval(WindowMeta),
-            Count = osc_meta_window:count(WindowMeta),
-            TExpired = case apod:earliest_time(Window) of
-                undefined ->
-                    osc_meta_window:latest_persisted_time(WindowMeta);
-                T ->
-                    TLatest = T + (apod:size(Window) * Interval),
-                    TLatest - (Interval * Count)
-            end,
-            Commutator = osc_persistence_util:commutator(),
-            Vacuumed = lists:filtermap(
-                fun({Time, PersistCount}) ->
-                    LatestTime = Time + (Interval * PersistCount),
-                    case LatestTime < TExpired of
-                        true ->
-                            {ok, true} = commutator:delete_item(
-                                Commutator,
-                                [WindowID, Time]
-                            ),
-                            DeletePersist = fun DP() ->
-                                try
-                                    ok = osc_meta_window:delete_persist(
-                                        WindowMeta,
-                                        Time
-                                    )
-                                catch error:{badmatch, B} ->
-                                    lager:warning(
-                                        "badmatch in persist delete: ~p",
-                                        [B]
-                                    ),
-                                    timer:sleep(trunc(1000 * random:uniform())),
-                                    DP()
-                                end
-                            end,
-                            DeletePersist(),
-                            true;
-                        false ->
-                            false
-                    end
-            end,
-            Persisted
-        ),
-        lager:debug(
-            "Vacuumed ~p points for window ~p",
-            [length(Vacuumed), WindowID]
-        ),
-        ok
-    end.
 
 
 -spec read_int(WindowMeta, From, Until) -> {ok, Read | no_data} when

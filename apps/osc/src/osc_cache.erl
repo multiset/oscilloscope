@@ -329,7 +329,6 @@ spawn_persist({WindowMeta, WindowData}) ->
             0 ->
                 exit({ok, nothing_to_persist});
             _ ->
-                ok = osc_persistence:vacuum(WindowMeta, WindowData),
                 R = fun Refresh() ->
                     try
                         {ok, osc_meta_window:refresh(WindowMeta)}

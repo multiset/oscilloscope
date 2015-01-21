@@ -26,8 +26,6 @@ init(_) ->
 
 handle_call({persist, WindowMeta, Window}, _From, State) ->
     {reply, osc_persistence:persist_int(WindowMeta, Window), State};
-handle_call({vacuum, WindowMeta, Window}, _From, State) ->
-    {reply, osc_persistence:vacuum_int(WindowMeta, Window), State};
 handle_call({read, WindowMeta, From, Until}, _From, State) ->
     {reply, osc_persistence:read_int(WindowMeta, From, Until), State};
 handle_call(Msg, _From, State) ->
