@@ -244,7 +244,7 @@ inflate_int(Bin0, Acc) ->
     catch error:{badmatch, _} ->
         %% Erlang just badmatches on Nan decodes, so catch them
         <<_:8/binary, Bin2/binary>> = Bin0,
-        inflate_int(Bin2, [null|Acc])
+        inflate_int(Bin2, [undefined|Acc])
     end.
 
 
