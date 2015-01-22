@@ -9,7 +9,16 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init([]) ->
-    mstat:new_counter([osc, cache_updates]),
+    mstat:new_counter([osc, reads, points]),
+    mstat:new_counter([osc, reads, undefined]),
+    mstat:new_counter([osc, reads, persistent_only]),
+    mstat:new_counter([osc, reads, cached_only]),
+    mstat:new_counter([osc, reads, persistent_and_cached]),
+    mstat:new_counter([osc, reads, count]),
+    mstat:new_counter([osc, reads, successful]),
+    mstat:new_counter([osc, cache, points_read]),
+    mstat:new_counter([osc, cache, points_received]),
+    mstat:new_counter([osc, cache, window_updates]),
     CacheSup = {
         osc_cache_sup,
         {osc_cache_sup, start_link, []},

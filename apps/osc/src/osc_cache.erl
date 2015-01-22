@@ -115,12 +115,17 @@ init(Meta) ->
 handle_call({read, From, Until}, _From, State) ->
     #st{windows=Windows, meta=Meta}=State,
     {WindowMeta, WindowData} = select_window(From, Windows),
-    Read = apod:read(WindowData, From, Until),
+    {_, _, Points}=Read = apod:read(WindowData, From, Until),
+    mstat:increment_counter([osc, cache, points_read], length(Points)),
     {reply, {ok, Meta, WindowMeta, Read}, State, hibernate_timeout()};
 handle_call({update, Points}, _From, State) ->
     #st{windows=Windows, persisting=Persisting}=State,
-    UpdateCount = length(Points) * length(Windows),
-    mstat:increment_counter([osc, cache_updates], UpdateCount),
+    PointCount = length(Points),
+    mstat:increment_counter([osc, cache, points_received], PointCount),
+    mstat:increment_counter(
+        [osc, cache, window_updates],
+        PointCount * length(Windows)
+    ),
     lists:foreach(
         fun({_WMeta, WData}) ->
             ok = apod:update(WData, Points)

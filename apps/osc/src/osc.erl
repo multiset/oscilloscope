@@ -39,6 +39,7 @@ update(Metric, Points) ->
     Read :: {timestamp(), timestamp(), [value()]}.
 
 read(Metric, From, Until) ->
+    mstat:increment_counter([osc, reads, count]),
     case osc_cache:find(Metric) of
         not_found ->
             not_found;
@@ -59,6 +60,11 @@ read(Metric, From, Until) ->
                         Interval,
                         CacheRead,
                         PersistentRead
+                    ),
+                    mstat:increment_counter([osc, reads, successful]),
+                    mstat:increment_counter(
+                        [osc, reads, points],
+                        length(MergedRead)
                     ),
                     {ok, MetricMeta, WindowMeta, MergedRead}
             end
@@ -81,20 +87,24 @@ merge_reads(From0, Until0, Interval, CRead, PRead) ->
     ),
     Points = case {PRead, CRead} of
         {no_data, no_data} ->
+            mstat:increment_counter([osc, reads, undefined]),
             lists:duplicate((Until1 - From1) div Interval, undefined);
         {{PFrom, PUntil, PData}, no_data} ->
+            mstat:increment_counter([osc, reads, persistent_only]),
             lists:append([
                 lists:duplicate((PFrom - From1) div Interval, undefined),
                 PData,
                 lists:duplicate((Until1 - PUntil) div Interval, undefined)
             ]);
         {no_data, {CFrom, CUntil, CData}} ->
+            mstat:increment_counter([osc, reads, cached_only]),
             lists:append([
                 lists:duplicate((CFrom - From1) div Interval, undefined),
                 CData,
                 lists:duplicate((Until1 - CUntil) div Interval, undefined)
             ]);
         {{_, PUntil, PData}, {CFrom, CUntil, CData}} ->
+            mstat:increment_counter([osc, reads, persistent_and_cached]),
             lists:append([
                 lists:duplicate((CFrom - From1) div Interval, undefined),
                 PData,
