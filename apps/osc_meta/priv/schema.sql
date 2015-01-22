@@ -112,7 +112,8 @@ CREATE TABLE ports (
     created timestamp without time zone default (now() at time zone 'utc') NOT NULL,
     host bytea,
     "type" bytea NOT NULL,
-    port integer NOT NULL
+    port integer NOT NULL,
+    UNIQUE(host, port)
 );
 
 CREATE TABLE team_permissions (

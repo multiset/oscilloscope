@@ -14,6 +14,7 @@
             {rectangular, average, 10, 1000},
             {rectangular, average, 60, 1000},
             {rectangular, average, 3600, 1000}
-        ]}
+        ]},
+        {port_ranges, [{10000, 20000}, {30000, 40000}]}
     ]}
 ]}.

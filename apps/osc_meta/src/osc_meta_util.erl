@@ -6,7 +6,8 @@
     parse_window_type/1,
     parse_window_aggregation/1,
     find_prop_match/2,
-    match_props/2
+    match_props/2,
+    available_port/0
 ]).
 
 -include_lib("osc/include/osc_types.hrl").
@@ -61,4 +62,26 @@ match_props([{GroupKey, GroupValue}|KVs], Props) ->
                 true -> match_props(KVs, Props);
                 false -> false
             end
+    end.
+
+
+-spec available_port() -> {ok, Port} | {error, Reason} when
+    Port :: pos_integer(),
+    Reason :: all_ports_used.
+
+available_port() ->
+    {ok, Ranges} = application:get_env(osc_meta, port_ranges),
+    {ok, _, Response} = mpgsql:equery("SELECT port FROM ports;", []),
+    UsedPorts = sets:from_list([Port || {Port} <- Response]),
+    AllPorts = sets:from_list(lists:flatmap(fun({Low, High}) ->
+        lists:seq(Low, High)
+    end, Ranges)),
+    UnusedPorts = sets:to_list(sets:subtract(AllPorts, UsedPorts)),
+    case length(UnusedPorts) of
+        0 ->
+            {error, all_ports_used};
+        UnusedPortCount ->
+            {Random, _} = random:uniform_s(os:timestamp()),
+            RandomNth = trunc(Random*UnusedPortCount),
+            {ok, lists:nth(RandomNth, UnusedPorts)}
     end.
