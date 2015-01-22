@@ -120,7 +120,7 @@ handle_call({read, From, Until}, _From, State) ->
 handle_call({update, Points}, _From, State) ->
     #st{windows=Windows, persisting=Persisting}=State,
     UpdateCount = length(Points) * length(Windows),
-    folsom_metrics:notify({osc, cache_updates}, {inc, UpdateCount}),
+    mstat:increment_counter([osc, cache_updates], UpdateCount),
     lists:foreach(
         fun({_WMeta, WData}) ->
             ok = apod:update(WData, Points)
