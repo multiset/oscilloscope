@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 -export([
-    start_link/2,
+    start_link/1,
     init/1,
     handle_call/3,
     handle_cast/2,
@@ -43,7 +43,7 @@ start(Metric) ->
         unknown
     end,
     case Lookup of
-        {ok, Meta} -> osc_cache_sup:start_cache(Metric, Meta);
+        {ok, Meta} -> osc_cache_sup:start_cache(Meta);
         Else -> {error, Else}
     end.
 
@@ -67,11 +67,11 @@ persist(Pid) ->
     gen_server:call(Pid, persist).
 
 
-start_link(Metric, Meta) ->
-    gen_server:start_link(?MODULE, {Metric, Meta}, []).
+start_link(Meta) ->
+    gen_server:start_link(?MODULE, Meta, []).
 
 
-init({Metric, Meta}) ->
+init(Meta) ->
     Windows = lists:foldl(
         fun(WindowMeta, Acc) ->
             LP0 = osc_meta_window:latest_persisted_time(WindowMeta),
@@ -83,7 +83,7 @@ init({Metric, Meta}) ->
                     LP0
             end,
             {ok, WindowData} = apod:new(
-                rect,
+                osc_meta_window:type(WindowMeta),
                 osc_meta_window:aggregation(WindowMeta),
                 osc_meta_window:interval(WindowMeta),
                 osc_meta_window:count(WindowMeta),
@@ -99,7 +99,8 @@ init({Metric, Meta}) ->
         windows=Windows,
         persisting=[]
     },
-    gproc:reg({n, l, Metric}, ignored),
+    ID = osc_meta_metric:id(Meta),
+    gproc:reg({n, l, ID}, ignored),
     Name = osc_meta_metric:name(Meta),
     % This name may be registered to another process during the metadata
     % creation process. The metadata creator should re-register this cache
@@ -114,7 +115,7 @@ init({Metric, Meta}) ->
 handle_call({read, From, Until}, _From, State) ->
     #st{windows=Windows, meta=Meta}=State,
     {WindowMeta, WindowData} = select_window(From, Windows),
-    {ok, Read} = apod:read(WindowData, From, Until),
+    Read = apod:read(WindowData, From, Until),
     {reply, {ok, Meta, WindowMeta, Read}, State, hibernate_timeout()};
 handle_call({update, Points}, _From, State) ->
     #st{windows=Windows, persisting=Persisting}=State,
@@ -149,11 +150,13 @@ handle_call(persist, _From, State) ->
     ),
     {reply, ok, State#st{persisting=P0 ++ P1}};
 handle_call(Msg, _From, State) ->
-    {stop, {unknown_call, Msg}, error, State}.
+    lager:warning("osc_cache ~p received unknown call: ~p", [self(), Msg]),
+    {noreply, State}.
 
 
 handle_cast(Msg, State) ->
-    {stop, {unknown_cast, Msg}, State}.
+    lager:warning("osc_cache ~p received unknown cast: ~p", [self(), Msg]),
+    {noreply, State}.
 
 
 handle_info(timeout, #st{persisting=P}=State) when length(P) =/= 0 ->
@@ -184,6 +187,8 @@ handle_info({'DOWN', Ref, process, Pid, Reason}=Msg, State0) ->
             {noreply, State0};
         {value, {WindowID, Key}, Persisting1} ->
             State1 = case Reason of
+                {ok, nothing_to_persist} ->
+                    State0;
                 {ok, WindowMeta} ->
                     %% Persist was successful - update our internal state
                     Windows1 = lists:foldl(
@@ -214,7 +219,7 @@ handle_info({'DOWN', Ref, process, Pid, Reason}=Msg, State0) ->
                         [],
                         Windows0
                     ),
-                    State0#st{windows=Windows1, persisting=Persisting1};
+                    State0#st{windows=Windows1};
                 _ ->
                     lager:warning(
                         "Persistence process crashed with reason ~p", [Reason]
@@ -224,7 +229,8 @@ handle_info({'DOWN', Ref, process, Pid, Reason}=Msg, State0) ->
             {noreply, State1#st{persisting=Persisting1}, hibernate_timeout()}
     end;
 handle_info(Msg, State) ->
-    {stop, {unknown_info, Msg}, State}.
+    lager:warning("osc_cache ~p received unknown info: ~p", [self(), Msg]),
+    {noreply, State}.
 
 
 terminate(_Reason, _State) ->
@@ -285,16 +291,31 @@ hibernate_timeout() ->
     Threshold :: float().
 
 maybe_persist(Windows, Persisting, Threshold) ->
+    case application:get_env(osc, persist) of
+        {ok, true} ->
+            maybe_persist_int(Windows, Persisting, Threshold);
+        _ ->
+            []
+    end.
+
+maybe_persist_int(Windows, Persisting, Threshold) ->
     lists:filtermap(
         fun({WMeta, WData}=W) ->
             ID = osc_meta_window:id(WMeta),
             case lists:keyfind(ID, 1, Persisting) of
                 false ->
-                    AverageSize = osc_meta_window:average_persist_size(WMeta),
-                    case apod:size(WData)/AverageSize > Threshold of
-                        true ->
+                    Size = apod:size(WData),
+                    case osc_meta_window:average_persist_size(WMeta) of
+                        undefined when Size / 128 > Threshold ->
+                            %% Since we've never persisted data for this window
+                            %% before, use 128 (1024 / 64) as the "average"
+                            %% size, to be conservative.
                             {true, spawn_persist(W)};
-                        false ->
+                        undefined ->
+                            false;
+                        AverageSize when Size / AverageSize > Threshold ->
+                            {true, spawn_persist(W)};
+                        _ ->
                             false
                     end;
                 _ ->
@@ -311,15 +332,21 @@ maybe_persist(Windows, Persisting, Threshold) ->
 
 spawn_persist({WindowMeta, WindowData}) ->
     Ref = spawn_monitor(fun() ->
-        ok = osc_persistence:persist(WindowMeta, WindowData),
-        ok = osc_persistence:vacuum(WindowMeta, WindowData),
-        exit(fun Refresh() ->
-            try
-                {ok, osc_meta_window:refresh(WindowMeta)}
-            catch error:{badmatch, B} ->
-                lager:warning("badmatch in persist refresh: ~p", [B]),
-                Refresh()
-            end
-        end)
+        {ok, Count} = osc_persistence:persist(WindowMeta, WindowData),
+        case Count of
+            0 ->
+                exit({ok, nothing_to_persist});
+            _ ->
+                R = fun Refresh() ->
+                    try
+                        {ok, osc_meta_window:refresh(WindowMeta)}
+                    catch error:{badmatch, B} ->
+                        lager:warning("badmatch in persist refresh: ~p", [B]),
+                        timer:sleep(trunc(1000 * random:uniform())),
+                        Refresh()
+                    end
+                end,
+                exit(R())
+        end
     end),
     {osc_meta_window:id(WindowMeta), Ref}.

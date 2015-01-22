@@ -16,4 +16,4 @@ init([]) ->
         {max_overflow, Overflow}
     ],
     WorkerPool = poolboy:child_spec(osc_persistence_pool, Args, []),
-    {ok, {{one_for_one, 5, 10}, [WorkerPool]}}.
+    {ok, {{one_for_one, 100, 1}, [WorkerPool]}}.

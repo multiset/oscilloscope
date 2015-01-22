@@ -99,12 +99,13 @@ to_json(Req, State) ->
         From,
         Until
     ),
-    {ReadFrom, ReadUntil, Points} = Read,
+    {ReadFrom, ReadUntil, Points0} = Read,
+    Points1 = lists:map(fun(undefined) -> null; (Else) -> Else end, Points0),
     Interval = osc_meta_window:interval(WindowMeta),
     Response = {[
         {from, ReadFrom},
         {until, ReadUntil},
         {interval, Interval},
-        {points, Points}
+        {points, Points1}
     ]},
     {jiffy:encode(Response), Req, State}.

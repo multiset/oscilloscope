@@ -198,10 +198,6 @@ apod_nif_read(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
         return enif_make_badarg(env);
     }
 
-    if (!check_pid(env, wrap)) {
-        return enif_make_badarg(env);
-    }
-
     if (!enif_get_int64(env, argv[1], &from)) {
         return enif_make_badarg(env);
     }
@@ -262,10 +258,6 @@ apod_nif_to_list(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
     }
 
     if (!enif_get_resource(env, argv[0], priv->res_apod, (void**) &wrap)) {
-        return enif_make_badarg(env);
-    }
-
-    if (!check_pid(env, wrap)) {
         return enif_make_badarg(env);
     }
 

@@ -18,7 +18,7 @@
     decoded_metric,
     datapoints,
     creator,
-    flush=false
+    flush
 }).
 
 
@@ -32,7 +32,9 @@ init([OwnerID, EncodedProps]) ->
     State = #st{
         decoded_metric={OwnerID, Props},
         encoded_metric={OwnerID, EncodedProps},
-        creator=create_metric({OwnerID, Props})
+        datapoints=[],
+        creator=create_metric({OwnerID, Props}),
+        flush=false
     },
     {ok, State}.
 
@@ -41,7 +43,7 @@ handle_call({update, NewDatapoints}, _From, State) ->
     #st{
         datapoints=Datapoints
     } = State,
-    NewState = State#st{datapoints=[NewDatapoints|Datapoints]},
+    NewState = State#st{datapoints=Datapoints ++ NewDatapoints},
     format_reply(ok, NewState);
 
 % Because of gproc indirection, may get requests intended for the cache.
@@ -49,8 +51,12 @@ handle_call(_Msg, _From, State) ->
     format_reply(not_ready, State).
 
 
-handle_cast(_Msg, State) ->
-    {stop, unknown_cast, State}.
+handle_cast(Msg, State) ->
+    lager:warning(
+        "osc_kafka_metric_creator ~p received unknown cast: ~p",
+        [self(), Msg]
+    ),
+    {noreply, State}.
 
 
 handle_info({'DOWN', Ref, process, Pid, Info}, #st{creator={Pid, Ref}}=State) ->
