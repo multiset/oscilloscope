@@ -6,7 +6,16 @@
 ]).
 
 start_link(Points) ->
-    {ok, spawn_link(fun() -> insert(Points) end)}.
+    Fun = fun() ->
+        mstat:increment_counter([osc_kafka, inserts, spawned]),
+        mstat:timeit(
+            [osc_kafka, inserts, latency],
+            ?MODULE,
+            insert,
+            [Points]
+        )
+    end,
+    {ok, spawn_link(Fun)}.
 
 
 insert([]) ->
@@ -22,6 +31,7 @@ insert([{MetricID, Time, Value}|Ps]=Points) when is_integer(MetricID) ->
                     ok = osc_cache:update(Pid, [{Time, Value}]),
                     insert(Ps);
                 {error, _} ->
+                    mstat:increment_counter([osc_kafka, inserts, retries]),
                     insert(Points)
             end
     end;
@@ -34,4 +44,3 @@ insert([{Metric, Time, Value}|Ps]) ->
     end,
     ok = osc_cache:update(Pid, [{Time, Value}]),
     insert(Ps).
-

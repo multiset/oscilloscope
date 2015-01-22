@@ -28,6 +28,7 @@ start_link({OrgID, EncodedProps}) ->
 
 init([OrgID, EncodedProps]) ->
     gproc:reg({n, l, {OrgID, EncodedProps}}),
+    mstat:increment_counter([osc_kakfa, creators, spawned]),
     Props = osc_meta_util:decode_props(EncodedProps),
     State = #st{
         decoded_metric={OrgID, Props},
@@ -43,11 +44,16 @@ handle_call({update, NewDatapoints}, _From, State) ->
     #st{
         datapoints=Datapoints
     } = State,
+    mstat:increment_counter(
+        [osc_kafka, creators, points_proxied],
+        length(NewDatapoints)
+    ),
     NewState = State#st{datapoints=Datapoints ++ NewDatapoints},
     format_reply(ok, NewState);
 
 % Because of gproc indirection, may get requests intended for the cache.
 handle_call(_Msg, _From, State) ->
+    mstat:increment_counter([osc_kafka, creators, requests_denied]),
     format_reply(not_ready, State).
 
 
@@ -66,12 +72,15 @@ handle_info({'DOWN', Ref, process, Pid, Info}, #st{creator={Pid, Ref}}=State) ->
     } = State,
     case Info of
         {ok, CachePid} ->
+            mstat:increment_counter([osc_kafka, creators, successes]),
             gproc:give_away({n, l, EMetric}, CachePid),
             {noreply, State#st{flush=true, creator=undefined}, 0};
         missing_org ->
+            mstat:increment_counter([osc_kafka, creators, failures]),
             lager:error("Org ~p does not exist", [OrgID]),
             {stop, missing_org, State};
         _ ->
+            mstat:increment_counter([osc_kafka, creators, failures]),
             lager:error("Metric creator failed: ~p", [Info]),
             {noreply, State#st{creator=create_metric(DMetric)}}
     end;
@@ -121,11 +130,13 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 create_metric(Metric) ->
+    mstat:increment_counter([osc_kafka, creators, create_attempts]),
     spawn_monitor(fun() ->
         case osc_meta_metric:create(Metric) of
             {ok, _MetricID} ->
                 exit(osc_cache:start(Metric));
             {error, exists} ->
+                mstat:increment_counter([osc_kafka, creators, create_races]),
                 exit(osc_cache:start(Metric));
             {error, missing_org} ->
                 exit(missing_org)
