@@ -7,6 +7,11 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init([]) ->
+    mstat:new_counter([osc_persistence, persist_attempts]),
+    mstat:new_counter([osc_persistence, no_chunks_found]),
+    mstat:new_counter([osc_persistence, persisted_chunks]),
+    mstat:new_counter([osc_persistence, persisted_points]),
+    mstat:new_histogram([osc_persistence, chunk_size]),
     {ok, Size} = application:get_env(osc_persistence, worker_pool_size),
     {ok, Overflow} = application:get_env(osc_persistence, worker_pool_overflow),
     Args = [

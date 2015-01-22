@@ -18,6 +18,7 @@
     Window :: apod:apod().
 
 persist(WindowMeta, Window) ->
+    mstat:increment_counter([osc_persistence, persist_attempts]),
     {ok, Timeout} = application:get_env(osc_persistence, request_timeout),
     poolboy:transaction(
         osc_persistence_pool,
@@ -57,6 +58,7 @@ persist_int(WindowMeta, Window) ->
     Chunks = apod:chunkify(Window),
     case Chunks of
         [] ->
+            mstat:increment_counter([osc_persistence, no_chunks_found]),
             ok;
         _ ->
             Commutator = osc_persistence_util:commutator(),
@@ -94,6 +96,14 @@ persist_int(WindowMeta, Window) ->
                         end
                     end,
                     InsertPersist(),
+                    mstat:increment_counter(
+                        [osc_persistence, persisted_chunks]
+                    ),
+                    mstat:increment_counter(
+                        [osc_persistence, persisted_points],
+                        Size
+                    ),
+                    mstat:update_histogram([osc_persistence, chunk_size], Size),
                     lager:debug(
                         "Persist attempt successful for window ~p",
                         [WindowID]
