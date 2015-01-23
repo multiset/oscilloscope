@@ -14,8 +14,7 @@
 
 -record(st, {
     user_id,
-    owner_id,
-    owner_class
+    org_id
 }).
 
 init({tcp, http}, _Req, _Opts) ->
@@ -24,8 +23,8 @@ init({tcp, http}, _Req, _Opts) ->
 terminate(_Reason, _Req, _State) ->
     ok.
 
-rest_init(Req, Opts) ->
-    {ok, Req, #st{owner_class=proplists:get_value(owner_class, Opts)}}.
+rest_init(Req, _Opts) ->
+    {ok, Req, #st{}}.
 
 allowed_methods(Req, State) ->
     {[<<"GET">>, <<"POST">>], Req, State}.
@@ -38,41 +37,19 @@ is_authorized(Req, State) ->
     ).
 
 forbidden(Req0, State) ->
-    #st{owner_class=OwnerClass, user_id=AuthUserID}=State,
-    {Forbidden, OwnerProps, Req1} = case OwnerClass of
-        user ->
-            {UserIDBin, ReqA} = cowboy_req:binding(user_id, Req0),
-            UserID = list_to_integer(binary_to_list(UserIDBin)),
-            %% Auth user must be identical to manage windows
-            case UserID =/= AuthUserID of
-                true ->
-                    {true, [], ReqA};
-                false ->
-                    {ok, Props} = osc_meta_user:lookup(UserID),
-                    {false, Props, ReqA}
-            end;
-        org ->
-            {OrgIDBin, ReqA} = cowboy_req:binding(org_id, Req0),
-            OrgID = list_to_integer(binary_to_list(OrgIDBin)),
-            {Method, ReqB} = cowboy_req:method(ReqA),
-            Authorized = case Method of
-                <<"POST">> ->
-                    %% Only owners can modify window configurations
-                    osc_meta_org:is_owner(OrgID, AuthUserID);
-                <<"GET">> ->
-                    %% Any member can view window configurations
-                    osc_meta_org:is_member(OrgID, AuthUserID)
-            end,
-            case Authorized of
-                true ->
-                    {ok, Props} = osc_meta_org:lookup(OrgID),
-                    {false, Props, ReqB};
-                false ->
-                    {true, [], ReqB}
-            end
+    #st{user_id=AuthUserID}=State,
+    {OrgIDBin, Req1} = cowboy_req:binding(org_id, Req0),
+    OrgID = list_to_integer(binary_to_list(OrgIDBin)),
+    {Method, Req2} = cowboy_req:method(Req1),
+    Authorized = case Method of
+        <<"POST">> ->
+            %% Only owners can modify window configurations
+            osc_meta_org:is_owner(OrgID, AuthUserID);
+        <<"GET">> ->
+            %% Any member can view window configurations
+            osc_meta_org:is_member(OrgID, AuthUserID)
     end,
-    OwnerID = proplists:get_value(owner_id, OwnerProps),
-    {Forbidden, Req1, State#st{owner_id=OwnerID}}.
+    {not Authorized, Req2, State#st{org_id=OrgID}}.
 
 content_types_accepted(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, from_json}], Req, State}.
@@ -103,7 +80,7 @@ from_json(Req0, State) ->
         proplists:get_value(<<"windows">>, Body, [])
     ),
     {ok, GroupID} = osc_meta_window_configuration:create(
-        State#st.owner_id,
+        State#st.org_id,
         Priority,
         Tags,
         Windows
@@ -117,7 +94,7 @@ from_json(Req0, State) ->
     {true, Req3, State}.
 
 to_json(Req, State) ->
-    {ok, Configs} = osc_meta_window_configuration:list(State#st.owner_id),
+    {ok, Configs} = osc_meta_window_configuration:list(State#st.org_id),
     %% Turn in to proper EJSON
     EJSON = lists:map(
         fun(Props0) ->

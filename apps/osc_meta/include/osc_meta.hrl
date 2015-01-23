@@ -1,7 +1,6 @@
--type owner_id() :: pos_integer().
 -type prop_key() :: binary().
 -type prop_value() :: binary().
--type metric() :: {owner_id(), [{prop_key(), prop_value()}]}.
+-type metric() :: {org_id(), [{prop_key(), prop_value()}]}.
 
 -type group_id() :: pos_integer().
 -type group_tag_key() :: binary().
@@ -18,7 +17,7 @@
 
 -record(metricmeta, {
     id :: metric_id(),
-    owner_id :: owner_id(),
+    org_id :: org_id(),
     props :: any(), %% TODO
     encoded_props :: binary(),
     windows :: [osc_meta_window:windowmeta()]

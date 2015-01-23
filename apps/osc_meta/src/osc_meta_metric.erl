@@ -18,12 +18,12 @@
     MetricID :: metric_id(),
     Error :: exists | missing_owner.
 
-create({OwnerID, Props}=Metric) ->
+create({OrgID, Props}=Metric) ->
     EncodedProps = term_to_binary(lists:sort(Props)),
     ok = mpgsql:tx_begin(),
-    InsertSQL = "INSERT INTO metrics (owner_id, hash) "
+    InsertSQL = "INSERT INTO metrics (org_id, hash) "
                 "VALUES ($1, $2) RETURNING id;",
-    case mpgsql:equery(InsertSQL, [OwnerID, EncodedProps]) of
+    case mpgsql:equery(InsertSQL, [OrgID, EncodedProps]) of
         {error, unique_violation} ->
             ok = mpgsql:tx_rollback(),
             {error, exists};
@@ -72,42 +72,42 @@ create({OwnerID, Props}=Metric) ->
 
 lookup(Metric) ->
     {ok, _, Info} = case Metric of
-        {OwnerID0, Props0} ->
+        {OrgID0, Props0} ->
             %% Use Props0 here because the value from the SQL below may be in a
             %% different order - the ordering in the database is undefined.
             EncodedProps0 = term_to_binary(lists:sort(Props0)),
-            LookupSQL = "SELECT id, owner_id, hash FROM metrics "
-                        "WHERE owner_id = $1 AND hash = $2",
-            mpgsql:equery(LookupSQL, [OwnerID0, EncodedProps0]);
+            LookupSQL = "SELECT id, org_id, hash FROM metrics "
+                        "WHERE org_id = $1 AND hash = $2",
+            mpgsql:equery(LookupSQL, [OrgID0, EncodedProps0]);
         _ ->
-            LookupSQL = "SELECT id, owner_id, hash FROM metrics WHERE id = $1",
+            LookupSQL = "SELECT id, org_id, hash FROM metrics WHERE id = $1",
             mpgsql:equery(LookupSQL, [Metric])
     end,
     case Info of
         [] ->
             not_found;
-        [{MetricID, OwnerID, EncodedProps}] ->
+        [{MetricID, OrgID, EncodedProps}] ->
             PropSQL = "SELECT key, value FROM tags WHERE metric_id = $1",
             {ok, _, Props1} = mpgsql:equery(PropSQL, [MetricID]),
             Windows = osc_meta_window:lookup(MetricID),
             {ok, #metricmeta{
                 id = MetricID,
-                owner_id = OwnerID,
+                org_id = OrgID,
                 props = Props1,
                 encoded_props = EncodedProps,
                 windows = Windows
             }}
     end.
 
--spec search(owner_id(), [{group_tag_key(), group_tag_value()}]) -> [].
-search(OwnerID, [{Key, Value}]) ->
+-spec search(org_id(), [{group_tag_key(), group_tag_value()}]) -> [].
+search(OrgID, [{Key, Value}]) ->
     % Metrics with only one key-value pair are supported right now
     SQL = "SELECT id FROM metrics "
           "JOIN tags ON metrics.id = tags.metric_id "
-          "WHERE metrics.owner_id = $1 "
+          "WHERE metrics.org_id = $1 "
           "AND tags.key = $2 "
           "AND tags.value ~ $3;",
-    {ok, _, Resp} = mpgsql:equery(SQL, [OwnerID, Key, Value]),
+    {ok, _, Resp} = mpgsql:equery(SQL, [OrgID, Key, Value]),
     [MetricID || {MetricID} <- Resp].
 
 id(#metricmeta{id=ID}) ->
@@ -116,8 +116,8 @@ id(#metricmeta{id=ID}) ->
 windows(#metricmeta{windows=Windows}) ->
     Windows.
 
-name(#metricmeta{owner_id=OwnerID, encoded_props=EncodedProps}) ->
-    {OwnerID, EncodedProps}.
+name(#metricmeta{org_id=OrgID, encoded_props=EncodedProps}) ->
+    {OrgID, EncodedProps}.
 
 props(#metricmeta{props=Props}) ->
     Props.

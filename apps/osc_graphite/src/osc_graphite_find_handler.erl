@@ -37,55 +37,41 @@ content_types_provided(Req, State) ->
 
 to_json(Req0, State) ->
     {Query, Req1} = cowboy_req:qs_val(<<"q">>, Req0),
-    {Context, Req2} = cowboy_req:qs_val(<<"context">>, Req1),
+    {OrgName, Req2} = cowboy_req:qs_val(<<"org_name">>, Req1),
     %% Split the incoming query on literal . characters, which arrive
     %% double-escaped. Graphite builds a tree based on a succession of
     %% .-separated segments, so the query is only looking for the first element
     %% after the ., effectively.
     QuerySize = length(binary:split(Query, <<"\\.">>, [global])),
     UserID = State#st.user_id,
-    MetricMetas = case Context of
-        undefined ->
-            {ok, UserProps} = osc_meta_user:lookup(UserID),
-            MetricIDs = osc_meta_metric:search(
-                proplists:get_value(owner_id, UserProps),
-                [{<<"graphite">>, Query}]
+    {ok, OrgProps} = osc_meta_org:lookup(OrgName),
+    OrgID = proplists:get_value(id, OrgProps),
+    UnfilteredMetricIDs = osc_meta_metric:search(
+        OrgID,
+        [{<<"graphite">>, Query}]
+    ),
+    UnfilteredMetrics = lists:map(
+        fun(ID) -> {ok, Meta} = osc_meta_metric:lookup(ID), Meta end,
+        UnfilteredMetricIDs
+    ),
+    MetricMetas = case osc_meta_org:is_owner(OrgID, UserID) of
+        true ->
+            UnfilteredMetrics;
+        false ->
+            TeamPermissions = osc_meta_org:team_permissions(
+                OrgID,
+                UserID
             ),
-            lists:map(
-                fun(ID) -> {ok, Meta} = osc_meta_metric:lookup(ID), Meta end,
-                MetricIDs
-            );
-        OrgName ->
-            {ok, OrgProps} = osc_meta_org:lookup(OrgName),
-            OrgID = proplists:get_value(id, OrgProps),
-            OrgOwnerID = proplists:get_value(owner_id, OrgProps),
-            UnfilteredMetricIDs = osc_meta_metric:search(
-                OrgOwnerID,
-                [{<<"graphite">>, Query}]
-            ),
-            UnfilteredMetrics = lists:map(
-                fun(ID) -> {ok, Meta} = osc_meta_metric:lookup(ID), Meta end,
-                UnfilteredMetricIDs
-            ),
-            case osc_meta_org:is_owner(OrgID, UserID) of
-                true ->
-                    UnfilteredMetrics;
-                false ->
-                    TeamPermissions = osc_meta_org:team_permissions(
-                        OrgID,
-                        UserID
-                    ),
-                    lists:filter(
-                        fun(MetricMeta) ->
-                            MetricProps = osc_meta_metric:props(MetricMeta),
-                            osc_meta_util:find_prop_match(
-                                TeamPermissions,
-                                MetricProps
-                            )
-                        end,
-                        UnfilteredMetrics
+            lists:filter(
+                fun(MetricMeta) ->
+                    MetricProps = osc_meta_metric:props(MetricMeta),
+                    osc_meta_util:find_prop_match(
+                        TeamPermissions,
+                        MetricProps
                     )
-            end
+                end,
+                UnfilteredMetrics
+            )
     end,
     Response = lists:usort(lists:filtermap(
         fun(MetricMeta) ->

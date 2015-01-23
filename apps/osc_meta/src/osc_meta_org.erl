@@ -23,43 +23,41 @@
     Props :: proplists:proplist().
 
 lookup(Name) when is_binary(Name) ->
-    SQL = "SELECT id, owner_id FROM orgs WHERE name = $1;",
+    SQL = "SELECT id FROM orgs WHERE name = $1;",
     {ok, _, Org} = mpgsql:equery(SQL, [Name]),
     case Org of
         [] ->
             not_found;
-        [{OrgID, OwnerID}] ->
+        [{OrgID}] ->
             {ok, [
                 {id, OrgID},
-                {owner_id, OwnerID},
                 {name, Name},
-                {ports, ports(OwnerID)}
+                {ports, ports(OrgID)}
             ]}
     end;
 lookup(OrgID) ->
-    SQL = "SELECT owner_id, name FROM orgs WHERE id = $1;",
+    SQL = "SELECT name FROM orgs WHERE id = $1;",
     {ok, _, Org} = mpgsql:equery(SQL, [OrgID]),
     case Org of
         [] ->
             not_found;
-        [{OwnerID, Name}] ->
+        [{Name}] ->
             {ok, [
                 {id, OrgID},
-                {owner_id, OwnerID},
                 {name, Name},
-                {ports, ports(OwnerID)}
+                {ports, ports(OrgID)}
             ]}
     end.
 
 
--spec ports(OwnerID) -> Ports when
-    OwnerID :: owner_id(),
+-spec ports(OrgID) -> Ports when
+    OrgID :: org_id(),
     Ports :: [pos_integer()].
 
-ports(OwnerID) ->
+ports(OrgID) ->
     {ok, _, Ports} = mpgsql:equery(
-        "SELECT port FROM ports WHERE owner_id=$1",
-        [OwnerID]
+        "SELECT port FROM ports WHERE org_id=$1",
+        [OrgID]
     ),
     [Port || {Port} <- Ports].
 
@@ -72,11 +70,9 @@ ports(OwnerID) ->
 
 create(OrgName, UserID) ->
     ok = mpgsql:tx_begin(),
-    CreateOrgSQL = "WITH owner AS ( "
-                   "  INSERT INTO owners DEFAULT VALUES RETURNING id "
-                   "), org AS ("
-                   "  INSERT INTO orgs (owner_id, name) "
-                   "  SELECT id, $1 from owner RETURNING id "
+    CreateOrgSQL = "WITH org AS ("
+                   "  INSERT INTO orgs (name) "
+                   "  VALUES ($1) RETURNING id "
                    ") "
                    "INSERT INTO teams (name, org_id) "
                    "SELECT 'owners', id FROM org RETURNING org_id;",
@@ -206,10 +202,7 @@ team_permissions(OrgID, UserID) ->
 
 add_port(OrgID, Port) ->
     Type = <<"graphite">>,
-    SQL = "INSERT INTO ports "
-          "(owner_id, port, type) "
-          "VALUES "
-          "((SELECT owner_id FROM orgs WHERE id=$1), $2, $3);",
+    SQL = "INSERT INTO ports (org_id, port, type) VALUES ($1, $2, $3);",
     {ok, 1} = mpgsql:equery(SQL, [OrgID, Port, Type]),
     ok.
 
@@ -217,7 +210,6 @@ add_port(OrgID, Port) ->
 -spec remove_port(org_id(), pos_integer()) -> ok.
 
 remove_port(OrgID, Port) ->
-    SQL = "DELETE FROM ports "
-          "WHERE owner_id=(SELECT owner_id FROM orgs WHERE id=$1) AND port=$2",
+    SQL = "DELETE FROM ports WHERE org_id=$1 AND port=$2",
     {ok, 1} = mpgsql:equery(SQL, [OrgID, Port]),
     ok.

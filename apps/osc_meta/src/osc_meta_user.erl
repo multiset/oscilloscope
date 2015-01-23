@@ -20,30 +20,28 @@
     Props :: proplists:proplist().
 
 lookup(Name) when is_binary(Name) ->
-    SQL = "SELECT id, owner_id, password FROM users WHERE name = $1;",
+    SQL = "SELECT id, password FROM users WHERE name = $1;",
     {ok, _, User} = mpgsql:equery(SQL, [Name]),
     case User of
         [] ->
             not_found;
-        [{UserID, OwnerID, Password}] ->
+        [{UserID, Password}] ->
             {ok, [
                 {id, UserID},
-                {owner_id, OwnerID},
                 {name, Name},
                 {password, Password},
                 {emails, emails(UserID)}
             ]}
     end;
 lookup(UserID) ->
-    SQL = "SELECT owner_id, name, password FROM users WHERE id = $1;",
+    SQL = "SELECT name, password FROM users WHERE id = $1;",
     {ok, _, User} = mpgsql:equery(SQL, [UserID]),
     case User of
         [] ->
             not_found;
-        [{OwnerID, Name, Password}] ->
+        [{Name, Password}] ->
             {ok, [
                 {id, UserID},
-                {owner_id, OwnerID},
                 {name, Name},
                 {password, Password},
                 {emails, emails(UserID)}
@@ -69,10 +67,7 @@ emails(UserID) ->
 
 create(Username, Password) ->
     Hash = hash_password(Password),
-    SQL = "WITH owner AS "
-          "(INSERT INTO owners DEFAULT VALUES RETURNING id) "
-          "INSERT INTO users (name, password, owner_id) "
-          "SELECT $1, $2, id FROM owner RETURNING id;",
+    SQL = "INSERT INTO users (name, password) VALUES ($1, $2) RETURNING id;",
     case mpgsql:equery(SQL, [Username, Hash]) of
         {error, unique_violation} ->
             {error, exists};

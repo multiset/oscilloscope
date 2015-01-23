@@ -22,18 +22,18 @@
 }).
 
 
-start_link({OwnerID, EncodedProps}) ->
-    gen_server:start_link(?MODULE, [OwnerID, EncodedProps], []).
+start_link({OrgID, EncodedProps}) ->
+    gen_server:start_link(?MODULE, [OrgID, EncodedProps], []).
 
 
-init([OwnerID, EncodedProps]) ->
-    gproc:reg({n, l, {OwnerID, EncodedProps}}),
+init([OrgID, EncodedProps]) ->
+    gproc:reg({n, l, {OrgID, EncodedProps}}),
     Props = osc_meta_util:decode_props(EncodedProps),
     State = #st{
-        decoded_metric={OwnerID, Props},
-        encoded_metric={OwnerID, EncodedProps},
+        decoded_metric={OrgID, Props},
+        encoded_metric={OrgID, EncodedProps},
         datapoints=[],
-        creator=create_metric({OwnerID, Props}),
+        creator=create_metric({OrgID, Props}),
         flush=false
     },
     {ok, State}.
@@ -61,16 +61,16 @@ handle_cast(Msg, State) ->
 
 handle_info({'DOWN', Ref, process, Pid, Info}, #st{creator={Pid, Ref}}=State) ->
     #st{
-        decoded_metric={OwnerID, _}=DMetric,
+        decoded_metric={OrgID, _}=DMetric,
         encoded_metric=EMetric
     } = State,
     case Info of
         {ok, CachePid} ->
             gproc:give_away({n, l, EMetric}, CachePid),
             {noreply, State#st{flush=true, creator=undefined}, 0};
-        missing_owner ->
-            lager:error("Owner ~p does not exist", [OwnerID]),
-            {stop, missing_owner, State};
+        missing_org ->
+            lager:error("Org ~p does not exist", [OrgID]),
+            {stop, missing_org, State};
         _ ->
             lager:error("Metric creator failed: ~p", [Info]),
             {noreply, State#st{creator=create_metric(DMetric)}}
@@ -127,8 +127,8 @@ create_metric(Metric) ->
                 exit(osc_cache:start(Metric));
             {error, exists} ->
                 exit(osc_cache:start(Metric));
-            {error, missing_owner} ->
-                exit(missing_owner)
+            {error, missing_org} ->
+                exit(missing_org)
         end
     end).
 
