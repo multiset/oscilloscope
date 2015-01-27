@@ -11,7 +11,6 @@ user_basics() ->
     ok = osc_meta_user:add_email(UserID, <<"other@ben.com">>),
     {ok, UserProps} = osc_meta_user:lookup(UserID),
     {id, UserID} = lists:keyfind(id, UserProps),
-    {owner_id, _OwnerID} = lists:keyfind(owner_id, UserProps),
     {name, <<"ben">>} = lists:keyfind(name, UserProps),
     {password, _Hash} = lists:keyfind(password, UserProps),
     ok = osc_meta_user:delete(UserID),

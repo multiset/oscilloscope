@@ -51,8 +51,8 @@ recv(timeout, State) ->
                 Metric = case Rest of
                     <<1:8/integer, MetricID:32/integer>> ->
                         MetricID;
-                    <<0:8/integer, OwnerID:32/integer, NameBin/binary>> ->
-                        {OwnerID, NameBin}
+                    <<0:8/integer, OrgID:32/integer, NameBin/binary>> ->
+                        {OrgID, NameBin}
                 end,
                 {[{Metric, Time, Value}|BatchAcc], Offset}
             end, {[], 0}, Messages),

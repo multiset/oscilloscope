@@ -9,10 +9,10 @@
 -export([init/1]).
 
 
-start_child({OwnerID, EncodedProps}) ->
+start_child({OrgID, EncodedProps}) ->
     ChildSpec = {
-        {OwnerID, EncodedProps},
-        {osc_kafka_metric_creator, start_link, [{OwnerID, EncodedProps}]},
+        {OrgID, EncodedProps},
+        {osc_kafka_metric_creator, start_link, [{OrgID, EncodedProps}]},
         transient,
         5000,
         worker,

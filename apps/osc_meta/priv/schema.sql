@@ -12,13 +12,8 @@ SET default_tablespace = '';
 
 SET default_with_oids = false;
 
-CREATE TABLE owners (
-    id serial PRIMARY KEY
-);
-
 CREATE TABLE users (
     id serial PRIMARY KEY,
-    owner_id integer NOT NULL REFERENCES owners(id),
     name text UNIQUE NOT NULL,
     password bytea NOT NULL,
     created timestamp without time zone default (now() at time zone 'utc') NOT NULL,
@@ -34,7 +29,6 @@ CREATE TABLE emails (
 
 CREATE TABLE orgs (
     id serial PRIMARY KEY,
-    owner_id integer NOT NULL REFERENCES owners(id),
     name text UNIQUE NOT NULL,
     created timestamp without time zone default (now() at time zone 'utc') NOT NULL,
     active boolean DEFAULT TRUE NOT NULL
@@ -58,10 +52,10 @@ CREATE TABLE team_members (
 
 CREATE TABLE metrics (
     id serial PRIMARY KEY,
-    owner_id integer NOT NULL REFERENCES owners(id),
+    org_id integer NOT NULL REFERENCES orgs(id),
     created timestamp without time zone default (now() at time zone 'utc') NOT NULL,
     hash bytea NOT NULL,
-    UNIQUE(owner_id, hash)
+    UNIQUE(org_id, hash)
 );
 
 CREATE TABLE tags (
@@ -92,10 +86,10 @@ CREATE TABLE persists (
 
 CREATE TABLE window_configuration_groups (
     id serial PRIMARY KEY,
-    owner_id integer NOT NULL REFERENCES owners(id),
+    org_id integer NOT NULL REFERENCES orgs(id),
     priority integer NOT NULL,
     tags text[][] NOT NULL,
-    UNIQUE(owner_id, tags)
+    UNIQUE(org_id, tags)
 );
 
 CREATE TABLE window_configurations (
@@ -108,7 +102,8 @@ CREATE TABLE window_configurations (
 );
 
 CREATE TABLE ports (
-    owner_id integer NOT NULL REFERENCES owners(id),
+    id serial PRIMARY KEY,
+    org_id integer NOT NULL REFERENCES orgs(id),
     created timestamp without time zone default (now() at time zone 'utc') NOT NULL,
     host bytea,
     "type" bytea NOT NULL,
@@ -125,8 +120,6 @@ CREATE TABLE team_permissions (
 CREATE INDEX tag_metric_ids_idx ON tags(metric_id);
 
 ALTER TABLE public.metrics OWNER TO osc;
-ALTER TABLE public.users OWNER TO osc;
-ALTER TABLE public.owners OWNER TO osc;
 ALTER TABLE public.users OWNER TO osc;
 ALTER TABLE public.orgs OWNER TO osc;
 ALTER TABLE public.teams OWNER TO osc;

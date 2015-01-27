@@ -16,7 +16,6 @@
 
 -record(st, {
     user_id,
-    owner_class,
     props
 }).
 
@@ -27,7 +26,7 @@ terminate(_Reason, _Req, _State) ->
     ok.
 
 rest_init(Req, Opts) ->
-    {ok, Req, #st{owner_class=proplists:get_value(owner_class, Opts)}}.
+    {ok, Req, #st{}}.
 
 allowed_methods(Req, State) ->
     {[<<"GET">>, <<"DELETE">>, <<"PATCH">>], Req, State}.
@@ -41,56 +40,28 @@ is_authorized(Req, State) ->
 
 forbidden(Req0, State0) ->
     {Req1, State1} = fetch(Req0, State0),
-    #st{owner_class=OwnerClass, user_id=AuthUserID, props=Props}=State1,
-    Forbidden = case Props of
+    #st{user_id=AuthUserID, props=Props}=State1,
+    {Forbidden, Req4} = case Props of
         undefined ->
             false;
         _ ->
-            {ClassAuthorized, ClassProps, Req1} = case OwnerClass of
-                user ->
-                    {UserIDBin, ReqA} = cowboy_req:binding(user_id, Req0),
-                    UserID = list_to_integer(binary_to_list(UserIDBin)),
-                    {ok, UserProps} = osc_meta_user:lookup(UserID),
-                    %% Auth user must be identical and the user's OwnerID must
-                    %% match the window config's OwnerID.
-                    {UserID =:= AuthUserID, UserProps, ReqA};
-                org ->
-                    {OrgIDBin, ReqA} = cowboy_req:binding(org_id, Req0),
-                    OrgID = list_to_integer(binary_to_list(OrgIDBin)),
-                    {ok, OrgProps} = osc_meta_org:lookup(OrgID),
-                    {Method, ReqB} = cowboy_req:method(ReqA),
-                    MethodAuthorized = case Method of
-                        <<"PATCH">> ->
-                            %% Only owners can modify window configurations
-                            osc_meta_org:is_owner(OrgID, AuthUserID);
-                        <<"DELETE">> ->
-                            %% Only owners can modify window configurations
-                            osc_meta_org:is_owner(OrgID, AuthUserID);
-                        <<"GET">> ->
-                            %% Any member can view window configurations
-                            osc_meta_org:is_member(OrgID, AuthUserID)
-                    end,
-                    {MethodAuthorized, OrgProps, ReqB}
+            {OrgIDBin, Req2} = cowboy_req:binding(org_id, Req1),
+            OrgID = list_to_integer(binary_to_list(OrgIDBin)),
+            {Method, Req3} = cowboy_req:method(Req2),
+            Authorized = case Method of
+                <<"PATCH">> ->
+                    %% Only owners can modify window configurations
+                    osc_meta_org:is_owner(OrgID, AuthUserID);
+                <<"DELETE">> ->
+                    %% Only owners can modify window configurations
+                    osc_meta_org:is_owner(OrgID, AuthUserID);
+                <<"GET">> ->
+                    %% Any member can view window configurations
+                    osc_meta_org:is_member(OrgID, AuthUserID)
             end,
-            %% Verify that the group owner matches the request owner
-            PropsOwnerID = proplists:get_value(owner_id, Props),
-            ClassOwnerID = proplists:get_value(owner_id, ClassProps),
-            if
-                PropsOwnerID =:= undefined ->
-                    lager:critical("Missing owner_id: ~p", [Props]),
-                    true;
-                ClassOwnerID =:= undefined ->
-                    lager:critical("Missing owner_id: ~p", [ClassProps]),
-                    true;
-                not ClassAuthorized ->
-                    true;
-                PropsOwnerID =/= ClassOwnerID ->
-                    true;
-                true ->
-                    false
-            end
+            {not Authorized, Req3}
     end,
-    {Forbidden, Req1, State1}.
+    {Forbidden, Req4, State1}.
 
 resource_exists(Req, #st{props=undefined}=State) ->
     {false, Req, State};

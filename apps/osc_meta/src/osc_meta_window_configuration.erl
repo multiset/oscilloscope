@@ -18,8 +18,8 @@
 -include_lib("osc/include/osc_types.hrl").
 -include_lib("osc_meta/include/osc_meta.hrl").
 
--spec create(OwnerID, Priority, GroupProps, WindowConfig) -> Response when
-    OwnerID :: owner_id(),
+-spec create(OrgID, Priority, GroupProps, WindowConfig) -> Response when
+    OrgID :: org_id(),
     Priority :: pos_integer(),
     GroupProps :: [{GroupTagKey, GroupTagValue}],
     GroupTagKey :: group_tag_key(),
@@ -29,16 +29,16 @@
     GroupID :: group_id(),
     Error :: exists.
 
-create(OwnerID, Priority, GroupProps, WindowConfigs) ->
+create(OrgID, Priority, GroupProps, WindowConfigs) ->
     GroupSQL = "INSERT INTO window_configuration_groups"
-               "(owner_id, priority, tags) VALUES ($1, $2, $3)"
+               "(org_id, priority, tags) VALUES ($1, $2, $3)"
                "RETURNING id;",
     WindowSQL = "INSERT INTO window_configurations"
                 "(group_id, type, aggregation, interval, count)"
                 "VALUES ($1, $2, $3, $4, $5);",
     ok = mpgsql:tx_begin(),
     Tags = lists:map(fun tuple_to_list/1, GroupProps),
-    case mpgsql:equery(GroupSQL, [OwnerID, Priority, Tags]) of
+    case mpgsql:equery(GroupSQL, [OrgID, Priority, Tags]) of
         {error, unique_violation} ->
             ok = mpgsql:tx_rollback(),
             {error, exists};
@@ -61,17 +61,17 @@ create(OwnerID, Priority, GroupProps, WindowConfigs) ->
     end.
 
 
--spec list(OwnerID) -> {ok, WindowConfigs} when
-    OwnerID :: owner_id(),
+-spec list(OrgID) -> {ok, WindowConfigs} when
+    OrgID :: org_id(),
     WindowConfigs :: proplists:proplist().
 
-list(OwnerID) ->
+list(OrgID) ->
     SQL = "SELECT id, priority, tags FROM window_configuration_groups "
-          "WHERE owner_id = $1;",
-    {ok, _, Rows} = mpgsql:equery(SQL, [OwnerID]),
+          "WHERE org_id = $1;",
+    {ok, _, Rows} = mpgsql:equery(SQL, [OrgID]),
     Configs = lists:map(
         fun({GroupID, Priority, Tags}) ->
-            format_group(GroupID, OwnerID, Priority, Tags)
+            format_group(GroupID, OrgID, Priority, Tags)
         end,
         Rows
     ),
@@ -90,15 +90,15 @@ list(OwnerID) ->
     GroupID :: group_id().
 
 lookup(GroupID) ->
-    SQL = "SELECT owner_id, priority, tags "
+    SQL = "SELECT org_id, priority, tags "
           "FROM window_configuration_groups "
           "WHERE id = $1;",
     {ok, _, Rows} = mpgsql:equery(SQL, [GroupID]),
     case Rows of
         [] ->
             not_found;
-        [{OwnerID, Priority, Tags}] ->
-            {ok, format_group(GroupID, OwnerID, Priority, Tags)}
+        [{OrgID, Priority, Tags}] ->
+            {ok, format_group(GroupID, OrgID, Priority, Tags)}
     end.
 
 -spec delete(GroupID) -> ok when
@@ -167,12 +167,12 @@ set_priority(GroupID, Priority) ->
     Metric :: metric(),
     Windows :: [window_config()].
 
-for_metric({OwnerID, Props}) ->
+for_metric({OrgID, Props}) ->
     SQL = "SELECT id, tags "
           "FROM window_configuration_groups "
-          "WHERE owner_id = $1 "
+          "WHERE org_id = $1 "
           "ORDER BY priority DESC;",
-    {ok, _, Rows0} = mpgsql:equery(SQL, [OwnerID]),
+    {ok, _, Rows0} = mpgsql:equery(SQL, [OrgID]),
     %% Vector types come back as lists of lists, and that's a pain.
     Rows1 = lists:map(
         fun({ID, Tags}) -> {ID, lists:map(fun list_to_tuple/1, Tags)} end,
@@ -255,14 +255,14 @@ windows(GroupID) ->
     Windows.
 
 
--spec format_group(GroupID, OwnerID, Priority, Tags) -> Group when
+-spec format_group(GroupID, OrgID, Priority, Tags) -> Group when
     GroupID :: group_id(),
-    OwnerID :: owner_id(),
+    OrgID :: org_id(),
     Priority :: pos_integer(),
     Tags :: proplists:proplist(),
     Group :: proplists:proplist().
 
-format_group(GroupID, OwnerID, Priority, Tags) ->
+format_group(GroupID, OrgID, Priority, Tags) ->
     RawWindows = windows(GroupID),
     Windows = lists:map(
         fun({WindowID, Type, Aggregation, Interval, Count}) ->
@@ -278,7 +278,7 @@ format_group(GroupID, OwnerID, Priority, Tags) ->
     ),
     [
         {id, GroupID},
-        {owner_id, OwnerID},
+        {org_id, OrgID},
         {priority, Priority},
         {tags, lists:map(fun list_to_tuple/1, Tags)},
         {windows, Windows}
