@@ -42,23 +42,34 @@ recv(timeout, State) ->
     } = State,
     case kofta:fetch(Topic, Partition, [{offset, OldOffset}]) of
         {ok, []} ->
+            mstat:increment_counter([osc_kafka, fetches, empty]),
             {next_state, recv, State, Timeout};
         {ok, Messages} ->
+            mstat:increment_counter([osc_kafka, fetches, successful]),
             {Batch, NewOffset} = lists:foldl(fun({Offset, Key, BValue}, Acc) ->
+                mstat:increment_counter([osc_kafka, points, received]),
                 {BatchAcc, _Offs} = Acc,
                 <<Time:32/integer, Rest/binary>> = Key,
                 <<Value:64/float>> = BValue,
                 Metric = case Rest of
                     <<1:8/integer, MetricID:32/integer>> ->
+                        mstat:increment_counter(
+                            [osc_kafka, points, received_with_id]
+                        ),
                         MetricID;
                     <<0:8/integer, OrgID:32/integer, NameBin/binary>> ->
+                        mstat:increment_counter(
+                            [osc_kafka, points, received_without_id]
+                        ),
                         {OrgID, NameBin}
                 end,
                 {[{Metric, Time, Value}|BatchAcc], Offset}
             end, {[], 0}, Messages),
+            mstat:update_histogram([osc_kafka, batch_size], length(Batch)),
             ok = osc_kafka_insert_sup:start_child(Batch),
             {next_state, recv, State#state{offset=NewOffset+1}, Timeout};
         {error, Reason} ->
+            mstat:increment_counter([osc_kafka, fetches, error]),
             lager:error("Error fetching partition ~p: ~p", [Partition, Reason]),
             {next_state, recv, State, Timeout}
     end.

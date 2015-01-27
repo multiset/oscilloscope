@@ -4,8 +4,8 @@
     routes/0,
     load_routes/1,
     parse_json_patch/1,
-    error_hook/4,
-    session/1,
+    onresponse/4,
+    onrequest/1,
     set_session/3,
     get_session/1,
     is_authorized/3,
@@ -37,6 +37,17 @@ parse_json_patch(JSON) ->
     Value = proplists:get_value(<<"value">>, Patch),
     {ok, {Operation, Path, Value}}.
 
+
+onresponse(Code, Headers, Body, Req0) ->
+    {Start, Req1} = cowboy_req:meta(start, Req0),
+    Duration = timer:now_diff(os:timestamp(), Start) div 1000,
+    mstat:update_histogram([osc_http, requests, total, latency], Duration),
+    mstat:increment_counter([osc_http, requests, total, count]),
+    record_status_code_statistics(Code, Duration),
+    {Method, Req2} = cowboy_req:method(Req1),
+    record_method_statistics(Method, Duration),
+    error_hook(Code, Headers, Body, Req2).
+
 error_hook(500, Headers0, <<>>, Req0) ->
     Body = jiffy:encode({[{error, <<"An unknown error occurred.">>}]}),
     Headers1 = lists:keyreplace(
@@ -55,6 +66,12 @@ error_hook(500, Headers0, <<>>, Req0) ->
     Req1;
 error_hook(_, _, _, Req) ->
     Req.
+
+
+onrequest(Req0) ->
+    Req1 = cowboy_req:set_meta(start, os:timestamp(), Req0),
+    session(Req1).
+
 
 session(Req0) ->
     {ok, CookieName} = application:get_env(osc_http, cookie_name),
@@ -135,3 +152,51 @@ start() ->
 
 stop() ->
     ok.
+
+record_status_code_statistics(200, T) ->
+    record_statistics([status_code, 200], T);
+record_status_code_statistics(201, T) ->
+    record_statistics([status_code, 201], T);
+record_status_code_statistics(204, T) ->
+    record_statistics([status_code, 204], T);
+record_status_code_statistics(301, T) ->
+    record_statistics([status_code, 301], T);
+record_status_code_statistics(302, T) ->
+    record_statistics([status_code, 302], T);
+record_status_code_statistics(303, T) ->
+    record_statistics([status_code, 303], T);
+record_status_code_statistics(400, T) ->
+    record_statistics([status_code, 400], T);
+record_status_code_statistics(401, T) ->
+    record_statistics([status_code, 401], T);
+record_status_code_statistics(403, T) ->
+    record_statistics([status_code, 403], T);
+record_status_code_statistics(404, T) ->
+    record_statistics([status_code, 404], T);
+record_status_code_statistics(405, T) ->
+    record_statistics([status_code, 405], T);
+record_status_code_statistics(500, T) ->
+    record_statistics([status_code, 500], T);
+record_status_code_statistics(Code, T) ->
+    lager:warning("osc_http returned unknown code ~p", [Code]),
+    record_statistics([status_code, unknown], T).
+
+record_method_statistics(<<"GET">>, T) ->
+    record_statistics([method, get], T);
+record_method_statistics(<<"PATCH">>, T) ->
+    record_statistics([method, patch], T);
+record_method_statistics(<<"POST">>, T) ->
+    record_statistics([method, post], T);
+record_method_statistics(<<"PUT">>, T) ->
+    record_statistics([method, put], T);
+record_method_statistics(<<"DELETE">>, T) ->
+    record_statistics([method, delete], T);
+record_method_statistics(<<"OPTIONS">>, T) ->
+    record_statistics([method, options], T);
+record_method_statistics(_, T) ->
+    record_statistics([method, unknown], T).
+
+record_statistics(Path0, T) ->
+    Path1 = [osc_http, requests] ++ Path0,
+    mstat:increment_counter(Path1 ++ [count]),
+    mstat:update_histogram(Path1 ++ [latency], T).

@@ -72,6 +72,7 @@ create(Username, Password) ->
         {error, unique_violation} ->
             {error, exists};
         {ok, 1 , _, [{UserID}]} ->
+            mstat:increment_counter([osc_meta, creations, user]),
             {ok, UserID}
     end.
 

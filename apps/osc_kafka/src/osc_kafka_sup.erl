@@ -14,6 +14,23 @@ start_link() ->
 
 
 init([]) ->
+    mstat:new_counter([osc_kafka, points, received]),
+    mstat:new_counter([osc_kafka, points, received_with_id]),
+    mstat:new_counter([osc_kafka, points, received_without_id]),
+    mstat:new_counter([osc_kafka, fetches, empty]),
+    mstat:new_counter([osc_kafka, fetches, successful]),
+    mstat:new_counter([osc_kafka, fetches, error]),
+    mstat:new_histogram([osc_kafka, batch_size]),
+    mstat:new_counter([osc_kafka, inserts, retries]),
+    mstat:new_counter([osc_kafka, inserts, spawned]),
+    mstat:new_histogram([osc_kafka, inserts, latency]),
+    mstat:new_counter([osc_kafka, creators, spawned]),
+    mstat:new_counter([osc_kafka, creators, points_proxied]),
+    mstat:new_counter([osc_kafka, creators, requests_denied]),
+    mstat:new_counter([osc_kafka, creators, successes]),
+    mstat:new_counter([osc_kafka, creators, failures]),
+    mstat:new_counter([osc_kafka, creators, create_attempts]),
+    mstat:new_counter([osc_kafka, creators, create_races]),
     {ok, Partitions} = application:get_env(osc_kafka, partitions),
     PartitionSpecs = lists:map(fun(Partition) ->
         {

@@ -89,6 +89,7 @@ create(OrgName, UserID) ->
             {ok, 1} = mpgsql:equery(AddMemberSQL, [OrgID, UserID]),
             {ok, 1} = mpgsql:equery(AddOwnerSQL, [OrgID, UserID]),
             ok = mpgsql:tx_commit(),
+            mstat:increment_counter([osc_meta, creations, org]),
             {ok, OrgID}
     end.
 

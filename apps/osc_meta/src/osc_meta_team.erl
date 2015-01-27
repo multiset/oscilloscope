@@ -67,6 +67,7 @@ lookup_permissions(TeamID) ->
 create(OrgID, Name) ->
     SQL = "INSERT INTO teams (org_id, name) VALUES ($1, $2) RETURNING id;",
     {ok, 1, _, [{TeamID}]} = mpgsql:equery(SQL, [OrgID, Name]),
+    mstat:increment_counter([osc_meta, creations, team]),
     {ok, TeamID}.
 
 

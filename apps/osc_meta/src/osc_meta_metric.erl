@@ -63,6 +63,11 @@ create({OrgID, Props}=Metric) ->
                 Props
             ),
             ok = mpgsql:tx_commit(),
+            mstat:increment_counter(
+                [osc_meta, creations, window],
+                length(Windows)
+            ),
+            mstat:increment_counter([osc_meta, creations, metric]),
             {ok, MetricID}
     end.
 

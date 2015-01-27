@@ -57,6 +57,9 @@ create(OrgID, Priority, GroupProps, WindowConfigs) ->
                 WindowConfigs
             ),
             ok = mpgsql:tx_commit(),
+            mstat:increment_counter(
+                [osc_meta, creations, window_configuration]
+            ),
             {ok, GroupID}
     end.
 
