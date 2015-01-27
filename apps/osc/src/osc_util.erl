@@ -3,7 +3,9 @@
     now/0,
     parse_resolution/1,
     adjust_query_range/3,
-    binary_join/2
+    binary_join/2,
+    ejsonify/1,
+    unejsonify/1
 ]).
 
 now() ->
@@ -72,6 +74,20 @@ binary_join([], _Sep, Acc) ->
     Acc;
 binary_join([H|T], Sep, Acc) ->
     binary_join(T, Sep, <<Acc/binary, Sep/binary, H/binary>>).
+
+ejsonify([{_, _}|_]=Proplist) ->
+    {[{ejsonify(K), ejsonify(V)} || {K, V} <- Proplist]};
+ejsonify(Is) when is_list(Is) ->
+    [ejsonify(I) || I <- Is];
+ejsonify(I) ->
+    I.
+
+unejsonify({[{_, _}|_]=Proplist}) ->
+    [{unejsonify(K), unejsonify(V)} || {K, V} <- Proplist];
+unejsonify(Is) when is_list(Is) ->
+    [unejsonify(I) || I <- Is];
+unejsonify(I) ->
+    I.
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

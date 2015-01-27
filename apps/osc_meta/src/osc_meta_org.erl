@@ -2,7 +2,7 @@
 
 -export([
     lookup/1,
-    create/2,
+    create/3,
     delete/1,
     teams/1,
     members/1,
@@ -36,15 +36,16 @@ lookup(Name) when is_binary(Name) ->
             ]}
     end;
 lookup(OrgID) ->
-    SQL = "SELECT name FROM orgs WHERE id = $1;",
+    SQL = "SELECT name, stripe_id FROM orgs WHERE id = $1;",
     {ok, _, Org} = mpgsql:equery(SQL, [OrgID]),
     case Org of
         [] ->
             not_found;
-        [{Name}] ->
+        [{Name, StripeID}] ->
             {ok, [
                 {id, OrgID},
                 {name, Name},
+                {stripe_id, StripeID},
                 {ports, ports(OrgID)}
             ]}
     end.
@@ -62,17 +63,19 @@ ports(OrgID) ->
     [Port || {Port} <- Ports].
 
 
--spec create(Name, UserID) -> {ok, OrgID} | {error, Error} when
+-spec create(Name, UserID, StripeToken) -> {ok, OrgID} | {error, Error} when
     Name :: binary(),
     UserID :: user_id(),
+    StripeToken :: binary(),
     OrgID :: org_id(),
     Error :: exists.
 
-create(OrgName, UserID) ->
+create(OrgName, UserID, StripeToken) ->
+    {ok, StripeID} = osc_meta_stripe:create_customer(StripeToken, OrgName),
     ok = mpgsql:tx_begin(),
     CreateOrgSQL = "WITH org AS ("
-                   "  INSERT INTO orgs (name) "
-                   "  VALUES ($1) RETURNING id "
+                   "  INSERT INTO orgs (name, stripe_id) "
+                   "  VALUES ($1, $2) RETURNING id "
                    ") "
                    "INSERT INTO teams (name, org_id) "
                    "SELECT 'owners', id FROM org RETURNING org_id;",
@@ -81,7 +84,7 @@ create(OrgName, UserID) ->
                   "SELECT id, $2 FROM TEAMS "
                   "WHERE name='owners' AND org_id = $1;",
 
-    case mpgsql:equery(CreateOrgSQL, [OrgName]) of
+    case mpgsql:equery(CreateOrgSQL, [OrgName, StripeID]) of
         {error, unique_violation} ->
             ok = mpgsql:tx_rollback(),
             {error, exists};

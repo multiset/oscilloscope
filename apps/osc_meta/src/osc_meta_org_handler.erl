@@ -141,6 +141,12 @@ apply_patch(<<"remove">>, [<<"ports">>], Port, OrgProps) ->
     ok = osc_meta_org:remove_port(proplists:get_value(id, OrgProps), Port),
     Ports = lists:delete(Port, proplists:get_value(ports, OrgProps)),
     {ok, [{ports, Ports}|proplists:delete(ports, OrgProps)]};
+apply_patch(<<"replace">>, [<<"stripe">>], StripeToken, OrgProps) ->
+    ok = osc_meta_stripe:update_customer(
+        proplists:get_value(stripe_id, OrgProps),
+        StripeToken
+    ),
+    {ok, OrgProps};
 apply_patch(Op, Path, _, OrgProps) ->
     lager:error(
         "Got an unknown patch attempt: ~p, ~p for org ~p",

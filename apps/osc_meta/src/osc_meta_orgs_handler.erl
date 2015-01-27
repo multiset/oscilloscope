@@ -44,10 +44,11 @@ from_json(Req0, State) ->
     {ok, JSONBody, Req1} = cowboy_req:body(Req0),
     {Body} = jiffy:decode(JSONBody),
     OrgName = proplists:get_value(<<"name">>, Body),
+    StripeToken = proplists:get_value(<<"stripe_token">>, Body),
     true = OrgName =/= <<>>,
     {Meta, Req2} = osc_http:get_session(Req1),
     UserID = proplists:get_value(id, Meta),
-    {ok, OrgID} = osc_meta_org:create(OrgName, UserID),
+    {ok, OrgID} = osc_meta_org:create(OrgName, UserID, StripeToken),
     Req3 = cowboy_req:set_resp_header(
         <<"Location">>,
         [<<"/orgs/">>, integer_to_list(OrgID)],
