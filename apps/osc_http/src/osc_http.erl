@@ -177,7 +177,8 @@ record_status_code_statistics(405, T) ->
     record_statistics([status_code, 405], T);
 record_status_code_statistics(500, T) ->
     record_statistics([status_code, 500], T);
-record_status_code_statistics(_, T) ->
+record_status_code_statistics(Code, T) ->
+    lager:warning("osc_http returned unknown code ~p", [Code]),
     record_statistics([status_code, unknown], T).
 
 record_method_statistics(<<"GET">>, T) ->
