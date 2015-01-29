@@ -8,8 +8,12 @@ deps:
 compile:
 	@./rebar compile
 
-rel: deps compile
-	./rebar generate
+rel: relclean deps compile
+	@./rebar generate
+
+knit: clean relclean deps compile
+	@./knit
+	@./artifact.sh
 
 relrun:
 	@rel/osc/bin/osc
@@ -30,9 +34,6 @@ eunit:
 
 dialyze:
 	@dialyzer --plt dialyzer.plt --src apps/*/src/ -pa apps/osc/ebin -pa apps/osc_meta/ebin | grep -F -v -f ./dialyzer.ignore-warnings
-
-artifact: clean relclean rel
-	@./artifact.sh
 
 fuck-it-all:
 	@echo -n "Killing all the postgres... "

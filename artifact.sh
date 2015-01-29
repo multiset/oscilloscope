@@ -1,6 +1,6 @@
-ARTIFACT="artifact.tar.gz"
-BUCKET="multiset-artifacts/oscilloscope"
+#!/bin/bash
 
-tar -cvzf $ARTIFACT -C rel/osc .
-aws s3 cp $ARTIFACT s3://$BUCKET/`git rev-parse HEAD`.tar.gz
-aws s3 cp $ARTIFACT s3://$BUCKET/`git rev-parse --abbrev-ref HEAD`.tar.gz
+BUCKET="multiset-artifacts/oscilloscope"
+PLATFORM=$(uname | awk '{print tolower($0)}')
+aws s3 sync rel/releases/ s3://$BUCKET/$PLATFORM/releases
+aws s3 sync rel/upgrades/ s3://$BUCKET/$PLATFORM/upgrades
