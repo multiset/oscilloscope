@@ -141,10 +141,11 @@ apply_patch(<<"remove">>, [<<"ports">>], Port, OrgProps) ->
     ok = osc_meta_org:remove_port(proplists:get_value(id, OrgProps), Port),
     Ports = lists:delete(Port, proplists:get_value(ports, OrgProps)),
     {ok, [{ports, Ports}|proplists:delete(ports, OrgProps)]};
-apply_patch(<<"replace">>, [<<"stripe">>], StripeToken, OrgProps) ->
+apply_patch(<<"replace">>, [<<"stripe">>], StripeToken0, OrgProps) ->
+    [StripeToken1|_] = binary:split(StripeToken0, <<"&">>),
     ok = osc_meta_stripe:update_customer(
         proplists:get_value(stripe_id, OrgProps),
-        StripeToken
+        StripeToken1
     ),
     {ok, OrgProps};
 apply_patch(Op, Path, _, OrgProps) ->
