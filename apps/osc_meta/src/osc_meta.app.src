@@ -6,10 +6,12 @@
         kernel,
         stdlib,
         mpgsql,
+        ibrowse,
         osc_http
     ]},
     {mod, {osc_meta_app, []}},
     {env, [
+        {stripe_key, "sk_test_vjxLlGrf5OWP1U9jg1fChHBq"},
         {default_window_configuration, [
             {rectangular, average, 10, 1000},
             {rectangular, average, 60, 1000},

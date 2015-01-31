@@ -30,6 +30,7 @@ CREATE TABLE emails (
 CREATE TABLE orgs (
     id serial PRIMARY KEY,
     name text UNIQUE NOT NULL,
+    stripe_id text NOT NULL,
     created timestamp without time zone default (now() at time zone 'utc') NOT NULL,
     active boolean DEFAULT TRUE NOT NULL
 );
