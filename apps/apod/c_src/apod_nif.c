@@ -347,6 +347,8 @@ apod_nif_earliest_time(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
     case RECT:
         timestamp = wrap->data->t;
         break;
+    default:
+        timestamp = -1;
     }
     if (timestamp < 0) {
         return priv->atom_undefined;
@@ -375,7 +377,10 @@ apod_nif_latest_time(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
     case RECT:
         timestamp = apod_latest_time(wrap->data);
         break;
+    default:
+        timestamp = -1;
     }
+
     if (timestamp < 0) {
         return priv->atom_undefined;
     } else {
@@ -389,7 +394,7 @@ apod_nif_interval(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
     ApodPriv* priv = enif_priv_data(env);
     ApodWrap* wrap = NULL;
 
-    int interval;
+    ERL_NIF_TERM interval;
 
     if (argc != 1) {
         return enif_make_badarg(env);
@@ -401,11 +406,13 @@ apod_nif_interval(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 
     switch (wrap->class) {
     case RECT:
-        interval = wrap->data->interval;
+        interval = enif_make_int(env, wrap->data->interval);
         break;
+    default:
+        interval = priv->atom_undefined;
     }
 
-    return enif_make_int(env, interval);
+    return interval;
 }
 
 static ERL_NIF_TERM
@@ -414,7 +421,9 @@ apod_nif_size(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
     ApodPriv* priv = enif_priv_data(env);
     ApodWrap* wrap = NULL;
 
-    int interval, size;
+    ERL_NIF_TERM size;
+
+    int interval;
     int64_t earliest_time, latest_time;
 
     if (argc != 1) {
@@ -430,15 +439,20 @@ apod_nif_size(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
         interval = wrap->data->interval;
         earliest_time = wrap->data->t;
         if (earliest_time < 0) {
-            size = 0;
+            size = enif_make_int(env, 0);
         } else {
             latest_time = apod_latest_time(wrap->data);
-            size = (latest_time - earliest_time) / interval + 1;
+            size = enif_make_int(
+                env,
+                (latest_time - earliest_time) / interval + 1
+            );
         }
         break;
+    default:
+        size = priv->atom_undefined;
     }
 
-    return enif_make_int(env, size);
+    return size;
 }
 
 static void apod_nif_destroy(ErlNifEnv* env, void* obj)
