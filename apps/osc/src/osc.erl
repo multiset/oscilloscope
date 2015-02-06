@@ -54,7 +54,7 @@ read(Metric, From, Until) ->
                         Until
                     ),
                     Interval = osc_meta_window:interval(WindowMeta),
-                    MergedRead = merge_reads(
+                    {MFrom, MUntil, _}=MergedRead = merge_reads(
                         From,
                         Until,
                         Interval,
@@ -64,7 +64,7 @@ read(Metric, From, Until) ->
                     mstat:increment_counter([osc, reads, successful]),
                     mstat:increment_counter(
                         [osc, reads, points],
-                        length(MergedRead)
+                        (MUntil - MFrom) div Interval
                     ),
                     {ok, MetricMeta, WindowMeta, MergedRead}
             end
