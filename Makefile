@@ -1,5 +1,5 @@
 SHELL=/bin/bash
-.PHONY: deps rel knit
+.PHONY: deps knit
 
 all: clean deps compile rel console
 
@@ -7,16 +7,16 @@ deps:
 	@./rebar get-deps
 	@./rebar update-deps
 
+depclean:
+	@rm -rf deps
+
 compile:
 	@./rebar compile
 
 devrel: relclean compile
 	@./rebar generate
 
-rel: clean relclean deps compile
-	@./rebar generate
-
-knit: clean relclean deps compile
+knit: clean depclean deps compile
 	@./knit
 	@./artifact.sh
 
@@ -24,9 +24,9 @@ relrun:
 	@rel/osc/bin/osc
 
 relclean:
-	rm -rf rel/osc
+	@rm -rf rel/osc
 
-clean:
+clean: relclean
 	@./rebar clean
 
 console:
