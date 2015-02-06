@@ -7,7 +7,8 @@
     parse_window_aggregation/1,
     find_prop_match/2,
     match_props/2,
-    available_port/0
+    available_port/0,
+    load_schema/0
 ]).
 
 -include_lib("osc/include/osc_types.hrl").
@@ -85,3 +86,10 @@ available_port() ->
             RandomNth = trunc(Random*UnusedPortCount),
             {ok, lists:nth(RandomNth, UnusedPorts)}
     end.
+
+-spec load_schema() -> ok.
+
+load_schema() ->
+    {ok, Schema} = file:read_file([code:priv_dir(osc_meta), "/schema.sql"]),
+    Results = mpgsql:squery(Schema),
+    ok = hd(lists:map(fun({X, _, _}) -> X end, Results)).
