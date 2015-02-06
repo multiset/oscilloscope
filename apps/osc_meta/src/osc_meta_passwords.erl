@@ -47,7 +47,7 @@ verify(Password, <<0:8/integer, HashParts/binary>>=Hash0) ->
     eq(Hash0, Hash1);
 verify(_, <<Scheme:8/integer, _/binary>>) ->
     %% Hashing scheme is unknown
-    lager:error("osc_meta_passwords found unknown hashing scheme: ~p", Scheme),
+    lager:error("osc_meta_passwords got unknown hashing scheme: ~p", [Scheme]),
     false.
 
 pbkdf2(Password, Salt, Iterations) ->
