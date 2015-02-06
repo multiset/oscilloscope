@@ -4,6 +4,7 @@ all: clean deps compile rel console
 
 deps:
 	@./rebar get-deps
+	@./rebar update-deps
 
 compile:
 	@./rebar compile
