@@ -115,9 +115,15 @@ init(Meta) ->
 handle_call({read, From, Until}, _From, State) ->
     #st{windows=Windows, meta=Meta}=State,
     {WindowMeta, WindowData} = select_window(From, Windows),
-    {_, _, Points}=Read = apod:read(WindowData, From, Until),
-    mstat:increment_counter([osc, cache, points_read], length(Points)),
-    {reply, {ok, Meta, WindowMeta, Read}, State, hibernate_timeout()};
+    Read0 = apod:read(WindowData, From, Until),
+    Read1 = case Read0 of
+        undefined ->
+            no_data;
+        {_, _, Points} ->
+            mstat:increment_counter([osc, cache, points_read], length(Points)),
+            Read0
+    end,
+    {reply, {ok, Meta, WindowMeta, Read1}, State, hibernate_timeout()};
 handle_call({update, Points}, _From, State) ->
     #st{windows=Windows, persisting=Persisting}=State,
     PointCount = length(Points),
