@@ -1,5 +1,5 @@
 SHELL=/bin/bash
-.PHONY: deps rel
+.PHONY: deps rel knit
 
 all: clean deps compile rel console
 
@@ -16,7 +16,7 @@ devrel: relclean compile
 rel: clean relclean deps compile
 	@./rebar generate
 
-knit: rel
+knit: clean relclean deps compile
 	@./knit
 	@./artifact.sh
 
