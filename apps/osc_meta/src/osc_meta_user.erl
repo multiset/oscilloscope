@@ -66,7 +66,7 @@ emails(UserID) ->
     Error :: exists.
 
 create(Username, Password) ->
-    Hash = hash_password(Password),
+    {ok, Hash} = osc_meta_passwords:hash(Password),
     SQL = "INSERT INTO users (name, password) VALUES ($1, $2) RETURNING id;",
     case mpgsql:equery(SQL, [Username, Hash]) of
         {error, unique_violation} ->
@@ -112,7 +112,7 @@ remove_email(UserID, Email) ->
 -spec change_password(user_id(), binary()) -> ok.
 
 change_password(UserID, NewPass) ->
-    Hash = hash_password(NewPass),
+    {ok, Hash} = osc_meta_passwords:hash(NewPass),
     SQL = "UPDATE users "
           "SET (password, updated)=($2, (now() at time one 'utc')) "
           "WHERE id = $1;",
@@ -167,22 +167,15 @@ orgs(UserID) ->
     Rows.
 
 
--spec hash_password(binary()) -> binary().
-
-hash_password(Pass) ->
-    {ok, Salt} = bcrypt:gen_salt(),
-    {ok, LHash} = bcrypt:hashpw(Pass, Salt),
-    list_to_binary(LHash).
-
-
 -spec is_authorized(binary(), binary()) -> boolean().
 
-is_authorized(Name, Pass) ->
+is_authorized(Name, Password) ->
     case lookup(Name) of
         {ok, User} ->
-            Hash = proplists:get_value(password, User),
-            {ok, LHash} = bcrypt:hashpw(Pass, Hash),
-            Hash =:= list_to_binary(LHash);
+            osc_meta_passwords:verify(
+                Password,
+                proplists:get_value(password, User)
+            );
         _ ->
             false
     end.
