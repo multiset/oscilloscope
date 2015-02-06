@@ -114,7 +114,7 @@ remove_email(UserID, Email) ->
 change_password(UserID, NewPass) ->
     {ok, Hash} = osc_meta_passwords:hash(NewPass),
     SQL = "UPDATE users "
-          "SET (password, updated)=($2, (now() at time one 'utc')) "
+          "SET (password, updated)=($2, (now() at time zone 'utc')) "
           "WHERE id = $1;",
     {ok, _} = mpgsql:equery(SQL, [UserID, Hash]),
     ok.
