@@ -67,7 +67,8 @@ refresh(WindowMeta) ->
     %% N.B.: This only refreshes persisted values, because that's the only field
     %% that's allowed to be mutable at the moment.
     SQL = "SELECT timestamp, count FROM persists "
-          "WHERE window_id = $1 AND vacuumed=FALSE;",
+          "WHERE window_id = $1 AND vacuumed=FALSE "
+          "ORDER BY timestamp ASC;",
     {ok, _, Persisted} = mpgsql:equery(SQL, [WindowMeta#windowmeta.id]),
     WindowMeta#windowmeta{persisted = Persisted}.
 
