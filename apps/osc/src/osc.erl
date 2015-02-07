@@ -1,5 +1,9 @@
 -module(osc).
 
+-ifdef(TEST).
+-compile(export_all).
+-endif.
+
 -export([
     start/0,
     stop/0,
@@ -38,79 +42,79 @@ update(Metric, Points) ->
     WMeta :: osc_meta_window:windowmeta(),
     Read :: {timestamp(), timestamp(), [value()]}.
 
-read(Metric, From, Until) ->
+read(Metric, From0, Until0) ->
     mstat:increment_counter([osc, reads, count]),
     case osc_cache:find(Metric) of
         not_found ->
             not_found;
         {ok, Pid} ->
-            case osc_cache:read(Pid, From, Until) of
+            case osc_cache:read(Pid, From0, Until0) of
                 not_ready ->
                     not_found;
                 {ok, MetricMeta, WindowMeta, CacheRead} ->
-                    {ok, PersistentRead} = osc_persistence:read(
+                    {ok, PersistentReads} = osc_persistence:read(
                         WindowMeta,
-                        From,
-                        Until
+                        From0,
+                        Until0
                     ),
                     Interval = osc_meta_window:interval(WindowMeta),
-                    {MFrom, MUntil, _}=MergedRead = merge_reads(
-                        From,
-                        Until,
+                    {From1, Until1} = osc_util:adjust_query_range(
+                        From0,
+                        Until0,
+                        Interval
+                    ),
+                    PointsRead = merge_reads(
+                        From1,
+                        Until1,
                         Interval,
-                        CacheRead,
-                        PersistentRead
+                        [CacheRead|PersistentReads]
                     ),
                     mstat:increment_counter([osc, reads, successful]),
                     mstat:increment_counter(
                         [osc, reads, points],
-                        (MUntil - MFrom) div Interval
+                        (Until1 - From1) div Interval
                     ),
-                    {ok, MetricMeta, WindowMeta, MergedRead}
+                    {ok, MetricMeta, WindowMeta, {From1, Until1, PointsRead}}
             end
     end.
 
 
--spec merge_reads(From, Until, Interval, CRead, PRead) -> Read when
+-spec merge_reads(From, Until, Interval, Reads) -> Points when
     From :: timestamp(),
     Until :: timestamp(),
     Interval :: interval(),
-    CRead :: {timestamp(), timestamp(), [value()]} | no_data,
-    PRead :: {timestamp(), timestamp(), [value()]} | no_data,
-    Read :: {timestamp(), timestamp(), [value()]}.
+    Reads :: [Read],
+    Read :: {timestamp(), timestamp(), [value()]} | no_data,
+    Points :: [value()].
 
-merge_reads(From0, Until0, Interval, CRead, PRead) ->
-    {From1, Until1} = osc_util:adjust_query_range(
-        From0,
-        Until0,
-        Interval
-    ),
-    Points = case {PRead, CRead} of
-        {no_data, no_data} ->
-            mstat:increment_counter([osc, reads, undefined]),
-            lists:duplicate((Until1 - From1) div Interval, undefined);
-        {{PFrom, PUntil, PData}, no_data} ->
-            mstat:increment_counter([osc, reads, persistent_only]),
-            lists:append([
-                lists:duplicate((PFrom - From1) div Interval, undefined),
-                PData,
-                lists:duplicate((Until1 - PUntil) div Interval, undefined)
-            ]);
-        {no_data, {CFrom, CUntil, CData}} ->
-            mstat:increment_counter([osc, reads, cached_only]),
-            lists:append([
-                lists:duplicate((CFrom - From1) div Interval, undefined),
-                CData,
-                lists:duplicate((Until1 - CUntil) div Interval, undefined)
-            ]);
-        {{_, PUntil, PData}, {CFrom, CUntil, CData}} ->
-            mstat:increment_counter([osc, reads, persistent_and_cached]),
-            lists:append([
-                lists:duplicate((CFrom - From1) div Interval, undefined),
-                PData,
-                lists:duplicate((CFrom - PUntil) div Interval, undefined),
-                CData,
-                lists:duplicate((Until1 - CUntil) div Interval, undefined)
-            ])
-    end,
-    {From1, Until1, Points}.
+merge_reads(From, Until, Interval, Reads) ->
+    merge_reads(From, Until, Interval, Reads, []).
+
+merge_reads(From, Until, Interval, [], Acc) when From =< Until ->
+    Tail = ((Until - From) div Interval) + 1,
+    Acc ++ lists:duplicate(Tail, undefined);
+merge_reads(_, _, _, [], Acc) ->
+    Acc;
+merge_reads(From, Until, Interval, [no_data|Rs], Acc) ->
+    merge_reads(From, Until, Interval, Rs, Acc);
+merge_reads(From, Until, Interval, [{RF, _, _}|Rs], Acc) when RF < From ->
+    %% This read overlapped with the previous read - skip it and move on.
+    lager:error("merge_reads encountered overlapping reads; RF = ~p", [RF]),
+    merge_reads(From, Until, Interval, Rs, Acc);
+merge_reads(From, Until, Interval, [{RF, _, _}|Rs], Acc) when RF > Until ->
+    %% This read has no datapoints in the requested range - skip it and move on.
+    lager:error("merge_reads encountered irrelevant read; RF = ~p", [RF]),
+    merge_reads(From, Until, Interval, Rs, Acc);
+merge_reads(From, Until, Interval, [{RF, _, _}|_]=Rs, Acc0) when RF > From ->
+    %% Fill in the gap with undefineds and continue with the same read
+    Acc1 = Acc0 ++ lists:duplicate((RF - From) div Interval, undefined),
+    merge_reads(RF, Until, Interval, Rs, Acc1);
+merge_reads(_, Until, Interval, [{_, RU, Points}|Rs], Acc) when RU < Until ->
+    merge_reads(RU + Interval, Until, Interval, Rs, Acc ++ Points);
+merge_reads(_, Until, Interval, [{RF, _, Points}|_], Acc) ->
+    %% This read extends either to or past the end of the requested read. This
+    %% has two implications: first: we don't have to recurse, since we know
+    %% we've read everything requested, and second: we can't append the full
+    %% read to the Acc, since that might result in returning too many points.
+    Acc ++ lists:sublist(Points, ((Until - RF) div Interval) + 1).
+

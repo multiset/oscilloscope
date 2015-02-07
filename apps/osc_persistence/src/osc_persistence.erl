@@ -32,10 +32,11 @@ persist(WindowMeta, Window) ->
         Timeout
     ).
 
--spec read(WindowMeta, From, Until) -> {ok, Read | no_data} when
+-spec read(WindowMeta, From, Until) -> {ok, Reads} when
     WindowMeta :: osc_meta_window:windowmeta(),
     From :: timestamp(),
     Until :: timestamp(),
+    Reads :: [Read],
     Read :: {timestamp(), timestamp(), [value()]}.
 
 read(WindowMeta, From, Until) ->
@@ -116,10 +117,11 @@ persist_int(WindowMeta, Window) ->
     {ok, length(Chunks)}.
 
 
--spec read_int(WindowMeta, From, Until) -> {ok, Read | no_data} when
+-spec read_int(WindowMeta, From, Until) -> {ok, Reads} when
     WindowMeta :: osc_meta_window:windowmeta(),
     From :: timestamp(),
     Until :: timestamp(),
+    Reads :: [Read],
     Read :: {timestamp(), timestamp(), [value()]}.
 
 read_int(WindowMeta, From0, Until0) ->
@@ -138,35 +140,29 @@ read_int(WindowMeta, From0, Until0) ->
         Interval,
         Persisted
     ),
-    case Bounds of
+    Rows = case Bounds of
         not_found ->
-            {ok, no_data};
+            [];
         {ReadFrom, ReadUntil} ->
-            {ok, Rows} = commutator:query(
+            {ok, R} = commutator:query(
                 Commutator,
                 [
                     {<<"id">>, equals, [ID]},
                     {<<"t">>, between, [ReadFrom, ReadUntil]}
                 ]
             ),
-            Read = lists:flatten(lists:foldr(
-                fun(Row, Acc) ->
-                    Bin = proplists:get_value(<<"v">>, Row),
-                    Value = apod:inflate(Bin),
-                    [Value|Acc]
-                end,
-                [],
-                Rows
-            )),
-            {From2, Until2, TrimmedRead} = trim_read(
-                From1,
-                Until1,
-                Interval,
-                ReadFrom,
-                Read
-            ),
-            {ok, {From2, Until2, TrimmedRead}}
-    end.
+            R
+    end,
+    Reads = lists:map(
+        fun(Row) ->
+            RowFrom = proplists:get_value(<<"t">>, Row),
+            RowReadBin = proplists:get_value(<<"v">>, Row),
+            RowReadPoints = apod:inflate(RowReadBin),
+            trim_read(From1, Until1, Interval, RowFrom, RowReadPoints)
+        end,
+        Rows
+    ),
+    {ok, Reads}.
 
 
 -spec calculate_query_bounds(F, U, I, P) -> {F, U} | not_found when
