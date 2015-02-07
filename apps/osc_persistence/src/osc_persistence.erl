@@ -149,7 +149,7 @@ read_int(WindowMeta, From0, Until0) ->
                     {<<"t">>, between, [ReadFrom, ReadUntil]}
                 ]
             ),
-            Read = lists:foldr(
+            Read = lists:flatten(lists:foldr(
                 fun(Row, Acc) ->
                     Bin = proplists:get_value(<<"v">>, Row),
                     Value = apod:inflate(Bin),
@@ -157,7 +157,7 @@ read_int(WindowMeta, From0, Until0) ->
                 end,
                 [],
                 Rows
-            ),
+            )),
             {From2, Until2, TrimmedRead} = trim_read(
                 From1,
                 Until1,
