@@ -17,7 +17,7 @@
             {rectangular, average, 60, 43200}, % 60 seconds for 1 month
             {rectangular, average, 3600, 8760} % 1 hour for 1 year
         ]},
-        {port_ranges, [{10000, 20000}, {30000, 40000}]},
+        {port_ranges, [{10000, 32767}]},
         {pbkdf2_iterations, 2000}
     ]}
 ]}.
