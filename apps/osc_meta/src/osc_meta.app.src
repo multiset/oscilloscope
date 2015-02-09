@@ -13,9 +13,9 @@
     {env, [
         {stripe_key, "sk_test_vjxLlGrf5OWP1U9jg1fChHBq"},
         {default_window_configuration, [
-            {rectangular, average, 10, 1000},
-            {rectangular, average, 60, 1000},
-            {rectangular, average, 3600, 1000}
+            {rectangular, average, 10, 60480}, % 10 seconds for 1 week
+            {rectangular, average, 60, 43200}, % 60 seconds for 1 month
+            {rectangular, average, 3600, 8760} % 1 hour for 1 year
         ]},
         {port_ranges, [{10000, 20000}, {30000, 40000}]},
         {pbkdf2_iterations, 2000}
