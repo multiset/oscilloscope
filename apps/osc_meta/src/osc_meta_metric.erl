@@ -104,16 +104,32 @@ lookup(Metric) ->
             }}
     end.
 
--spec search(org_id(), [{group_tag_key(), group_tag_value()}]) -> [].
+-spec search(OrgID, Props) -> Matches when
+    OrgID :: org_id(),
+    Props :: [{group_tag_key(), group_tag_value()}],
+    Matches :: [{metric_id(), group_tag_key(), group_tag_value()}].
+
 search(OrgID, [{Key, Value}]) ->
     % Metrics with only one key-value pair are supported right now
-    SQL = "SELECT id FROM metrics "
+    SQL = "SELECT metrics.id, tags.key, tags.value FROM metrics "
           "JOIN tags ON metrics.id = tags.metric_id "
           "WHERE metrics.org_id = $1 "
           "AND tags.key = $2 "
-          "AND tags.value ~ $3;",
-    {ok, _, Resp} = mpgsql:equery(SQL, [OrgID, Key, Value]),
-    [MetricID || {MetricID} <- Resp].
+          "AND tags.value ~ $3 "
+          "ORDER BY metrics.id;",
+    {ok, _, Rows} = mpgsql:equery(SQL, [OrgID, Key, Value]),
+    lists:foldl(
+        fun({MetricID, K, V}, Acc) ->
+            case Acc of
+                [{MetricID, Tags}|Metrics] ->
+                    [{MetricID, [{K, V}|Tags]}|Metrics];
+                _ ->
+                    [{MetricID, [{K, V}]}|Acc]
+            end
+        end,
+        [],
+        Rows
+    ).
 
 id(#metricmeta{id=ID}) ->
     ID.
