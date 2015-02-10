@@ -46,15 +46,11 @@ to_json(Req0, State) ->
     UserID = State#st.user_id,
     {ok, OrgProps} = osc_meta_org:lookup(OrgName),
     OrgID = proplists:get_value(id, OrgProps),
-    UnfilteredMetricIDs = osc_meta_metric:search(
+    UnfilteredMetrics = osc_meta_metric:search(
         OrgID,
         [{<<"graphite">>, Query}]
     ),
-    UnfilteredMetrics = lists:map(
-        fun(ID) -> {ok, Meta} = osc_meta_metric:lookup(ID), Meta end,
-        UnfilteredMetricIDs
-    ),
-    MetricMetas = case osc_meta_org:is_owner(OrgID, UserID) of
+    FilteredMetrics = case osc_meta_org:is_owner(OrgID, UserID) of
         true ->
             UnfilteredMetrics;
         false ->
@@ -63,8 +59,7 @@ to_json(Req0, State) ->
                 UserID
             ),
             lists:filter(
-                fun(MetricMeta) ->
-                    MetricProps = osc_meta_metric:props(MetricMeta),
+                fun({_, MetricProps}) ->
                     osc_meta_util:find_prop_match(
                         TeamPermissions,
                         MetricProps
@@ -73,28 +68,21 @@ to_json(Req0, State) ->
                 UnfilteredMetrics
             )
     end,
-    Response = lists:usort(lists:filtermap(
-        fun(MetricMeta) ->
-            Props = osc_meta_metric:props(MetricMeta),
-            case proplists:get_value(<<"graphite">>, Props) of
-                undefined ->
-                    %% TODO: Should be harmless, but log
-                    false;
-                Name ->
-                    NameParts = binary:split(Name, <<".">>, [global]),
-                    Row = case length(NameParts) of
-                        Size when Size == QuerySize ->
-                            {Name, leaf};
-                        Size when Size >= QuerySize ->
-                            SubName = osc_util:binary_join(
-                                lists:sublist(NameParts, 1, QuerySize),
-                                <<".">>
-                            ),
-                            {SubName, branch}
-                    end,
-                    {true, Row}
+    Response = lists:usort(lists:map(
+        fun({_, MetricProps}) ->
+            Name = proplists:get_value(<<"graphite">>, MetricProps),
+            NameParts = binary:split(Name, <<".">>, [global]),
+            case length(NameParts) of
+                Size when Size == QuerySize ->
+                    {Name, leaf};
+                Size when Size >= QuerySize ->
+                    SubName = osc_util:binary_join(
+                        lists:sublist(NameParts, 1, QuerySize),
+                        <<".">>
+                    ),
+                    {SubName, branch}
             end
         end,
-        MetricMetas
+        FilteredMetrics
     )),
     {jiffy:encode({Response}), Req2, State}.
