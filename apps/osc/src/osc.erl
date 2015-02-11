@@ -67,7 +67,7 @@ read(Metric, From0, Until0) ->
                         From1,
                         Until1,
                         Interval,
-                        [CacheRead|PersistentReads]
+                        PersistentReads ++ [CacheRead]
                     ),
                     mstat:increment_counter([osc, reads, successful]),
                     mstat:increment_counter(
