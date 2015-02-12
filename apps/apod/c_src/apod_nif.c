@@ -501,6 +501,12 @@ unload(ErlNifEnv* env, void* priv)
     return;
 }
 
+static int
+upgrade(ErlNifEnv* env, void** priv, void** old_priv, ERL_NIF_TERM load_info)
+{
+    return 0;
+}
+
 static ErlNifFunc funcs[] = {
     {"new", 5, apod_nif_new},
     {"update", 3, apod_nif_update},
@@ -513,4 +519,4 @@ static ErlNifFunc funcs[] = {
     {"size", 1, apod_nif_size}
 };
 
-ERL_NIF_INIT(apod, funcs, &load, NULL, NULL, &unload);
+ERL_NIF_INIT(apod, funcs, &load, NULL, &upgrade, &unload);
