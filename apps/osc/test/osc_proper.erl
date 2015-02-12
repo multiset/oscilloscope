@@ -47,5 +47,5 @@ proper_test_() ->
     {
         timeout,
         100000,
-        [] = proper:module(?MODULE, [{to_file, user}, {numtests, 100000}])
+        [] = proper:module(?MODULE, [{to_file, user}, {numtests, 1000}])
     }.
