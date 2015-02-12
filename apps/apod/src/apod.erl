@@ -141,32 +141,33 @@ chunkify(Apod, MinPersistAge, MinChunkSize, MaxChunkSize) ->
                 [],
                 MinChunkSize,
                 MaxChunkSize,
-                0,
                 [],
-                length(Values)
+                length(Values) div 2
             )
     end.
 
-chunkify(T0, Interval, Values, Excess, Min, Max, Count, Chunks, Guess) ->
+chunkify(T0, Interval, Values, Excess, Min, Max, Chunks, 0) ->
+    %% If the Delta is 0, the other head will infinite loop.
+    Chunk = deflate(Values),
+    PointsChunked = length(Values),
+    chunkify(
+        T0 + (Interval * PointsChunked),
+        Interval,
+        Excess,
+        [],
+        Min,
+        Max,
+        [{T0, Chunk, PointsChunked}|Chunks],
+        length(Excess) div 2
+    );
+chunkify(T0, Interval, Values, Excess, Min, Max, Chunks, Delta) ->
     %% We may want to write this in C at some point, but it's pretty easy to
     %% re-implement in Erlang for now.
-    lager:debug("Chunking ~p, ~p with guess ~p", [Values, Excess, Guess]),
     Chunk = deflate(Values),
     PointsChunked = length(Values),
     case byte_size(Chunk) of
         Size when Size > Max ->
-            %% The chunk was too big. Generate a new guess based on the
-            %% average compressed point size, shrink Values as appropriate, and
-            %% try again.
-            BytesPerPoint = Size / PointsChunked,
-            ChunkGuess = Max / BytesPerPoint,
-            %% Always decrement the guess by at least one
-            NewGuess = min(
-                Guess - 1,
-                round(Guess - (Guess - ChunkGuess) / 2)
-            ),
-            %% Never try to split past the end of the list
-            {Left, Right} = lists:split(min(NewGuess, PointsChunked), Values),
+            {Left, Right} = lists:split(PointsChunked - Delta, Values),
             chunkify(
                 T0,
                 Interval,
@@ -174,9 +175,8 @@ chunkify(T0, Interval, Values, Excess, Min, Max, Count, Chunks, Guess) ->
                 Right ++ Excess,
                 Min,
                 Max,
-                Count,
                 Chunks,
-                NewGuess
+                Delta div 2
             );
         Size when Size < Min ->
             case Excess of
@@ -184,19 +184,9 @@ chunkify(T0, Interval, Values, Excess, Min, Max, Count, Chunks, Guess) ->
                     %% No more points to try - bail out with what we've chunked.
                     lists:reverse(Chunks);
                 _ ->
-                    %% The chunk was too small. Generate a new guess based on
-                    %% new data, pull points from the front of Excess, and try
-                    %% again.
-                    BytesPerPoint = Size / PointsChunked,
-                    ChunkGuess = Min / BytesPerPoint,
-                    %% Always increment the Guess by at least one
-                    NewGuess = max(
-                        Guess + 1,
-                        round(Guess + (ChunkGuess - Guess) / 2)
-                    ),
                     %% Never try to split past the end of the list
                     {Left, Right} = lists:split(
-                        min((NewGuess + 1) - PointsChunked, length(Excess)),
+                        min(Delta, length(Excess)),
                         Excess
                     ),
                     chunkify(
@@ -206,26 +196,20 @@ chunkify(T0, Interval, Values, Excess, Min, Max, Count, Chunks, Guess) ->
                         Right,
                         Min,
                         Max,
-                        Count,
                         Chunks,
-                        NewGuess
+                        Delta div 2
                     )
             end;
         _Size ->
-            T1 = T0 + (Interval * PointsChunked),
-            Chunks1 = [{T0, Chunk, PointsChunked}|Chunks],
-            %% Never try to split past the end of the list
-            {Left, Right} = lists:split(min(Guess, length(Excess)), Excess),
             chunkify(
-                T1,
+                T0 + (Interval * PointsChunked),
                 Interval,
-                Left,
-                Right,
+                Excess,
+                [],
                 Min,
                 Max,
-                Count + PointsChunked,
-                Chunks1,
-                Guess
+                [{T0, Chunk, PointsChunked}|Chunks],
+                length(Excess) div 2
             )
     end.
 
