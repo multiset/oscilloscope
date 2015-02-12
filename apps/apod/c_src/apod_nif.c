@@ -504,6 +504,7 @@ unload(ErlNifEnv* env, void* priv)
 static int
 upgrade(ErlNifEnv* env, void** priv, void** old_priv, ERL_NIF_TERM load_info)
 {
+    *priv = *old_priv;
     return 0;
 }
 
