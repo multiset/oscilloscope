@@ -63,6 +63,15 @@ update(Pid, Points) ->
     gen_server:call(Pid, {update, Points}).
 
 
+-spec get_window(Pid, WindowID) -> not_found | {ok, Window} when
+    Pid :: pid(),
+    WindowID :: osc_meta_window:id(),
+    Window :: {osc_meta_window:window(), apod:apod()}.
+
+get_window(Pid, WindowID) ->
+    gen_server:call(Pid, {get_window, WindowID}).
+
+
 persist(Pid) ->
     gen_server:call(Pid, persist).
 
@@ -109,6 +118,7 @@ init(Meta) ->
     catch error:badarg ->
         ok
     end,
+    osc_event:notify({cache_init, Meta}),
     {ok, State, hibernate_timeout()}.
 
 
@@ -120,12 +130,14 @@ handle_call({read, From, Until}, _From, State) ->
         undefined ->
             no_data;
         {_, _, Points} ->
-            mstat:increment_counter([osc, cache, points_read], length(Points)),
+            PointCount = length(Points),
+            mstat:increment_counter([osc, cache, points_read], PointCount),
+            osc_event:notify({cache_read, Meta, WindowMeta, PointCount}),
             Read0
     end,
     {reply, {ok, Meta, WindowMeta, Read1}, State, hibernate_timeout()};
 handle_call({update, Points}, _From, State) ->
-    #st{windows=Windows, persisting=Persisting}=State,
+    #st{windows=Windows, persisting=Persisting, meta=Meta}=State,
     PointCount = length(Points),
     mstat:increment_counter([osc, cache, points_received], PointCount),
     mstat:increment_counter(
@@ -133,7 +145,8 @@ handle_call({update, Points}, _From, State) ->
         PointCount * length(Windows)
     ),
     lists:foreach(
-        fun({_WMeta, WData}) ->
+        fun({WMeta, WData}) ->
+            osc_event:notify({window_update, Meta, WMeta, WData, PointCount}),
             ok = apod:update(WData, Points)
         end,
         Windows
@@ -160,6 +173,16 @@ handle_call(persist, _From, State) ->
         W
     ),
     {reply, ok, State#st{persisting=P0 ++ P1}};
+handle_call({get_window, WindowID}, _From, State) ->
+    #st{windows=Windows} = State,
+    WindowMatch = lists:filter(
+        fun({WMeta, _}) -> osc_meta_window:id(WMeta) == WindowID end,
+        Windows
+    ),
+    case WindowMatch of
+        [] -> {reply, not_found, State};
+        [W} -> {reply, {ok, W}, State}
+    end;
 handle_call(Msg, _From, State) ->
     lager:warning("osc_cache ~p received unknown call: ~p", [self(), Msg]),
     {noreply, State}.

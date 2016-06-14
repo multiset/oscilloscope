@@ -2,7 +2,7 @@
 
 -export([
     lookup/1,
-    create/3,
+    create/2,
     delete/1,
     teams/1,
     members/1,
@@ -14,6 +14,8 @@
     add_port/2,
     remove_port/2
 ]).
+
+
 
 -include_lib("osc/include/osc_types.hrl").
 -include_lib("osc_meta/include/osc_meta.hrl").
@@ -63,15 +65,16 @@ ports(OrgID) ->
     [Port || {Port} <- Ports].
 
 
--spec create(Name, UserID, StripeToken) -> {ok, OrgID} | {error, Error} when
-    Name :: binary(),
-    UserID :: user_id(),
-    StripeToken :: binary(),
-    OrgID :: org_id(),
-    Error :: exists.
+%% -spec create(Name, UserID, StripeToken) -> {ok, OrgID} | {error, Error} when
+%%     Name :: binary(),
+%%     UserID :: user_id(),
+%%     StripeToken :: binary(),
+%%     OrgID :: org_id(),
+%%     Error :: exists.
 
-create(OrgName, UserID, StripeToken) ->
-    {ok, StripeID} = osc_meta_stripe:create_customer(StripeToken, OrgName),
+create(OrgName, UserID) ->
+    %{ok, StripeID} = osc_meta_stripe:create_customer(StripeToken, OrgName),
+    StripeID = <<"asdf">>,
     ok = mpgsql:tx_begin(),
     CreateOrgSQL = "WITH org AS ("
                    "  INSERT INTO orgs (name, stripe_id) "

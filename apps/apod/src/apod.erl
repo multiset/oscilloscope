@@ -146,30 +146,31 @@ chunkify(Apod, MinPersistAge, MinChunkSize, MaxChunkSize) ->
             )
     end.
 
-chunkify(T0, Interval, Values, Excess, Min, Max, Chunks, 0) ->
+chunkify(T, Interval, Values, Excess, Min, Max, Chunks, 0) ->
     %% If the Delta is 0, the other head will infinite loop.
     Chunk = deflate(Values),
     PointsChunked = length(Values),
     chunkify(
-        T0 + (Interval * PointsChunked),
+        T + (Interval * PointsChunked),
         Interval,
         Excess,
         [],
         Min,
         Max,
-        [{T0, Chunk, PointsChunked}|Chunks],
+        [{T, Chunk, PointsChunked}|Chunks],
         length(Excess) div 2
     );
-chunkify(T0, Interval, Values, Excess, Min, Max, Chunks, Delta) ->
+chunkify(T, Interval, Values, Excess, Min, Max, Chunks, Delta) ->
     %% We may want to write this in C at some point, but it's pretty easy to
     %% re-implement in Erlang for now.
     Chunk = deflate(Values),
     PointsChunked = length(Values),
-    case byte_size(Chunk) of
-        Size when Size > Max ->
+    ChunkSize = byte_size(Chunk),
+    if
+        ChunkSize > Max ->
             {Left, Right} = lists:split(PointsChunked - Delta, Values),
             chunkify(
-                T0,
+                T,
                 Interval,
                 Left,
                 Right ++ Excess,
@@ -178,11 +179,11 @@ chunkify(T0, Interval, Values, Excess, Min, Max, Chunks, Delta) ->
                 Chunks,
                 Delta div 2
             );
-        Size when Size < Min ->
+        ChunkSize < Min ->
             case Excess of
                 [] ->
                     %% No more points to try - bail out with what we've chunked.
-                    lists:reverse(Chunks);
+                    lists:reverse([{T, Chunk, PointsChunked, ChunkSize}|Chunks]);
                 _ ->
                     %% Never try to split past the end of the list
                     {Left, Right} = lists:split(
@@ -190,7 +191,7 @@ chunkify(T0, Interval, Values, Excess, Min, Max, Chunks, Delta) ->
                         Excess
                     ),
                     chunkify(
-                        T0,
+                        T,
                         Interval,
                         Values ++ Left,
                         Right,
@@ -200,15 +201,15 @@ chunkify(T0, Interval, Values, Excess, Min, Max, Chunks, Delta) ->
                         Delta div 2
                     )
             end;
-        _Size ->
+        true ->
             chunkify(
-                T0 + (Interval * PointsChunked),
+                T + (Interval * PointsChunked),
                 Interval,
                 Excess,
                 [],
                 Min,
                 Max,
-                [{T0, Chunk, PointsChunked}|Chunks],
+                [{T, Chunk, PointsChunked, ChunkSize}|Chunks],
                 length(Excess) div 2
             )
     end.

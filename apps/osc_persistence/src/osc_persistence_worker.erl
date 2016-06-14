@@ -1,50 +1,71 @@
 -module(osc_persistence_worker).
--behaviour(gen_server).
--behaviour(poolboy_worker).
 
 -export([
-    start_link/1,
-    init/1,
-    handle_call/3,
-    handle_cast/2,
-    handle_info/2,
-    terminate/2,
-    code_change/3
+    start_link/2,
+    go/3
 ]).
 
--record(st, {}).
+-record(st, {
+    metric_id,
+    window_id,
+    window
+}).
 
 
-start_link(Args) ->
-    gen_server:start_link(?MODULE, Args, []).
+start_link({MetricID, WindowID, MinSize) ->
+    proc_lib:start_link(?MODULE, go, [self(), MetricID, WindowID, MinSize]).
 
 
-init(_) ->
+go(Parent, MetricID, WindowID) ->
     lager:debug("Starting persistence worker ~p", [self()]),
-    {ok, #st{}}.
+    proc_lib:init_ack(Parent, {ok, self()}),
+    case get_window(MetricID, WindowID) of
+        not_found ->
+            not_found;
+        {ok, {WindowMeta, WindowData}} ->
+            Chunks = apod:chunkify(WindowData),
+            ok = persist_chunks(WindowMeta, Chunks)
+    end.
 
 
-handle_call({persist, WindowMeta, Window}, _From, State) ->
-    {reply, osc_persistence:persist_int(WindowMeta, Window), State};
-handle_call({read, WindowMeta, From, Until}, _From, State) ->
-    {reply, osc_persistence:read_int(WindowMeta, From, Until), State};
-handle_call(Msg, _From, State) ->
-    {stop, {unknown_call, Msg}, error, State}.
+get_window(MetricID, WindowID) ->
+    case osc_cache:find(MetricID) of
+        not_found ->
+            not_found;
+        {ok, Pid} ->
+            osc_cache:get_window(Pid, WindowID)
+    end.
 
 
-handle_cast(Msg, State) ->
-    {stop, {unknown_cast, Msg}, State}.
+persist_chunks(_, []) ->
+    ok;
+persist_chunks(WindowMeta, [{T, Chunk, Count, Size}|Chunks]) ->
+    C = osc_persistence_util:commutator(),
+    WindowID = osc_meta_window:id(WindowMeta),
+    MetricID = osc_meta_window:metric_id(WindowMeta),
+    {ok, true} = commutator:put_item(C, [WindowID, T, Chunk]),
+    insert_persist(WindowMeta, T, Count),
+    mstat:increment_counter([osc_persistence, persisted_chunks]),
+    mstat:increment_counter([osc_persistence, persisted_points], Count),
+    mstat:update_histogram([osc_persistence, chunk_size], Count),
+    lager:debug("Persist attempt successful for window ~p", [WindowID]),
+    osc_event:notify({persist, MetricID, WindowID, T, Count, Size}),
+    persist_chunks(WindowMeta, Chunks).
 
 
-handle_info(Msg, State) ->
-    {stop, {unknown_info, Msg}, State}.
-
-
-terminate(_Reason, _State) ->
-    ok.
-
-
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
+insert_persist(WindowMeta, Timestamp, Count) ->
+    try
+        ok = osc_meta_window:insert_persist(WindowMeta, Timestamp, Count)
+    catch
+        error:{badmatch, {error, unique_violation}} ->
+            %% This was previously successfully inserted -
+            %% probably on a query that timed-out - so
+            %% return
+            ok;
+        error:{badmatch, B} ->
+            lager:warning("badmatch in persist insertion: ~p", [B]),
+            timer:sleep(trunc(1000 * random:uniform())),
+            insert_persist(WindowMeta, Timestamp, Count)
+    end.
 
 

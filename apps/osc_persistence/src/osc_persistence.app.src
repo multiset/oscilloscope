@@ -23,8 +23,18 @@
         {min_chunk_size, 1000},
         {max_chunk_size, 1024},
         {min_persist_age, 300},
+        {min_persist_size, 1000},
         {worker_pool_size, 5},
         {worker_pool_overflow, 10},
-        {request_timeout, 10000}
+        {request_timeout, 10000},
+        {event_batch_size, 50},
+        {control_frequency, 30000},
+        {control_memory_target, 1073741824},
+        {control_kd, 0},
+        {control_ki, 0},
+        {control_kp, 0.5},
+        {read_weight, 0.25},
+        {size_weight, 0.25},
+        {chunk_size_penalty, 128}
     ]}
 ]}.

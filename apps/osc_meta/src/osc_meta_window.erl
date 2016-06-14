@@ -4,6 +4,7 @@
     lookup/1,
     refresh/1,
     id/1,
+    metric_id/1,
     aggregation/1,
     interval/1,
     count/1,
@@ -74,6 +75,10 @@ refresh(WindowMeta) ->
 
 
 id(#windowmeta{id=ID}) ->
+    ID.
+
+
+metric_id(#windowmeta{metric_ID=ID}) ->
     ID.
 
 

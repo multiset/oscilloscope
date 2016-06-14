@@ -20,5 +20,10 @@ init([]) ->
         {size, Size},
         {max_overflow, Overflow}
     ],
+    EventManager = {
+        osc_persistence_event_manager,
+        {osc_persistence_event_manager, start_link, []},
+        permanent, 5000, worker, [osc_persistence_event_manager]
+    },
     WorkerPool = poolboy:child_spec(osc_persistence_pool, Args, []),
-    {ok, {{one_for_one, 100, 1}, [WorkerPool]}}.
+    {ok, {{one_for_one, 100, 1}, [EventManager, WorkerPool]}}.

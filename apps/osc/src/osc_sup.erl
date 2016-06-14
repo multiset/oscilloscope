@@ -24,5 +24,10 @@ init([]) ->
         {osc_cache_sup, start_link, []},
         permanent, infinity, supervisor, [osc_cache_sup]
     },
-    {ok, {{one_for_one, 0, 10}, [CacheSup]}}.
+    EventSup = {
+        osc_event,
+        {gen_event, start_link, [{local, osc_event}]},
+        permanent, 5000, worker, [dynamic]
+    },
+    {ok, {{one_for_one, 0, 10}, [CacheSup, EventSup]}}.
 
